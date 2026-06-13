@@ -22,4 +22,4 @@ def test_analysis_page_keeps_prestress_preview_manual_and_not_staged_design() ->
     assert "not a staged prestressed girder design check yet" in source
     assert "AASHTO stress limits" in source
     assert "It is not used by PMM, rebar, prestress, or report solvers" in source
-    assert "staged checks are future work" in source
+    assert "staged checks remain preview / engineer-controlled workflows" in source

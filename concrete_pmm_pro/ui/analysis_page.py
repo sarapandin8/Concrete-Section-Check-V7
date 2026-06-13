@@ -3194,11 +3194,11 @@ def _column_pier_shear_result_for_case_direction(
     if has_prestress:
         status = "REVIEW"
     elif any(math.isfinite(value) and value > 1.0 + 1.0e-9 for value in [strength_dc, detailing_dc]):
-        status = "Preview FAIL"
+        status = "FAIL"
     else:
-        status = "Preview PASS"
+        status = "PASS"
     notes = [
-        "ULS.COL.SHEAR.ACI1 uses ACI 318 SI simplified one-way shear: Vc = 0.17 sqrt(fc) bw d, Vs = Av fy d / s, phi = 0.75.",
+        "ULS.COL.SHEAR.ACI_FINAL1 uses ACI 318 SI simplified one-way shear: Vc = 0.17 sqrt(fc) bw d, Vs = Av fy d / s, phi = 0.75.",
         "Case-based Column/Pier loads have no station owner yet; the active transverse region with the lowest Av/s is used conservatively.",
         str(geometry.get("basis") or ""),
         str(geometry.get("notes") or ""),
@@ -3246,8 +3246,8 @@ def _column_pier_shear_result_for_case_direction(
         "d mm": float(d_mm),
         "gross dimension mm": float(geometry.get("gross_dimension_mm") or float("nan")),
         "phi": phi,
-        "Code basis": "ACI 318 Column/Pier RC shear preview gate",
-        "Method": "ACI 318 simplified one-way shear, case-based conservative active-region source",
+        "Code basis": "ACI 318 Column/Pier RC shear scoped gate",
+        "Method": "ACI 318 simplified one-way shear, minimum Av/s, spacing, and Vs-limit gate; case-based conservative active-region source",
         "Notes": "; ".join(part for part in notes if part),
     }
 
@@ -3506,7 +3506,7 @@ def _column_pier_torsion_result_for_case(
         threshold_kNm = phi * (0.083 * math.sqrt(fc) * acp * acp / pcp) / 1.0e6
     threshold_status = "BELOW THRESHOLD" if math.isfinite(threshold_kNm) and abs(float(tu_kNm)) <= threshold_kNm + 1.0e-9 else "DESIGN REQUIRED"
     notes = [
-        "ULS.COL.TORSION.ACI1 uses an ACI 318 RC closed-transverse torsion preview: Tn = 2 Ao At fy cot(theta) / s, phi = 0.75, theta = 45 degrees.",
+        "ULS.COL.TORSION.ACI_FINAL1 uses an ACI 318 RC closed-transverse torsion gate: Tn = 2 Ao At fy cot(theta) / s, phi = 0.75, theta = 45 degrees.",
         "Torsion At is one closed tie/hoop bar area per spacing; shear leg count is not multiplied into At.",
         str(geometry.get("Note") or ""),
     ]
@@ -3550,8 +3550,8 @@ def _column_pier_torsion_result_for_case(
             "Zone": str(zone.get("Zone") or "Column/Pier transverse region"),
             "Tie/hoop": f"{zone.get('Bar Size') or '-'} @ {float(spacing):.0f} mm",
             "phi": phi,
-            "Code basis": "ACI 318 Column/Pier RC torsion preview gate",
-            "Method": "ACI 318 closed-transverse torsion threshold preview",
+            "Code basis": "ACI 318 Column/Pier RC torsion scoped gate",
+            "Method": "ACI 318 closed-transverse torsion threshold gate",
             "Notes": "; ".join(part for part in notes if part),
         }
     if not all(math.isfinite(value) and value > 0.0 for value in [ao, ph, at_mm2, at_per_s, fy, spacing]):
@@ -3604,15 +3604,15 @@ def _column_pier_torsion_result_for_case(
         status = "REVIEW"
         notes.append("Active prestress is present. PSC torsion effects and prestress-specific compatibility are not implemented, so the torsion result remains REVIEW.")
     elif "FAIL" in {transverse_status, longitudinal_status, detailing_status}:
-        status = "Preview FAIL"
+        status = "FAIL"
     elif longitudinal_status in {"LAYOUT REQUIRED", "NOT CHECKED", "NOT READY"}:
         status = "REVIEW"
     elif transverse_status == "PASS" and longitudinal_status == "PASS" and detailing_status == "PASS":
-        status = "Preview PASS"
+        status = "PASS"
     else:
         status = "REVIEW"
     if math.isfinite(spacing_dc) and spacing_dc > 1.0 + 1.0e-9:
-        notes.append("Closed tie/hoop spacing exceeds the torsion spacing preview gate s <= min(ph/8, 300 mm).")
+        notes.append("Closed tie/hoop spacing exceeds the torsion spacing gate s <= min(ph/8, 300 mm).")
     if math.isfinite(at_dc) and at_dc > 1.0 + 1.0e-9:
         notes.append("Provided At/s is less than the required torsion transverse reinforcement.")
     notes.append(str(longitudinal_review.get("description") or ""))
@@ -3652,8 +3652,8 @@ def _column_pier_torsion_result_for_case(
         "Zone": str(zone.get("Zone") or "Column/Pier transverse region"),
         "Tie/hoop": f"{zone.get('Bar Size') or '-'} @ {float(spacing):.0f} mm",
         "phi": phi,
-        "Code basis": "ACI 318 Column/Pier RC torsion preview gate",
-        "Method": "ACI 318 closed-transverse torsion truss preview",
+        "Code basis": "ACI 318 Column/Pier RC torsion scoped gate",
+        "Method": "ACI 318 closed-transverse torsion truss gate",
         "Notes": "; ".join(part for part in notes if part),
     }
 
@@ -3811,11 +3811,11 @@ def _column_pier_combined_vt_result_for_case_direction(
         stress_status = "THRESHOLD OK"
         transverse_status = "THRESHOLD OK"
         longitudinal_status = "NOT REQUIRED"
-        if source_shear_status == "Preview FAIL":
+        if source_shear_status in {"FAIL", "Preview FAIL"}:
             status = "FAIL"
         elif has_prestress or source_shear_status == "REVIEW" or source_torsion_status == "REVIEW":
             status = "REVIEW"
-        elif source_shear_status in {"Preview PASS", "NO DEMAND"}:
+        elif source_shear_status in {"PASS", "Preview PASS", "NO DEMAND"}:
             status = "PASS"
         else:
             status = "DATA REQUIRED"
@@ -3900,7 +3900,7 @@ def _column_pier_combined_vt_result_for_case_direction(
     overall_values = [value for value in [stress_dc, transverse_dc, longitudinal_dc] if math.isfinite(value)]
     overall_dc = max(overall_values) if overall_values else float("nan")
 
-    source_fail = source_shear_status == "Preview FAIL" or source_torsion_status == "Preview FAIL"
+    source_fail = source_shear_status in {"FAIL", "Preview FAIL"} or source_torsion_status in {"FAIL", "Preview FAIL"}
     source_review = source_shear_status == "REVIEW" or source_torsion_status == "REVIEW"
     if has_prestress:
         status = "REVIEW"
@@ -8991,9 +8991,9 @@ def _column_pier_analysis_scope_cards() -> list[dict[str, object]]:
         if code != PROJECT_CODE_AASHTO_LRFD
         else "AASHTO LRFD PMM is not implemented; current PMM remains ACI-oriented and must be treated as REVIEW"
     )
-    shear_status = "ACI RC preview" if code == PROJECT_CODE_ACI318 else "REVIEW / planned"
+    shear_status = "ACI RC scoped gate" if code == PROJECT_CODE_ACI318 else "REVIEW / planned"
     shear_detail = (
-        "ACI 318 RC Column/Pier shear preview reads Vux/Vuy and active transverse reinforcement; PSC and final certification remain guarded"
+        "ACI 318 RC Column/Pier scoped shear gate reads Vux/Vuy and active transverse reinforcement; PSC and seismic/detailing certification remain guarded"
         if code == PROJECT_CODE_ACI318
         else "AASHTO LRFD Column/Pier shear is not implemented; no Vn or PASS/FAIL is issued"
     )
@@ -9135,20 +9135,20 @@ def _column_pier_check_decision_rows(
         },
         {
             "Check": "Shear",
-            "Status": _check_status(shear_df, empty_status="NOT READY", fail_status="Preview FAIL"),
+            "Status": _check_status(shear_df, empty_status="NOT READY", fail_status="FAIL"),
             "Governing Case": "-" if shear is None else f"{shear.get('Case', '-')} / {shear.get('Direction', '-')}",
             "Demand": "Vux, Vuy",
             "D/C": "-" if shear is None else _column_pier_dc_text(shear.get("Governing D/C value")),
-            "Route / Scope": "ACI 318 RC preview; AASHTO, PSC shear, and seismic detailing remain REVIEW",
+            "Route / Scope": "ACI 318 RC scoped shear gate; AASHTO, PSC shear, and seismic detailing remain REVIEW",
             "Required Action": "Confirm Control section transverse reinforcement, section/material, and seismic detailing separately.",
         },
         {
             "Check": "Torsion",
-            "Status": _check_status(torsion_df, empty_status="NOT READY", fail_status="Preview FAIL"),
+            "Status": _check_status(torsion_df, empty_status="NOT READY", fail_status="FAIL"),
             "Governing Case": "-" if torsion is None else str(torsion.get("Case", "-")),
             "Demand": "Tu",
             "D/C": "-" if torsion is None else _column_pier_dc_text(torsion.get("Governing D/C value")),
-            "Route / Scope": "ACI 318 RC preview; closed ties/hoops plus ordinary longitudinal Al only",
+            "Route / Scope": "ACI 318 RC scoped torsion gate; closed ties/hoops plus ordinary longitudinal Al only",
             "Required Action": "Confirm closed hoop/tie geometry, torsion core, ordinary Al, hooks, and anchorage.",
         },
         {
@@ -9348,8 +9348,8 @@ def _column_pier_shear_summary_cards(
         status_value = "NOT READY"
         status_detail = "Needs nonzero Vux/Vuy and an active valid transverse reinforcement region"
         status_color = "warning"
-    elif any(str(value) == "Preview FAIL" for value in shear_df["Status"].tolist()):
-        status_value = "Preview FAIL"
+    elif any(str(value) in {"FAIL", "Preview FAIL"} for value in shear_df["Status"].tolist()):
+        status_value = "FAIL"
         status_detail = "At least one shear direction or detailing gate exceeds 1.0"
         status_color = "danger"
     elif any(str(value) == "REVIEW" for value in shear_df["Status"].tolist()):
@@ -9357,8 +9357,8 @@ def _column_pier_shear_summary_cards(
         status_detail = "Calculation has guarded inputs such as active prestress or incomplete code route"
         status_color = "warning"
     else:
-        status_value = "Preview PASS"
-        status_detail = "ACI RC shear preview gates are below 1.0; not final code certification"
+        status_value = "PASS"
+        status_detail = "ACI RC scoped shear gates are below 1.0 within the implemented nonprestressed route"
         status_color = "ready"
     capacity_detail = "-"
     demand_detail = "-"
@@ -9418,7 +9418,7 @@ def _column_pier_shear_summary_cards(
 
 def _render_column_pier_shear_guarded_workspace() -> None:
     st.markdown("#### Shear")
-    st.caption("ACI 318 RC shear preview for column, pier, wall, and pylon case-based ULS rows.")
+    st.caption("ACI 318 RC scoped shear gate for column, pier, wall, and pylon case-based ULS rows.")
     active_demands = _active_column_pier_uls_demand_dataframe_from_state(st.session_state)
     analysis_input = _serviceability_analysis_input_from_session()
     shear_df = _column_pier_shear_check_dataframe(st.session_state, analysis_input)
@@ -9435,12 +9435,12 @@ def _render_column_pier_shear_guarded_workspace() -> None:
         st.warning("Column/Pier AASHTO LRFD shear is not implemented. This tab does not issue Vn or PASS/FAIL for AASHTO projects.")
     elif shear_df.empty:
         st.warning("No Column/Pier ACI shear rows are ready. Enter nonzero Vux/Vuy, confirm section/material inputs, and activate valid transverse reinforcement regions.")
-    elif any(str(value) == "Preview FAIL" for value in shear_df["Status"].tolist()):
-        st.error("One or more ACI RC shear preview gates exceed 1.0. Review demand, section size, and transverse reinforcement before relying on the member.")
+    elif any(str(value) in {"FAIL", "Preview FAIL"} for value in shear_df["Status"].tolist()):
+        st.error("One or more ACI RC shear gates exceed 1.0. Review demand, section size, and transverse reinforcement before relying on the member.")
     elif any(str(value) == "REVIEW" for value in shear_df["Status"].tolist()):
         st.warning("ACI shear values are calculated, but the result remains REVIEW because one or more guarded assumptions apply.")
     else:
-        st.success("ACI RC shear preview gates pass for the current visible rows. This is not final code-certified shear design.")
+        st.success("ACI RC scoped shear gates PASS for the current visible rows. Seismic/detailing items called out below remain separate engineering review items.")
 
     if not shear_df.empty:
         display_columns = [
@@ -9465,19 +9465,19 @@ def _render_column_pier_shear_guarded_workspace() -> None:
         else:
             st.dataframe(shear_df, use_container_width=True, hide_index=True)
         st.markdown(
-            "- Scope: ACI 318 RC Column/Pier shear preview only.\n"
+            "- Scope: ACI 318 RC Column/Pier scoped shear gate.\n"
             "- Demand source: Loads -> Column/Pier ULS table, active `Vux` and `Vuy` rows.\n"
             "- Transverse source: Sections -> Rebar -> Transverse Rebar, active Column/Pier regions. With no station owner, the lowest active `Av/s` region is used conservatively.\n"
             "- Section basis: `bw` is measured from concrete breadth through the centroid line, so holes/voids are not counted as concrete. Auto `d` is `0.80` times the gross dimension in the checked direction.\n"
             "- Formula basis: `Vc = 0.17 sqrt(fc) bw d`, `Vs = Av fy d / s`, `phi = 0.75`, with ACI minimum `Av/s`, maximum spacing, and `Vs` maximum screen.\n"
-            "- Exclusions: AASHTO LRFD, prestressed shear `Vci/Vcw/Vp`, seismic special detailing, slenderness/second-order effects, anchorage, and final code certification."
+            "- Exclusions from this PASS scope: AASHTO LRFD, prestressed shear `Vci/Vcw/Vp`, seismic special detailing, slenderness/second-order effects, anchorage/hooks, lap splices, and shop-drawing detailing."
         )
     with st.expander("Future shear code-check scope", expanded=False):
         st.markdown(
             "- Add explicit direction-specific effective depth owner instead of the current auto `0.80h` preview basis.\n"
             "- Add station/height assignment for transverse regions so end confinement and typical shaft regions can be checked at their actual demand locations.\n"
             "- Add axial load and prestress effects only after validated code-specific equations and benchmarks are introduced.\n"
-            "- Required validation: separate ACI 318 and AASHTO LRFD benchmarks before any final PASS/FAIL result is allowed."
+            "- Required validation before expanding scope: AASHTO LRFD, prestressed shear, seismic/detailing, and direction-specific station benchmarks."
         )
 
 
@@ -9503,8 +9503,8 @@ def _column_pier_torsion_summary_cards(
         status_value = "NOT READY"
         status_detail = "Needs nonzero Tu, closed transverse reinforcement, torsion core basis, and ordinary longitudinal bars"
         status_color = "warning"
-    elif any(str(value) == "Preview FAIL" for value in torsion_df["Status"].tolist()):
-        status_value = "Preview FAIL"
+    elif any(str(value) in {"FAIL", "Preview FAIL"} for value in torsion_df["Status"].tolist()):
+        status_value = "FAIL"
         status_detail = "At least one torsion strength, detailing, or longitudinal Al gate exceeds 1.0"
         status_color = "danger"
     elif any(str(value) == "REVIEW" for value in torsion_df["Status"].tolist()):
@@ -9516,8 +9516,8 @@ def _column_pier_torsion_summary_cards(
         status_detail = "All active Tu rows are below the implemented ACI torsion threshold screen"
         status_color = "ready"
     else:
-        status_value = "Preview PASS"
-        status_detail = "ACI RC torsion preview gates are below 1.0; not final code certification"
+        status_value = "PASS"
+        status_detail = "ACI RC scoped torsion gates are below 1.0 within the implemented nonprestressed route"
         status_color = "ready"
     capacity_detail = "-"
     demand_detail = "-"
@@ -9551,7 +9551,7 @@ def _column_pier_torsion_summary_cards(
 
 def _render_column_pier_torsion_guarded_workspace() -> None:
     st.markdown("#### Torsion")
-    st.caption("ACI 318 RC torsion preview for column, pier, wall, and pylon case-based ULS rows.")
+    st.caption("ACI 318 RC scoped torsion gate for column, pier, wall, and pylon case-based ULS rows.")
     active_demands = _active_column_pier_uls_demand_dataframe_from_state(st.session_state)
     analysis_input = _serviceability_analysis_input_from_session()
     torsion_df = _column_pier_torsion_check_dataframe(st.session_state, analysis_input)
@@ -9568,14 +9568,14 @@ def _render_column_pier_torsion_guarded_workspace() -> None:
         st.warning("Column/Pier AASHTO LRFD torsion is not implemented. This tab does not issue Tn or PASS/FAIL for AASHTO projects.")
     elif torsion_df.empty:
         st.warning("No Column/Pier ACI torsion rows are ready. Enter nonzero Tu, activate closed transverse reinforcement, define torsion core basis, and provide ordinary longitudinal rebar.")
-    elif any(str(value) == "Preview FAIL" for value in torsion_df["Status"].tolist()):
-        st.error("One or more ACI RC torsion preview gates exceed 1.0. Review Tu, closed tie/hoop layout, torsion core geometry, and longitudinal rebar Al.")
+    elif any(str(value) in {"FAIL", "Preview FAIL"} for value in torsion_df["Status"].tolist()):
+        st.error("One or more ACI RC torsion gates exceed 1.0. Review Tu, closed tie/hoop layout, torsion core geometry, and longitudinal rebar Al.")
     elif any(str(value) == "REVIEW" for value in torsion_df["Status"].tolist()):
         st.warning("ACI torsion values are calculated or partially screened, but the result remains REVIEW because one or more guarded assumptions apply.")
     elif all(str(value) == "BELOW THRESHOLD" for value in torsion_df["Status"].tolist()):
-        st.success("All active torsion demands are below the implemented ACI threshold screen. This is not final code-certified torsion design.")
+        st.success("All active torsion demands are below the implemented ACI threshold screen; torsion reinforcement is not required for those rows within this scoped route.")
     else:
-        st.success("ACI RC torsion preview gates pass for the current visible rows. This is not final code-certified torsion design.")
+        st.success("ACI RC scoped torsion gates PASS for the current visible rows. Seismic/detailing and anchorage items remain separate engineering review items.")
     if not torsion_df.empty:
         display_columns = [
             "Status", "Case", "Demand", "Capacity", "Utilization", "Threshold status",
@@ -9590,7 +9590,7 @@ def _render_column_pier_torsion_guarded_workspace() -> None:
         else:
             st.dataframe(torsion_df, use_container_width=True, hide_index=True)
         st.markdown(
-            "- Scope: ACI 318 RC Column/Pier torsion preview only.\n"
+            "- Scope: ACI 318 RC Column/Pier scoped torsion gate.\n"
             "- Demand source: Loads -> Column/Pier ULS table, active `Tu` rows.\n"
             "- Transverse source: Sections -> Rebar -> Transverse Rebar, active Column/Pier closed ties/hoops or spiral. With no station owner, the lowest active `At/s` region is used conservatively.\n"
             "- Longitudinal source: ordinary active rebar only. Prestress strands, tendons, and PT bars are not counted as torsion `Al` in this milestone.\n"

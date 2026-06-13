@@ -117,12 +117,12 @@ def _column_pier_shear_state(
     }
 
 
-def test_column_pier_aci_shear_preview_reads_vux_vuy_and_transverse_region() -> None:
+def test_column_pier_aci_shear_scoped_gate_reads_vux_vuy_and_transverse_region() -> None:
     analysis_input = _analysis_input(prestress_elements=[])
     df = _column_pier_shear_check_dataframe(_column_pier_shear_state(), analysis_input)
 
     assert set(df["Direction"]) == {"Vux", "Vuy"}
-    assert set(df["Status"]) == {"Preview PASS"}
+    assert set(df["Status"]) == {"PASS"}
     assert (pd.to_numeric(df["phiVn kN"], errors="coerce") > pd.to_numeric(df["Abs demand kN"], errors="coerce")).all()
     assert (pd.to_numeric(df["Av/s mm2/mm"], errors="coerce") > 0.0).all()
 
@@ -173,14 +173,14 @@ def test_column_pier_shear_view_reads_aci_seismic_spacing_advisor_summary() -> N
     assert "Control section row only" in row["Analysis use"]
 
 
-def test_column_pier_aci_torsion_preview_reads_tu_closed_ties_and_ordinary_al() -> None:
+def test_column_pier_aci_torsion_scoped_gate_reads_tu_closed_ties_and_ordinary_al() -> None:
     analysis_input = _analysis_input(prestress_elements=[])
     state = _column_pier_shear_state(vux=0.0, vuy=0.0, tu=20.0)
     state["rebars"] = analysis_input.rebars
 
     df = _column_pier_torsion_check_dataframe(state, analysis_input)
 
-    assert list(df["Status"]) == ["Preview PASS"]
+    assert list(df["Status"]) == ["PASS"]
     assert list(df["Transverse status"]) == ["PASS"]
     assert list(df["Longitudinal status"]) == ["PASS"]
     assert float(df.iloc[0]["phiTn kN-m"]) > float(df.iloc[0]["Demand kN-m"])
