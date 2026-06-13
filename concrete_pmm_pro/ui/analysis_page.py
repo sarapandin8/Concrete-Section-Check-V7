@@ -15632,7 +15632,13 @@ def render_analysis_uls_pmm() -> None:
         return
 
     _render_project_design_code_guard(workflow="pmm")
-    _render_column_pier_analysis_decision_view()
+    # Keep the Column/Pier decision summary visually first, but fill it after the
+    # active workspace has had a chance to update session_state.  In Streamlit,
+    # rendering the summary before the Flexural (PMM) Run button meant the table
+    # could show NOT READY on the same rerun that successfully calculated PMM
+    # demand/capacity.  The placeholder preserves the clean decision-first UI
+    # while reading the latest stored PMM/shear/torsion/V+T results.
+    decision_view_slot = st.container()
     active_check = _column_pier_uls_check_choice()
     if active_check == "Flexural (PMM)":
         _render_column_pier_flexural_pmm_workspace()
@@ -15644,6 +15650,9 @@ def render_analysis_uls_pmm() -> None:
         _render_column_pier_combined_vt_workspace()
     else:
         _render_column_pier_flexural_pmm_workspace()
+
+    with decision_view_slot:
+        _render_column_pier_analysis_decision_view()
 
 
 def render_analysis_sls_stress() -> None:

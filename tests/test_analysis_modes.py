@@ -183,3 +183,20 @@ def test_column_pier_uls_has_guarded_flexural_shear_torsion_subviews() -> None:
     assert "The shear result above uses the Control section row only" in source
     assert "Recommended seismic spacing (ACI advisor)" in source
     assert "Seismic spacing advisor is not selected in Sections -> Rebar -> Transverse Rebar" in source
+
+
+def test_column_pier_decision_summary_renders_after_active_workspace_for_fresh_pmm_state() -> None:
+    from pathlib import Path
+
+    repo_root = Path(__file__).resolve().parents[1]
+    source = (repo_root / "concrete_pmm_pro" / "ui" / "analysis_page.py").read_text(encoding="utf-8")
+
+    start = source.index("def render_analysis_uls_pmm() -> None:")
+    end = source.index("def render_analysis_sls_stress() -> None:", start)
+    body = source[start:end]
+
+    assert "decision_view_slot = st.container()" in body
+    assert "with decision_view_slot:" in body
+    assert body.index("decision_view_slot = st.container()") < body.index("active_check = _column_pier_uls_check_choice()")
+    assert body.index("_render_column_pier_flexural_pmm_workspace()") < body.rindex("_render_column_pier_analysis_decision_view()")
+    assert "could show NOT READY on the same rerun" in body
