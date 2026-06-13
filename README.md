@@ -8,6 +8,10 @@ This repository has advanced beyond the older README milestone history below. Th
 
 Preview PASS/FAIL wording remains preview-only. AASHTO LRFD Column/Pier PMM and final code-certified design claims remain explicitly guarded until separate named solver/validation milestones exist.
 
+### WORKFLOW.STATUS1 — Workflow Capability Wording Alignment
+
+The clean repo baseline now aligns Setup, Analysis, Project Design Code capability guards, and draft report wording with the current implemented Beam/Girder guarded preview capabilities. Bridge/Building Beam-Girder flexure, SHEAR.CODE2, TORSION.CODE2, combined V+T, staged SLS stress, deflection/camber, prestress, and debonding tools are described as preview / engineering-review workflows only. Column/Pier AASHTO PMM remains planned / REVIEW, and final code-certified girder design remains outside current scope.
+
 See `docs/design/qa_baseline1.md` for the milestone scope and QA gate notes.
 
 

@@ -32,7 +32,7 @@ def default_report_section_plan(
     crack_status = "AVAILABLE" if snapshot.crack_classification_available else ("PARTIAL" if snapshot.sls_result_available else "MISSING")
     beam_summary = None
     if snapshot.member_type == "beam_girder":
-        beam_summary = "Beam/Girder workflow is future work; no beam/girder design calculations are included."
+        beam_summary = "Beam/Girder workflow includes guarded ULS/SLS preview checks; final code-certified design and excluded detailing checks remain outside current report scope."
     scope_limitation_keys: list[str] = []
     if snapshot.member_type == "beam_girder":
         scope_limitation_keys.append("beam_girder_shear_torsion")

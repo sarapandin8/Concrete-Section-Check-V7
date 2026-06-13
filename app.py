@@ -88,7 +88,7 @@ def main() -> None:
     st.set_page_config(page_title="Concrete PMM Pro", layout="wide")
     st.title("Concrete PMM Pro")
     st.caption(
-        "Milestone P.1: Analysis performance audit and runtime control. "
+        "Milestone WORKFLOW.STATUS1: workflow capability wording aligned with guarded ULS/SLS previews. "
         "Internal units: mm, MPa, N, N-mm."
     )
 

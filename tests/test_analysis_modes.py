@@ -83,7 +83,7 @@ def test_analysis_mode_warnings_for_beam_girder_include_double_count_warning() -
     warnings = analysis_mode_warnings(AnalysisModeSettings(member_type="beam_girder"))
 
     assert any("double-count prestress" in warning for warning in warnings)
-    assert any("not implemented" in warning for warning in warnings)
+    assert any("guarded preview / engineering-review" in warning for warning in warnings)
 
 
 def test_legacy_general_section_has_no_active_warning_after_migration() -> None:

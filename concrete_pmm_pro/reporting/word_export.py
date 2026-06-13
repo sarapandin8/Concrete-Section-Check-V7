@@ -255,7 +255,7 @@ def _add_analysis_scope(document: DocumentObject, manifest: ReportManifest) -> N
     ]
     dataframe_to_word_table(document, pd.DataFrame(scope_rows))
     if snapshot.member_type == "beam_girder":
-        document.add_paragraph("Beam/Girder design checks are future work and are not implemented in this report.")
+        document.add_paragraph("Beam/Girder ULS/SLS preview checks are guarded engineering-review outputs. Final code-certified girder design, development length, anchorage, end-zone, interface shear, fatigue, and seismic/detailing certification remain outside this draft report scope.")
 
 
 def _add_figures(document: DocumentObject, manifest: ReportManifest, session_state: Any | None, options: ReportExportOptions) -> None:

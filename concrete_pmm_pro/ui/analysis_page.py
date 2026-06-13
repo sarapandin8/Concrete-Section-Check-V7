@@ -590,7 +590,7 @@ def _workflow_shear_torsion_status_text(settings: AnalysisModeSettings) -> str:
     if settings.member_type == "beam_girder":
         return "Bridge ULS guarded"
     if settings.member_type == "building_beam_girder":
-        return "Building ULS planned"
+        return "Building ULS guarded"
     return "Review"
 
 
@@ -815,12 +815,12 @@ def _render_analysis_mode_section() -> AnalysisModeSettings:
         elif settings.member_type == "beam_girder":
             st.info("Bridge Beam/Girder workflow uses AASHTO LRFD project design basis.")
             st.info("Bridge-specific staged SLS, prestress/debonding, auto SDL components, and CSiBridge LL+IM workflows are active here.")
-            st.info("Bridge girder ULS flexure/shear/torsion engines are planned; current implemented checks remain preview / engineering review.")
+            st.info("Bridge girder ULS flexure/shear/torsion gates are implemented as guarded preview / engineering-review checks; final code-certified design remains future scope.")
             st.info("Do not enter prestress Pe again as Pu if prestress elements are already defined.")
         elif settings.member_type == "building_beam_girder":
             st.info("Building Beam/Girder workflow uses ACI 318 project design basis.")
             st.info("Building ACI SLS stress diagram is available as a preview for top/bottom stresses along the member length using auto Transfer/Construction loads, Building SDL/LL service loads, and Pe force states.")
-            st.warning("Building ULS design engines remain planned follow-up milestones. Bridge-only SDL components and CSiBridge workflows remain hidden.")
+            st.warning("Building ULS flexure/shear/torsion gates are guarded preview / engineering-review checks. Bridge-only SDL components and CSiBridge workflows remain hidden.")
         else:
             st.info("Legacy/general workflow has been migrated to explicit project workflow routing.")
             st.warning("Use carefully and verify load interpretation.")
@@ -2141,7 +2141,7 @@ def _render_input_summary() -> None:
         st.info("PMM final closeout status: ACI RC-only is finalized production-preview; bonded prestress remains engineering review.")
         st.info(f"Current solver mode: {solver_mode_label}.")
         if is_beam_girder_future_workflow(mode_settings):
-            st.warning("PMM interaction is not the primary design method for typical bridge girder flexural design. Bridge girder ULS design checks are future work.")
+            st.warning("PMM interaction is not the primary design method for typical bridge girder flexural design. Use the dedicated Beam/Girder ULS workspace for guarded flexure/shear/torsion preview checks.")
         elif not is_pmm_primary_workflow(mode_settings):
             st.info("Non-PMM workflow is active; PMM output should be interpreted as an auxiliary section review only.")
         st.info(f"Prestress stress model: {settings.prestress_stress_model}.")
@@ -8959,7 +8959,7 @@ def _project_design_code_status_cards(*, workflow: str) -> list[dict[str, object
             code_detail = "Source of truth from Setup"
         profile_code = girder_sls_code_for_project_code(code)
         capability = "Preview available"
-        detail = f"Girder SLS stress-limit profile: {profile_code}. Final code-certified girder design remains future work."
+        detail = f"Girder SLS stress-limit profile: {profile_code}. Final code-certified girder design remains future scope."
         status = "warning"
     else:
         capability = "Review"
@@ -14575,7 +14575,7 @@ def _render_beam_girder_service_stress_preview() -> None:
         st.write("- Pe_eff is positive for compressive effective prestress after losses.")
         st.write(
             "- This preview is not final code-certified design. Building service-stage locked-in stress summation, long-term redistribution, "
-            "deflection, shear, end-zone, and report integration remain future work unless explicitly scoped."
+            "final code-certified deflection, shear, end-zone, and report integration remain future scope unless explicitly scoped."
         )
         st.write("- It is not used by PMM, rebar, prestress, or report solvers.")
 
@@ -14718,7 +14718,7 @@ def _render_beam_girder_service_stress_preview() -> None:
         st.write("- Pe_eff is positive compressive effective prestress after losses.")
         st.write("- Prestress eccentricity e = yps - yc. A low tendon has negative e and gives higher bottom compression.")
         st.write("- Composite transformed basis uses deck/topping transformed to the primary/precast concrete basis.")
-        st.write("- This preview is a manual elastic stress check foundation only; code-limit checks are editable previews and staged checks are future work and remain engineer-controlled.")
+        st.write("- This preview is a manual elastic stress check foundation only; code-limit checks and staged checks remain preview / engineer-controlled workflows.")
 
     # DEFLECT.SLS1.2 — deflection/camber now lives in its own top-level
     # Analysis tab so the Stress & Cracking workspace stays focused and clean.

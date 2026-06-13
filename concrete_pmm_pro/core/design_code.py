@@ -147,13 +147,13 @@ def project_code_capability_cards(code: object | None, member_type: str | None =
         pmm_status = "NOT APPLICABLE"
         pmm_note = "Column/Pier PMM is hidden in the Bridge Beam/Girder workflow."
         girder_status = "PREVIEW AVAILABLE"
-        girder_note = "Bridge Beam/Girder uses AASHTO LRFD. Current implemented girder SLS/prestress tools remain preview / engineering-review workflows until full bridge ULS/SLS engines are completed."
+        girder_note = "Bridge Beam/Girder uses AASHTO LRFD. Current flexure, SHEAR.CODE2, TORSION.CODE2, staged SLS, deflection/camber, and prestress tools remain guarded preview / engineering-review workflows until final code-certified bridge design milestones are completed."
     elif member == "building_beam_girder":
         workflow_note = "Active Building Beam/Girder workflow"
         pmm_status = "NOT APPLICABLE"
         pmm_note = "Column/Pier PMM is hidden in the Building Beam/Girder workflow."
-        girder_status = "PLANNED / REVIEW"
-        girder_note = "Building Beam/Girder uses ACI 318. Building beam/girder ULS and SLS engines are planned; bridge-specific tools are intentionally hidden."
+        girder_status = "PREVIEW / REVIEW"
+        girder_note = "Building Beam/Girder uses ACI 318. Current flexure, SHEAR.CODE2, TORSION.CODE2, staged SLS, deflection/camber, and prestress tools remain guarded preview / engineering-review workflows; bridge-specific tools are intentionally hidden."
     elif canonical == PROJECT_CODE_AASHTO_LRFD:
         workflow_note = "Active Column/Pier/Wall/Pylon workflow"
         pmm_status = "PLANNED / REVIEW"

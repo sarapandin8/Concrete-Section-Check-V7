@@ -116,13 +116,13 @@ def get_engineering_limitations() -> list[EngineeringLimitation]:
         ),
         EngineeringLimitation(
             "beam_girder_shear_torsion",
-            "Beam/Girder shear and torsion",
-            "FUTURE_WORK",
+            "Beam/Girder guarded ULS/SLS scope",
+            "GUARDED_SCOPE",
             "MEDIUM",
             "Beam/Girder",
-            "Beam/girder flexure, shear, torsion, transfer-stage, deflection, and camber checks are not implemented.",
-            "Beam/Girder mode is a future workflow placeholder.",
-            "Use dedicated beam/girder design checks outside this prototype.",
+            "Beam/Girder flexure, SHEAR.CODE2, TORSION.CODE2, staged SLS stress, deflection/camber, prestress, and debonding tools are implemented as guarded preview / engineering-review workflows.",
+            "Current Beam/Girder outputs are not final code-certified design and exclude development length, anchorage, end-zone, interface shear, fatigue, seismic detailing, and independent project benchmark certification.",
+            "Use the dedicated Beam/Girder ULS/SLS workspaces for scoped preview checks and perform independent final design review for excluded items.",
         ),
         EngineeringLimitation(
             "column_pier_vt_scope",

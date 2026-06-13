@@ -213,13 +213,13 @@ def _mode_guidance_lines(settings: AnalysisModeSettings) -> list[str]:
         return [
             "Bridge Beam/Girder workflow uses AASHTO LRFD design basis.",
             "Bridge-specific system settings, staged SLS loads, CSiBridge LL+IM workflow, prestress, and debonding tools are active only here.",
-            "Current bridge girder ULS engines remain future milestones; implemented SLS tools are preview / engineering-review workflows.",
+            "Current bridge girder ULS flexure, SHEAR.CODE2, TORSION.CODE2, staged SLS, deflection/camber, and prestress tools are guarded preview / engineering-review workflows.",
         ]
     if settings.member_type == "building_beam_girder":
         return [
             "Building Beam/Girder workflow uses ACI 318 design basis.",
             "Bridge-specific girder spacing, number of girders, barrier/sidewalk/wearing surface, CSiBridge, and staged composite assumptions are hidden.",
-            "Building beam/girder ULS/SLS engines are planned and guarded until implemented.",
+            "Building beam/girder ULS/SLS tools are guarded preview / engineering-review workflows; final code-certified design remains future scope.",
         ]
     return [
         "Column/Pier/Wall/Pylon mode uses the existing Pu, Mux, Muy PMM workflow.",
@@ -262,7 +262,7 @@ def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisMod
             "Active member workflow",
             labels,
             key=widget_key,
-            help="Bridge Beam/Girder activates AASHTO LRFD bridge girder tools. Building Beam/Girder is guarded for future ACI beam tools. Column/Pier can use ACI 318 or AASHTO LRFD with capability guards.",
+            help="Bridge Beam/Girder activates guarded AASHTO LRFD bridge girder tools. Building Beam/Girder activates guarded ACI 318 beam/girder tools. Column/Pier can use ACI 318 or AASHTO LRFD with capability guards.",
         )
         note = st.session_state.get(note_key, current.note or "")
         selected_member_type = _MEMBER_TYPE_OPTIONS[_LEGACY_MEMBER_TYPE_LABELS.get(selected_label, selected_label)]
