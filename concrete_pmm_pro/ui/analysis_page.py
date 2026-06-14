@@ -10000,6 +10000,7 @@ def _render_demand_capacity_summary(summary: DemandCapacitySummary) -> None:
             file_name="uls_demand_capacity_result.csv",
             mime="text/csv",
             use_container_width=True,
+            key="uls_dc_summary_result_csv",
         )
 
 
@@ -10373,6 +10374,7 @@ def _render_pmm_slice_dashboard(
                     file_name="uls_demand_capacity_result.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    key="uls_dc_ranking_result_csv",
                 )
         with st.expander("Detailed PMM plots", expanded=False):
             _render_pmm_charts(pmm_df, demand_df, dc_summary, key_prefix="analysis_workspace_diagnostics")

@@ -1215,3 +1215,11 @@ def test_state_result4_transparency_panel_download_buttons_have_unique_keys() ->
     assert 'key=f"{widget_key_prefix}_uls_dc_trace_csv"' in source
     assert 'widget_key_prefix="stored_pmm_snapshot"' in source
     assert 'widget_key_prefix="pmm_dashboard_summary"' in source
+
+
+def test_duplicate_uls_dc_download_buttons_have_explicit_unique_keys() -> None:
+    source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
+
+    assert source.count('"Download ULS D/C Result CSV"') == 2
+    assert 'key="uls_dc_summary_result_csv"' in source
+    assert 'key="uls_dc_ranking_result_csv"' in source
