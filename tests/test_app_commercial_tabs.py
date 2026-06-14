@@ -122,3 +122,18 @@ def test_ui_action_buttons1_highlights_primary_actions_without_dark_fill() -> No
     assert 'type="primary"' in analysis_source and 'ui_keys1_analysis_page_button_1983' in analysis_source
     assert '"Save Project"' in project_source and 'type="primary"' in project_source
     assert '"Load Project JSON"' in project_source and 'type="primary"' in project_source
+
+
+def test_ui_action_buttons2_mutes_disabled_run_and_compacts_runtime_control() -> None:
+    app_source = Path("app.py").read_text(encoding="utf-8")
+    analysis_source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
+
+    assert "UI.ACTION.BUTTONS2" in app_source
+    assert "--cpmm-action-disabled-fill" in app_source
+    assert ".stButton button:disabled" in app_source
+    assert ".cpmm-runtime-compact-grid" in app_source
+    assert ".cpmm-runtime-compact-card" in app_source
+    assert "run_enabled = analysis_input is not None" in analysis_source
+    assert 'type="primary" if run_enabled else "secondary"' in analysis_source
+    assert "Run blocked: Analysis readiness errors must be corrected" in analysis_source
+    assert "Solver guard" in analysis_source

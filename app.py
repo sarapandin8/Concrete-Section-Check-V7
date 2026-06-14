@@ -31,8 +31,8 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 
 _COMMERCIAL_TAB_CSS = """
 <style>
-/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1 / UI.ACTIVE.TABS2 / UI.ACTIVE.TABS3 / UI.ACTION.BUTTONS1:
-   dark-blue bold typography plus compact deterministic active-tab highlight and highlighted primary action buttons. */
+/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1 / UI.ACTIVE.TABS2 / UI.ACTIVE.TABS3 / UI.ACTION.BUTTONS1 / UI.ACTION.BUTTONS2:
+   dark-blue bold typography plus compact deterministic active-tab highlight and state-aware highlighted primary action buttons. */
 :root {
   --cpmm-ink-blue: #0b3a66;
   --cpmm-ink-blue-soft: #164f83;
@@ -43,6 +43,9 @@ _COMMERCIAL_TAB_CSS = """
   --cpmm-action-fill-hover: #ffe9ac;
   --cpmm-action-border: #d8aa2e;
   --cpmm-action-border-hover: #b98a12;
+  --cpmm-action-disabled-fill: #f3f6f9;
+  --cpmm-action-disabled-border: #c8d2dd;
+  --cpmm-action-disabled-text: #6d7d8f;
   --cpmm-active-tab-fill: #e7f2ff;
   --cpmm-active-tab-border: #0b3a66;
   --cpmm-active-tab-accent: #0b3a66;
@@ -322,6 +325,63 @@ button[data-testid="stBaseButton-primary"]:hover {
   color: var(--cpmm-ink-blue) !important;
   border-color: var(--cpmm-action-border-hover) !important;
   background: var(--cpmm-action-fill-hover) !important;
+}
+/* UI.ACTION.BUTTONS2: disabled action buttons must not look ready to run. */
+.stButton button:disabled,
+.stDownloadButton button:disabled,
+div[data-testid="stFormSubmitButton"] button:disabled,
+button[data-testid="stBaseButton-primary"]:disabled,
+button[data-testid="stBaseButton-secondary"]:disabled {
+  background: var(--cpmm-action-disabled-fill) !important;
+  color: var(--cpmm-action-disabled-text) !important;
+  border-color: var(--cpmm-action-disabled-border) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  cursor: not-allowed !important;
+}
+.stButton button:disabled p,
+.stDownloadButton button:disabled p,
+div[data-testid="stFormSubmitButton"] button:disabled p,
+button[data-testid="stBaseButton-primary"]:disabled p,
+button[data-testid="stBaseButton-secondary"]:disabled p,
+.stButton button:disabled span,
+.stDownloadButton button:disabled span,
+div[data-testid="stFormSubmitButton"] button:disabled span,
+button[data-testid="stBaseButton-primary"]:disabled span,
+button[data-testid="stBaseButton-secondary"]:disabled span {
+  color: var(--cpmm-action-disabled-text) !important;
+  font-weight: 800 !important;
+}
+/* Compact runtime status cards keep the PMM run area readable without large metrics. */
+.cpmm-runtime-compact-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-top: 0.42rem;
+}
+.cpmm-runtime-compact-card {
+  border: 1px solid #d9e2ec;
+  background: #fbfdff;
+  border-radius: 6px;
+  padding: 0.42rem 0.58rem;
+  min-height: 2.9rem;
+}
+.cpmm-runtime-compact-card .cpmm-kicker {
+  color: #55708b;
+  font-size: 0.70rem;
+  font-weight: 760;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+.cpmm-runtime-compact-card .cpmm-value {
+  color: var(--cpmm-ink-blue);
+  font-size: 1.02rem;
+  font-weight: 850;
+  line-height: 1.25;
+  margin-top: 0.14rem;
+}
+@media (max-width: 900px) {
+  .cpmm-runtime-compact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 /* Upload controls have a built-in Browse button; keep that button in the same
    soft action language so project/import workflows are easy to spot. */

@@ -1958,7 +1958,9 @@ def _render_pmm_runtime_control_panel(
 
     with st.expander("Run / cache controls", expanded=True):
         preset_options = list(ACCURACY_PRESET_RESOLUTIONS.keys())
-        control_cols = st.columns([1.2, 1.0, 1.0, 2.2])
+        resolution = accuracy_preset_resolution(st.session_state.get("analysis_accuracy_preset", preset))
+        run_enabled = analysis_input is not None
+        control_cols = st.columns([1.18, 0.78, 0.74, 2.15, 1.05])
         with control_cols[0]:
             st.selectbox(
                 "Accuracy preset",
@@ -1970,15 +1972,22 @@ def _render_pmm_runtime_control_panel(
         with control_cols[1]:
             st.checkbox("Force recalculation", value=False, key="analysis_force_recalculate")
         with control_cols[2]:
-            resolution = accuracy_preset_resolution(st.session_state.get("analysis_accuracy_preset", preset))
-            st.metric("Sweep", f"{resolution['neutral_axis_angle_steps']} x {resolution['neutral_axis_depth_steps']}")
-        with control_cols[3]:
+            st.markdown(
+                f"""
+                <div class="cpmm-runtime-compact-card">
+                  <div class="cpmm-kicker">Sweep</div>
+                  <div class="cpmm-value">{resolution['neutral_axis_angle_steps']} x {resolution['neutral_axis_depth_steps']}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        with control_cols[4]:
             run_clicked = st.button(
                 "Run / Recalculate Analysis",
-                disabled=analysis_input is None,
+                disabled=not run_enabled,
                 help=f"Runs or reuses the cached {solver_mode_label} result depending on the engineering input hash.",
                 use_container_width=True,
-                type="primary",
+                type="primary" if run_enabled else "secondary",
                 key="ui_keys1_analysis_page_button_1983",
             )
 
@@ -1986,14 +1995,14 @@ def _render_pmm_runtime_control_panel(
             st.warning("High Accuracy increases neutral-axis sweep resolution and may significantly increase runtime.")
         if cache_status == "Input changed, recalculation required":
             st.warning("Engineering inputs have changed since the cached PMM result. Recalculate before using displayed results.")
-        if analysis_input is None:
+        if not run_enabled:
             readiness = check_analysis_readiness(st.session_state)
             if readiness.errors:
-                st.caption("Run is disabled until Analysis Readiness errors are corrected.")
+                st.warning("Run blocked: Analysis readiness errors must be corrected before PMM analysis can run.")
                 with st.expander("Run blocking actions", expanded=False):
                     st.dataframe(_readiness_actions_to_dataframe(readiness.errors), use_container_width=True, hide_index=True)
             else:
-                st.caption("Run is disabled until analysis input can be built from the current project data.")
+                st.info("Run is disabled until analysis input can be built from the current project data.")
 
         if run_clicked and analysis_input is not None and current_hash is not None:
             _run_pmm_analysis_with_runtime_control(
@@ -2010,11 +2019,20 @@ def _render_pmm_runtime_control_panel(
             )
             cache_status = st.session_state.get("analysis_runtime_cache_status", cache_status)
 
-        status_cols = st.columns(3)
-        status_cols[0].metric("Run status", st.session_state.get("analysis_runtime_last_status", "Not run"))
         last_time = st.session_state.get("analysis_runtime_last_time_seconds")
-        status_cols[1].metric("Runtime", "N/A" if last_time is None else f"{float(last_time):.2f} s")
-        status_cols[2].metric("Cache", cache_status)
+        runtime_text = "N/A" if last_time is None else f"{float(last_time):.2f} s"
+        status_text = str(st.session_state.get("analysis_runtime_last_status", "Not run"))
+        st.markdown(
+            f"""
+            <div class="cpmm-runtime-compact-grid">
+              <div class="cpmm-runtime-compact-card"><div class="cpmm-kicker">Run status</div><div class="cpmm-value">{escape(status_text)}</div></div>
+              <div class="cpmm-runtime-compact-card"><div class="cpmm-kicker">Runtime</div><div class="cpmm-value">{escape(runtime_text)}</div></div>
+              <div class="cpmm-runtime-compact-card"><div class="cpmm-kicker">Cache</div><div class="cpmm-value">{escape(str(cache_status))}</div></div>
+              <div class="cpmm-runtime-compact-card"><div class="cpmm-kicker">Solver guard</div><div class="cpmm-value">Equations unchanged</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
         st.caption(
             "Runtime controls do not change solver equations or sign conventions. Navigation rerenders the UI; cached PMM results are reused when the input hash is unchanged."
         )

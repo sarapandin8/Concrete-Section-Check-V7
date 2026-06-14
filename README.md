@@ -1,4 +1,5 @@
 - UI.PMM.COMPACT1: Flexural PMM decision-first compact workspace; advanced setup, input overview, method notes, stored snapshot, and diagnostics are collapsed so the PMM visual decision review appears earlier without changing solver equations.
+- UI.ACTION.BUTTONS2: highlighted action buttons now respect enabled/disabled state; Flexural PMM runtime controls use compact status cards without changing solver logic.
 - UI.ACTIVE.TABS3: navigation density polish; deterministic tab clusters are tighter, working-screen vertical spacing is reduced, and active-tab highlight is lighter while preserving existing tab positions and options.
 - UI.ACTIVE.TABS2: compact commercial active tab bar; deterministic app-owned navigation now stays left-aligned and detail `st.tabs` use dark-blue active styling.
 # Concrete Section Pro
