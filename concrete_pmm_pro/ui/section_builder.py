@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
+from math import isfinite
 from typing import Any
 
 import streamlit as st
@@ -185,16 +186,109 @@ _SECTION_BUILDER_CSS = """
 """
 
 
+SECTION_PARAMETERS_PRESET_KEY = "section_parameters_preset_key"
+
+
+def _section_parameters_for_active_preset(preset_key: str) -> dict[str, Any]:
+    """Return durable section parameters only when they belong to ``preset_key``.
+
+    Streamlit deletes widget-owned keys when a page is not rendered.  The
+    canonical section model must therefore restore widget defaults from the
+    durable ``section_parameters`` payload rather than from preset defaults when
+    the user returns to Section Builder after visiting Setup/Loads/Analysis.
+    """
+
+    params = st.session_state.get("section_parameters")
+    if not isinstance(params, dict):
+        return {}
+    owner = st.session_state.get(SECTION_PARAMETERS_PRESET_KEY)
+    if owner is None and st.session_state.get("section_preset_key") == preset_key:
+        # Compatibility for project/session state saved before STATE.SECTION1.
+        return params
+    return params if owner == preset_key else {}
+
+
+def _coerce_number_within_bounds(value: Any, *, min_value: float, max_value: float) -> float | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not isfinite(numeric):
+        return None
+    if numeric < min_value or numeric > max_value:
+        return None
+    return numeric
+
+
+def _durable_number_default(
+    name: str,
+    preset_key: str,
+    fallback: float,
+    *,
+    min_value: float,
+    max_value: float,
+) -> float:
+    params = _section_parameters_for_active_preset(preset_key)
+    durable = _coerce_number_within_bounds(params.get(name), min_value=min_value, max_value=max_value)
+    if durable is not None:
+        return durable
+    fallback_number = _coerce_number_within_bounds(fallback, min_value=min_value, max_value=max_value)
+    if fallback_number is not None:
+        return fallback_number
+    return min_value
+
+
+def _durable_choice_default(name: str, preset_key: str, fallback: str, options: list[str]) -> str:
+    params = _section_parameters_for_active_preset(preset_key)
+    durable = str(params.get(name, ""))
+    if durable in options:
+        return durable
+    return fallback if fallback in options else options[0]
+
+
+def _durable_bool_default(name: str, preset_key: str, fallback: bool) -> bool:
+    params = _section_parameters_for_active_preset(preset_key)
+    durable = params.get(name)
+    if isinstance(durable, bool):
+        return durable
+    return bool(fallback)
+
+
+def _ensure_section_parameter_owner_from_session() -> None:
+    """Backfill the durable parameter owner for older sessions/project files."""
+
+    if SECTION_PARAMETERS_PRESET_KEY in st.session_state:
+        return
+    params = st.session_state.get("section_parameters")
+    preset_key = st.session_state.get("section_preset_key")
+    if isinstance(params, dict) and params and preset_key:
+        st.session_state[SECTION_PARAMETERS_PRESET_KEY] = str(preset_key)
+
+
 def _number_input(parameter: dict[str, Any], key_prefix: str) -> float:
+    name = str(parameter["name"])
+    min_value = float(parameter.get("min", 0.0))
+    max_value = float(parameter.get("max", 1.0e9))
+    widget_key = f"{key_prefix}_{name}"
+    default_value = _durable_number_default(
+        name,
+        key_prefix,
+        float(parameter.get("default", parameter.get("min", 0.0))),
+        min_value=min_value,
+        max_value=max_value,
+    )
+    # If Streamlit removed the widget-owned key while another workspace was
+    # active, repopulate it from the durable section model before rendering.
+    st.session_state.setdefault(widget_key, default_value)
     return float(
         st.number_input(
             parameter.get("label", parameter["name"]),
-            min_value=float(parameter.get("min", 0.0)),
-            max_value=float(parameter.get("max", 1.0e9)),
-            value=float(parameter.get("default", parameter.get("min", 0.0))),
+            min_value=min_value,
+            max_value=max_value,
+            value=float(st.session_state.get(widget_key, default_value)),
             step=float(parameter.get("step", 1.0)),
             help=parameter.get("description"),
-            key=f"{key_prefix}_{parameter['name']}",
+            key=widget_key,
         )
     )
 
@@ -927,15 +1021,26 @@ def _render_metadata_number_input(
 ) -> float:
     """Render a metadata input that is intentionally not a geometry parameter."""
 
+    min_float = float(min_value)
+    max_float = float(max_value)
+    widget_key = f"{preset_key}_{name}"
+    default_value = _durable_number_default(
+        name,
+        preset_key,
+        float(default),
+        min_value=min_float,
+        max_value=max_float,
+    )
+    st.session_state.setdefault(widget_key, default_value)
     return float(
         st.number_input(
             label,
-            min_value=float(min_value),
-            max_value=float(max_value),
-            value=float(default),
+            min_value=min_float,
+            max_value=max_float,
+            value=float(st.session_state.get(widget_key, default_value)),
             step=float(step),
             help=help_text,
-            key=f"{preset_key}_{name}",
+            key=widget_key,
         )
     )
 
@@ -945,6 +1050,9 @@ def _selectbox_with_safe_index(label: str, options: list[str], *, key: str, defa
     """Render a selectbox with stable key handling and no post-widget mutation."""
 
     index = options.index(default) if default in options else 0
+    if st.session_state.get(key) not in options:
+        st.session_state[key] = options[index]
+    index = options.index(str(st.session_state.get(key, options[index])))
     return str(st.selectbox(label, options, index=index, key=key, help=help_text))
 
 
@@ -1056,7 +1164,7 @@ def _render_effective_width_helper(preset: dict[str, Any], params: dict[str, Any
         "Be calculation mode",
         ["Manual", "AASHTO helper"],
         key=mode_key,
-        default=str(st.session_state.get(mode_key, "Manual")),
+        default=_durable_choice_default("Be_mode", preset_key, str(st.session_state.get(mode_key, "Manual")), ["Manual", "AASHTO helper"]),
         help_text="Manual keeps the Be value entered above. AASHTO helper calculates a preliminary Be for composite metadata display.",
     )
 
@@ -1088,7 +1196,7 @@ def _render_effective_width_helper(preset: dict[str, Any], params: dict[str, Any
         "Girder position for Be helper",
         ["Interior", "Exterior"],
         key=position_key,
-        default=str(st.session_state.get(position_key, position_default.title())),
+        default=_durable_choice_default("Be_position", preset_key, str(st.session_state.get(position_key, position_default.title())), ["Interior", "Exterior"]),
         help_text="Interior uses spacing on both sides. Exterior also uses deck overhang metadata.",
     )
     position = "exterior" if position_label == "Exterior" else "interior"
@@ -1140,7 +1248,12 @@ def _render_effective_width_helper(preset: dict[str, Any], params: dict[str, Any
             "Precast top contact width b_top source",
             ["Auto from section geometry", "Manual override"],
             key=top_width_source_key,
-            default=str(st.session_state.get(top_width_source_key, "Auto from section geometry")),
+            default=_durable_choice_default(
+                "Be_top_w_source",
+                preset_key,
+                str(st.session_state.get(top_width_source_key, "Auto from section geometry")),
+                ["Auto from section geometry", "Manual override"],
+            ),
             help_text="Keep Auto for normal use. Manual override is only for special effective-width assumptions.",
         )
         if top_width_source == "Manual override":
@@ -1548,10 +1661,16 @@ def _render_geometry_parameters_workspace(
                 )
 
             composite_key = f"{preset['key']}_composite_enabled"
+            composite_default = _durable_bool_default(
+                "composite_enabled",
+                str(preset["key"]),
+                bool(st.session_state.get(composite_key, True)),
+            )
+            st.session_state.setdefault(composite_key, composite_default)
             params["composite_enabled"] = bool(
                 st.checkbox(
                     "Enable composite deck/topping transformed properties",
-                    value=bool(st.session_state.get(composite_key, True)),
+                    value=bool(st.session_state.get(composite_key, composite_default)),
                     help=(
                         "When enabled, Section Builder calculates transformed composite properties "
                         "from Tslab, Be, Ebeam, and Edeck. The result remains separate from gross "
@@ -1619,6 +1738,7 @@ def _store_valid_section_state(preset: dict[str, Any], params: dict[str, Any], g
         st.session_state.setdefault(ORDINARY_REBAR_FLAG_KEY, default_rebar)
         st.session_state.setdefault(PRESTRESSING_STEEL_FLAG_KEY, default_prestress)
     st.session_state["section_parameters"] = params
+    st.session_state[SECTION_PARAMETERS_PRESET_KEY] = str(preset["key"])
     st.session_state["section_geometry"] = geometry
     st.session_state["section_dimensions"] = dimensions
 
@@ -1903,6 +2023,7 @@ def _render_section_properties_summary(
 
 
 def render_section_builder() -> None:
+    _ensure_section_parameter_owner_from_session()
     st.markdown(_SECTION_BUILDER_CSS, unsafe_allow_html=True)
     st.subheader("Section Builder")
     st.caption("Build the active concrete section geometry and review its live preview before running analysis.")

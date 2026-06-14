@@ -15,9 +15,9 @@ WORD_EXPORT_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "reporting" / "word_expor
 WORKFLOW_STATUS_DOC = (REPO_ROOT / "docs" / "design" / "workflow_status1.md").read_text(encoding="utf-8")
 
 
-def test_current_app_caption_identifies_column_pier_status_closeout() -> None:
-    assert "STATUS.COLPIER1" in APP_SOURCE
-    assert "Column/Pier ACI RC nonprestressed shear/torsion/V+T scoped PASS alignment" in APP_SOURCE
+def test_current_app_caption_identifies_latest_state_milestone() -> None:
+    assert "STATE.SECTION1" in APP_SOURCE
+    assert "Section Builder preserves user-edited geometry after workspace navigation" in APP_SOURCE
 
 
 def test_bridge_beam_girder_mode_describes_guarded_preview_scope_not_placeholder() -> None:

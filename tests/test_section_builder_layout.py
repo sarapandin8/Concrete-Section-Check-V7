@@ -582,3 +582,63 @@ def test_span_setup1_section_builder_locks_girder_span_to_setup_source() -> None
     assert "disabled=True" in source
     assert "Change the span in Setup, not in Section Builder" in source
     assert "girder_length_mm_locked_from_setup" in source
+
+
+def test_section_builder_number_inputs_restore_from_durable_section_parameters_after_navigation() -> None:
+    st = section_builder.st
+    st.session_state.clear()
+    st.session_state["section_preset_key"] = "rectangle"
+    st.session_state[section_builder.SECTION_PARAMETERS_PRESET_KEY] = "rectangle"
+    st.session_state["section_parameters"] = {"width_mm": 725.0, "height_mm": 915.0}
+
+    # Simulate Streamlit widget cleanup after navigating away: widget-owned keys
+    # such as rectangle_width_mm no longer exist, but the durable section model remains.
+    width = section_builder._number_input(
+        {"name": "width_mm", "label": "Width B (mm)", "min": 1.0, "max": 5000.0, "default": 400.0, "step": 10.0},
+        "rectangle",
+    )
+
+    assert width == 725.0
+    assert st.session_state["rectangle_width_mm"] == 725.0
+
+
+def test_section_builder_durable_defaults_do_not_leak_across_preset_changes() -> None:
+    st = section_builder.st
+    st.session_state.clear()
+    st.session_state["section_preset_key"] = "rectangle"
+    st.session_state[section_builder.SECTION_PARAMETERS_PRESET_KEY] = "rectangle"
+    st.session_state["section_parameters"] = {"width_mm": 725.0}
+
+    width = section_builder._number_input(
+        {"name": "width_mm", "label": "Width B (mm)", "min": 1.0, "max": 5000.0, "default": 300.0, "step": 10.0},
+        "rectangular_chamfered",
+    )
+
+    assert width == 300.0
+    assert st.session_state["rectangular_chamfered_width_mm"] == 300.0
+
+
+def test_section_builder_metadata_inputs_restore_from_durable_section_parameters_after_navigation() -> None:
+    st = section_builder.st
+    st.session_state.clear()
+    st.session_state["section_preset_key"] = "parametric_i_girder"
+    st.session_state[section_builder.SECTION_PARAMETERS_PRESET_KEY] = "parametric_i_girder"
+    st.session_state["section_parameters"] = {"Tslab_mm": 235.0, "Be_mode": "AASHTO helper", "composite_enabled": False}
+
+    tslab = section_builder._render_metadata_number_input(
+        name="Tslab_mm",
+        label="Tslab Deck/topping thickness (mm)",
+        preset_key="parametric_i_girder",
+        default=200.0,
+        min_value=0.0,
+        max_value=3000.0,
+        step=5.0,
+        help_text="test",
+    )
+
+    assert tslab == 235.0
+    assert st.session_state["parametric_i_girder_Tslab_mm"] == 235.0
+    assert section_builder._durable_choice_default(
+        "Be_mode", "parametric_i_girder", "Manual", ["Manual", "AASHTO helper"]
+    ) == "AASHTO helper"
+    assert section_builder._durable_bool_default("composite_enabled", "parametric_i_girder", True) is False

@@ -88,7 +88,7 @@ def main() -> None:
     st.set_page_config(page_title="Concrete PMM Pro", layout="wide")
     st.title("Concrete PMM Pro")
     st.caption(
-        "Milestone STATUS.COLPIER1: Column/Pier ACI RC nonprestressed shear/torsion/V+T scoped PASS alignment. "
+        "Milestone STATE.SECTION1: Section Builder preserves user-edited geometry after workspace navigation. "
         "Internal units: mm, MPa, N, N-mm."
     )
 

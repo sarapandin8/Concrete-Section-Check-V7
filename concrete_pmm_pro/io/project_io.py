@@ -707,11 +707,13 @@ def _sync_section_girder_length_from_setup_span(session_state: MutableMapping[st
         return
 
     section_parameters = dict(session_state.get("section_parameters", {}) or {})
+    preset_key = str(session_state.get("section_preset_key") or "").strip()
     if section_parameters:
         section_parameters["girder_length_mm"] = span_mm
         session_state["section_parameters"] = section_parameters
+        if preset_key:
+            session_state["section_parameters_preset_key"] = preset_key
 
-    preset_key = str(session_state.get("section_preset_key") or "").strip()
     if preset_key:
         session_state[f"{preset_key}_girder_length_mm"] = span_mm
         session_state[f"{preset_key}_girder_length_mm_locked_from_setup"] = span_mm
@@ -743,6 +745,7 @@ def apply_project_to_session_state(project: ProjectModel, session_state: Mutable
     session_state["section_preset_key"] = project.section_preset_key
     session_state["section_preset_name"] = project.section_preset_name
     session_state["section_parameters"] = dict(project.section_parameters)
+    session_state["section_parameters_preset_key"] = project.section_preset_key
     session_state["section_geometry"] = project.section_geometry
     session_state["section_dimensions"] = []
     if project.section_preset_key:
