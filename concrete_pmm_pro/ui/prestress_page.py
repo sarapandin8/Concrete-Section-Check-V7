@@ -5491,7 +5491,7 @@ def _render_tendon_product_tools() -> None:
         assert product is not None
         st.dataframe(_tendon_product_summary_dataframe([product]), use_container_width=True, hide_index=True)
         row = apply_tendon_product_to_row(base_row, product)
-        if st.button("Add standard tendon to table", use_container_width=True):
+        if st.button("Add standard tendon to table", use_container_width=True, key="ui_keys1_prestress_page_button_5494"):
             st.session_state["prestress_table"] = _normalize_prestress_table_for_display(_append_prestress_row(pd.DataFrame(current_table), row))
             st.success(f"Added tendon product {product.label}. Pe_eff remains user-controlled.")
         return
@@ -5516,7 +5516,7 @@ def _render_tendon_product_tools() -> None:
     )
     st.dataframe(_tendon_product_summary_dataframe([product]), use_container_width=True, hide_index=True)
     row = apply_tendon_product_to_row(base_row, product)
-    if st.button("Add custom tendon to table", use_container_width=True):
+    if st.button("Add custom tendon to table", use_container_width=True, key="ui_keys1_prestress_page_button_5519"):
         st.session_state["prestress_table"] = _normalize_prestress_table_for_display(_append_prestress_row(pd.DataFrame(current_table), row))
         st.success(f"Added custom tendon {product.label}. Pe_eff remains user-controlled.")
 

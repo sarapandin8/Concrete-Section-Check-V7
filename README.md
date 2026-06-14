@@ -1,8 +1,8 @@
 # Concrete PMM Pro
 
-## Current Baseline Note — QA.CODE.AUDIT1
+## Current Baseline Note — UI.KEYS1
 
-This repository has advanced beyond the older README milestone history below. The current uploaded baseline is `Concrete-Section-Check-V6`, stabilized by `QA.BASELINE1`, `WORKFLOW.STATUS1`, `STATUS.COLPIER1`, `STATUS.COLPIER2`, `STATE.SECTION1`, `STATE.RESULT1`, `STATE.RESULT2`, `STATE.RESULT3`, and `STATE.RESULT4`; subsequent section geometry milestones and `QA.CODE.AUDIT1` add filleted/chamfered hollow section benchmarks plus a Streamlit duplicate download-key hotfix. The current architecture includes Column/Pier/Wall/Pylon flexural PMM production-preview readiness evidence, ACI RC nonprestressed Column/Pier shear/torsion/V+T scoped PASS/FAIL gates, guarded Beam/Girder ULS flexure/shear/torsion preview routing, staged Beam/Girder SLS stress workflows, SLS deflection/camber preview, validation packs, and Word report QA.
+This repository has advanced beyond the older README milestone history below. The current uploaded baseline is `Concrete-Section-Check-V6`, stabilized by `QA.BASELINE1`, `WORKFLOW.STATUS1`, `STATUS.COLPIER1`, `STATUS.COLPIER2`, `STATE.SECTION1`, `STATE.RESULT1`, `STATE.RESULT2`, `STATE.RESULT3`, and `STATE.RESULT4`; subsequent section geometry milestones and `QA.CODE.AUDIT1` add filleted/chamfered hollow section benchmarks plus a Streamlit duplicate download-key hotfix. `UI.KEYS1` hardens all app/UI `st.button()` and `st.download_button()` call sites with explicit unique keys to reduce duplicate-element regressions. The current architecture includes Column/Pier/Wall/Pylon flexural PMM production-preview readiness evidence, ACI RC nonprestressed Column/Pier shear/torsion/V+T scoped PASS/FAIL gates, guarded Beam/Girder ULS flexure/shear/torsion preview routing, staged Beam/Girder SLS stress workflows, SLS deflection/camber preview, validation packs, and Word report QA.
 
 `QA.BASELINE1` does not change solver equations, PMM demand/capacity logic, prestress `Pe_eff` behavior, shear/torsion formulas, service-stress formulas, deflection formulas, or report calculation logic. It only aligns stale tests/docs and adds a pytest-only Streamlit fallback for environments without the UI runtime installed.
 
@@ -12,7 +12,7 @@ Column/Pier ACI RC nonprestressed shear, torsion, and V+T detail tabs now align 
 
 The clean repo baseline now aligns Setup, Analysis, Project Design Code capability guards, and draft report wording with the current implemented Beam/Girder guarded preview capabilities. Bridge/Building Beam-Girder flexure, SHEAR.CODE2, TORSION.CODE2, combined V+T, staged SLS stress, deflection/camber, prestress, and debonding tools are described as preview / engineering-review workflows only. Column/Pier AASHTO PMM remains planned / REVIEW, and final code-certified girder design remains outside current scope.
 
-See `docs/design/qa_baseline1.md`, `docs/design/workflow_status1.md`, `docs/design/status_colpier1.md`, `docs/design/status_colpier2.md`, `docs/design/state_section1.md`, `docs/design/state_result1.md`, `docs/design/state_result2.md`, `docs/design/state_result3.md`, `docs/design/state_result4.md`, and `docs/design/section_property_benchmark1.md` for milestone scope and QA gate notes.
+See `docs/design/qa_baseline1.md`, `docs/design/workflow_status1.md`, `docs/design/status_colpier1.md`, `docs/design/status_colpier2.md`, `docs/design/state_section1.md`, `docs/design/state_result1.md`, `docs/design/state_result2.md`, `docs/design/state_result3.md`, `docs/design/state_result4.md`, and `docs/design/section_property_benchmark1.md`, and `docs/design/ui_keys1.md` for milestone scope and QA gate notes.
 
 
 ## Milestone QA.PO1 Scope

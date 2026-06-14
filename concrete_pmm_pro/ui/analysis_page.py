@@ -1985,6 +1985,7 @@ def _render_pmm_runtime_control_panel(
             disabled=analysis_input is None,
             help=f"Runs or reuses the cached {solver_mode_label} result depending on the engineering input hash.",
             use_container_width=True,
+            key="ui_keys1_analysis_page_button_1983",
         )
         if analysis_input is None:
             readiness = check_analysis_readiness(st.session_state)
@@ -2432,6 +2433,7 @@ def _render_input_summary() -> None:
                         file_name="rc_pmm_result.csv",
                         mime="text/csv",
                         use_container_width=True,
+                        key="ui_keys1_analysis_page_download_button_2429",
                     )
                     st.dataframe(df.head(20), use_container_width=True, hide_index=True)
 
@@ -10352,6 +10354,7 @@ def _render_pmm_slice_dashboard(
                         file_name="selected_pmm_slice.csv",
                         mime="text/csv",
                         use_container_width=True,
+                        key="ui_keys1_analysis_page_download_button_10349",
                     )
             with export_cols[1]:
                 if not envelope_export_df.empty:
@@ -10361,6 +10364,7 @@ def _render_pmm_slice_dashboard(
                         file_name="selected_pmm_slice_envelope.csv",
                         mime="text/csv",
                         use_container_width=True,
+                        key="ui_keys1_analysis_page_download_button_10358",
                     )
         with st.expander("Detailed Load Case D/C Ranking", expanded=False):
             ranking_df = rank_load_cases_by_dcr(dc_summary)
@@ -10563,6 +10567,7 @@ def _render_hand_check_summary(summary: HandCheckSummary) -> None:
             file_name="pmm_hand_check_results.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_analysis_page_download_button_10560",
         )
 
 
@@ -10572,7 +10577,7 @@ def _render_verification_expander() -> None:
             "Verification checks are benchmark-style sanity checks for the current prototype. "
             "They do not replace independent engineering validation."
         )
-        if st.button("Run PMM Verification Suite", use_container_width=True):
+        if st.button("Run PMM Verification Suite", use_container_width=True, key="ui_keys1_analysis_page_button_10575"):
             st.session_state["pmm_verification_summary"] = run_pmm_verification_suite()
 
         summary = st.session_state.get("pmm_verification_summary")
@@ -10589,7 +10594,7 @@ def _render_verification_expander() -> None:
             "Hand checks are simplified spot checks for engineering review. "
             "They do not replace independent detailed validation or code-certified software."
         )
-        if st.button("Run Independent Hand Checks", use_container_width=True):
+        if st.button("Run Independent Hand Checks", use_container_width=True, key="ui_keys1_analysis_page_button_10592"):
             st.session_state["pmm_hand_check_summary"] = run_independent_hand_check_suite()
 
         hand_summary = st.session_state.get("pmm_hand_check_summary")
@@ -10602,7 +10607,7 @@ def _render_sls_verification_expander() -> None:
             "SLS verification checks are simplified benchmark and sign checks for engineering review. "
             "They do not replace independent validation."
         )
-        if st.button("Run SLS Verification Suite", use_container_width=True):
+        if st.button("Run SLS Verification Suite", use_container_width=True, key="ui_keys1_analysis_page_button_10605"):
             st.session_state["sls_verification_summary"] = run_sls_verification_suite()
 
         sls_summary = st.session_state.get("sls_verification_summary")
@@ -10625,6 +10630,7 @@ def _render_sls_verification_expander() -> None:
                     file_name="sls_verification_results.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    key="ui_keys1_analysis_page_download_button_10622",
                 )
 
 
@@ -15059,6 +15065,7 @@ def _render_serviceability_expander() -> None:
                 file_name="sls_load_cases.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15056",
             )
 
         properties_df = _gross_section_properties_dataframe(summary.section_properties)
@@ -15073,6 +15080,7 @@ def _render_serviceability_expander() -> None:
                 file_name="gross_section_properties.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15070",
             )
 
         if settings.use_transformed_section:
@@ -15112,6 +15120,7 @@ def _render_serviceability_expander() -> None:
                     file_name="transformed_section_properties.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    key="ui_keys1_analysis_page_download_button_15109",
                 )
 
         points_df = _stress_check_points_dataframe(summary.check_points)
@@ -15126,6 +15135,7 @@ def _render_serviceability_expander() -> None:
                 file_name="sls_stress_check_points.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15123",
             )
 
         st.markdown("**Elastic SLS Stress Check**")
@@ -15162,7 +15172,7 @@ def _render_serviceability_expander() -> None:
             st.session_state.get("serviceability_summary") is not None,
         )
         st.caption(f"SLS result cache status: {sls_cache_status}")
-        if st.button("Run Elastic SLS Stress Check", use_container_width=True, disabled=not stress_check_points_valid):
+        if st.button("Run Elastic SLS Stress Check", use_container_width=True, disabled=not stress_check_points_valid, key="ui_keys1_analysis_page_button_15165"):
             existing_summary = st.session_state.get("serviceability_summary")
             if (
                 existing_summary is not None
@@ -15236,6 +15246,7 @@ def _render_serviceability_expander() -> None:
                     file_name="sls_prestress_contribution.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    key="ui_keys1_analysis_page_download_button_15233",
                 )
             stress_df = service_stress_results_to_dataframe(stress_summary)
             st.dataframe(stress_df, use_container_width=True, hide_index=True)
@@ -15245,6 +15256,7 @@ def _render_serviceability_expander() -> None:
                 file_name="sls_elastic_stress_results.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15242",
             )
 
             st.markdown("**Cracking / Tension Zone Classification**")
@@ -15272,6 +15284,7 @@ def _render_serviceability_expander() -> None:
                 file_name="sls_cracking_classification.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15269",
             )
 
             st.markdown("**SLS Stress Visualization**")
@@ -15321,6 +15334,7 @@ def _render_serviceability_expander() -> None:
                     file_name="sls_stress_visualization_selected_combo.csv",
                     mime="text/csv",
                     use_container_width=True,
+                    key="ui_keys1_analysis_page_download_button_15318",
                 )
             else:
                 st.info("No active SLS combos are available for stress visualization.")
@@ -15334,7 +15348,7 @@ def _render_pre_report_qa_expander() -> None:
             "This section summarizes existing results for future report export. "
             "It does not rerun PMM, SLS, verification, or cracking checks."
         )
-        if st.button("Build Pre-Report Snapshot", use_container_width=True):
+        if st.button("Build Pre-Report Snapshot", use_container_width=True, key="ui_keys1_analysis_page_button_15337"):
             st.session_state["result_traceability_snapshot"] = build_result_traceability_snapshot(st.session_state)
 
         snapshot = st.session_state.get("result_traceability_snapshot")
@@ -15367,6 +15381,7 @@ def _render_pre_report_qa_expander() -> None:
             file_name="result_traceability_snapshot.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_analysis_page_download_button_15364",
         )
 
         st.markdown("**Report Readiness**")
@@ -15377,6 +15392,7 @@ def _render_pre_report_qa_expander() -> None:
             file_name="report_readiness.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_analysis_page_download_button_15374",
         )
 
         st.markdown("**Engineering Warnings**")
@@ -15390,6 +15406,7 @@ def _render_pre_report_qa_expander() -> None:
             file_name="engineering_warnings.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_analysis_page_download_button_15387",
         )
 
         st.markdown("**Engineering Limitations**")
@@ -15400,6 +15417,7 @@ def _render_pre_report_qa_expander() -> None:
             file_name="engineering_limitations.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_analysis_page_download_button_15397",
         )
 
         st.markdown("**Unit Conventions**")
@@ -15410,6 +15428,7 @@ def _render_pre_report_qa_expander() -> None:
             file_name="unit_conventions.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_analysis_page_download_button_15407",
         )
 
         st.markdown("**Available Report Figures**")
@@ -15420,6 +15439,7 @@ def _render_pre_report_qa_expander() -> None:
             file_name="available_report_figures.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_analysis_page_download_button_15417",
         )
 
         st.markdown("**Report Export Foundation**")
@@ -15439,7 +15459,7 @@ def _render_pre_report_qa_expander() -> None:
         prepared_by = author_cols[0].text_input("Prepared by", value=st.session_state.get("report_prepared_by", ""), key="report_prepared_by")
         checked_by = author_cols[1].text_input("Checked by", value=st.session_state.get("report_checked_by", ""), key="report_checked_by")
         revision = author_cols[2].text_input("Revision", value=st.session_state.get("report_revision", "Draft"), key="report_revision")
-        if st.button("Build Report Manifest", use_container_width=True):
+        if st.button("Build Report Manifest", use_container_width=True, key="ui_keys1_analysis_page_button_15442"):
             metadata = ReportMetadata(
                 report_title=report_title or "Concrete PMM Pro Engineering Report",
                 project_name=report_project_name or None,
@@ -15465,6 +15485,7 @@ def _render_pre_report_qa_expander() -> None:
                 file_name="report_manifest.json",
                 mime="application/json",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15462",
             )
             st.markdown("**Report Section Plan**")
             st.dataframe(sections_df, use_container_width=True, hide_index=True)
@@ -15474,6 +15495,7 @@ def _render_pre_report_qa_expander() -> None:
                 file_name="report_section_plan.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15471",
             )
             st.markdown("**Report Tables**")
             st.dataframe(tables_df, use_container_width=True, hide_index=True)
@@ -15483,6 +15505,7 @@ def _render_pre_report_qa_expander() -> None:
                 file_name="report_tables.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15480",
             )
             st.markdown("**Report Figures**")
             st.dataframe(manifest_figures_df, use_container_width=True, hide_index=True)
@@ -15492,6 +15515,7 @@ def _render_pre_report_qa_expander() -> None:
                 file_name="report_figures.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15489",
             )
             st.download_button(
                 "Download Draft Report Outline TXT",
@@ -15499,6 +15523,7 @@ def _render_pre_report_qa_expander() -> None:
                 file_name="draft_report_outline.txt",
                 mime="text/plain",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15496",
             )
         else:
             st.info("Build the report manifest to review the section plan, table registry, and figure registry.")
@@ -15525,6 +15550,7 @@ def _render_pre_report_qa_expander() -> None:
             file_name="report_figure_export_registry.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_analysis_page_download_button_15522",
         )
         for item in figure_items:
             if not item.export_ready:
@@ -15541,6 +15567,7 @@ def _render_pre_report_qa_expander() -> None:
                 file_name=html_filename,
                 mime="text/html",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15538",
             )
             png_bytes, png_warnings = plotly_figure_to_png_bytes(fig)
             if png_bytes is not None:
@@ -15550,6 +15577,7 @@ def _render_pre_report_qa_expander() -> None:
                     file_name=item.export_filename_png or f"{item.figure_key}.png",
                     mime="image/png",
                     use_container_width=True,
+                    key="ui_keys1_analysis_page_download_button_15547",
                 )
             else:
                 for warning in png_warnings:
@@ -15570,7 +15598,7 @@ def _render_pre_report_qa_expander() -> None:
             st.warning("No SLS result is currently available for the draft report.")
         if snapshot.high_or_critical_limitation_count:
             st.warning(f"{snapshot.high_or_critical_limitation_count} high/critical engineering limitation(s) require review.")
-        if st.button("Build Draft Word Report", use_container_width=True):
+        if st.button("Build Draft Word Report", use_container_width=True, key="ui_keys1_analysis_page_button_15573"):
             metadata = ReportMetadata(
                 report_title=report_title or "Concrete PMM Pro Engineering Report",
                 project_name=report_project_name or None,
@@ -15604,8 +15632,9 @@ def _render_pre_report_qa_expander() -> None:
                 file_name="concrete_pmm_pro_draft_report.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15601",
             )
-            if st.button("Run Word Report QA", use_container_width=True):
+            if st.button("Run Word Report QA", use_container_width=True, key="ui_keys1_analysis_page_button_15608"):
                 qa_manifest = st.session_state.get("report_manifest")
                 if qa_manifest is None:
                     metadata = ReportMetadata(
@@ -15641,6 +15670,7 @@ def _render_pre_report_qa_expander() -> None:
                 file_name="word_report_qa.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15638",
             )
 
         with st.expander("Standard Terminology", expanded=False):
@@ -15652,6 +15682,7 @@ def _render_pre_report_qa_expander() -> None:
                 file_name="standard_terminology.csv",
                 mime="text/csv",
                 use_container_width=True,
+                key="ui_keys1_analysis_page_download_button_15649",
             )
 
         st.warning("PDF export and final certified report templates are future work.")

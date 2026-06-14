@@ -1537,6 +1537,7 @@ def _render_load_template_downloads() -> None:
             file_name="concrete_pmm_load_template.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
+            key="ui_keys1_loads_page_download_button_1534",
         )
     with cols[1]:
         st.download_button(
@@ -1545,6 +1546,7 @@ def _render_load_template_downloads() -> None:
             file_name="concrete_pmm_load_template.csv",
             mime="text/csv",
             use_container_width=True,
+            key="ui_keys1_loads_page_download_button_1542",
         )
 
 
@@ -1590,7 +1592,7 @@ def _render_load_import_workflow(force_unit: str, moment_unit: str) -> None:
         st.success("Import validation passed. You can apply these rows to the load table.")
         apply_disabled = False
 
-    if st.button("Apply imported loads to table", type="primary", use_container_width=True, disabled=apply_disabled):
+    if st.button("Apply imported loads to table", type="primary", use_container_width=True, disabled=apply_disabled, key="ui_keys1_loads_page_button_1593"):
         st.session_state["loads_table"] = imported_editor.copy()
         st.session_state.pop("loads_data_editor", None)
         st.success("Imported load cases applied to the editable load table.")
@@ -1740,7 +1742,7 @@ def _render_column_load_tables(force_unit: str, moment_unit: str) -> None:
                     with st.expander("Import Rows Excluded from Analysis", expanded=True):
                         for error in result.errors:
                             st.error(error)
-                elif st.button("Apply imported loads to Column/Pier ULS/SLS tables", type="primary", use_container_width=True):
+                elif st.button("Apply imported loads to Column/Pier ULS/SLS tables", type="primary", use_container_width=True, key="ui_keys1_loads_page_button_1743"):
                     st.session_state["column_uls_loads_table"] = imported_uls
                     st.session_state["column_sls_loads_table"] = imported_sls
                     st.session_state.pop("column_uls_loads_editor", None)

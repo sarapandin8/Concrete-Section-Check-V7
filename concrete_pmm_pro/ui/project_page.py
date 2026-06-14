@@ -667,7 +667,7 @@ def _render_project_information_panel() -> None:
         st.text_input("Project Name", key="project_name")
         st.text_input("Designer", key="designer")
         st.text_area("Description", key="description")
-        if st.button("Update Project Info", use_container_width=False):
+        if st.button("Update Project Info", use_container_width=False, key="ui_keys1_project_page_button_670"):
             st.success("Project information updated.")
 
 
@@ -695,10 +695,11 @@ def _render_project_file_actions(project: ProjectModel) -> None:
             file_name="concrete_pmm_project.json",
             mime="application/json",
             use_container_width=True,
+            key="ui_keys1_project_page_download_button_692",
         )
     with load_col:
         uploaded_file = st.file_uploader("Upload Project JSON", type=["json"])
-        if uploaded_file is not None and st.button("Load Project JSON", use_container_width=True):
+        if uploaded_file is not None and st.button("Load Project JSON", use_container_width=True, key="ui_keys1_project_page_button_701"):
             st.session_state["_pending_project_json"] = uploaded_file.getvalue().decode("utf-8")
             st.rerun()
 
