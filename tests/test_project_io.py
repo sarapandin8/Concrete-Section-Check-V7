@@ -4,7 +4,11 @@ import json
 
 import pytest
 
-from concrete_pmm_pro.core.analysis import AnalysisModeSettings
+from concrete_pmm_pro.analysis.capacity_check import DemandCapacityResult, DemandCapacitySummary
+from concrete_pmm_pro.analysis.preflight import build_analysis_input_from_session_state
+from concrete_pmm_pro.analysis.result_models import PMMPoint, PMMSolverResult
+from concrete_pmm_pro.analysis.runtime import analysis_input_hash, demand_capacity_input_hash
+from concrete_pmm_pro.core.analysis import AnalysisModeSettings, AnalysisSettings
 from concrete_pmm_pro.core.concrete_materials import DEFAULT_DECK_TOPPING_MATERIAL, DEFAULT_PRIMARY_CONCRETE_MATERIAL
 from concrete_pmm_pro.core.models import ConcreteMaterial, LoadCase, PrestressElement, PrestressSteelMaterial, Rebar, RebarMaterial
 from concrete_pmm_pro.core.project import ProjectModel
@@ -14,6 +18,7 @@ from concrete_pmm_pro.io.project_io import (
     _prestress_to_table,
     apply_project_to_session_state,
     project_from_json,
+    ANALYSIS_RESULTS_METADATA_KEY,
     project_from_session_state,
     project_to_json,
 )
@@ -824,7 +829,7 @@ def test_apply_project_resets_stale_dirty_state_after_load() -> None:
 
     apply_project_to_session_state(project, restored)
 
-    assert CURRENT_INPUT_HASH_KEY not in restored
+    assert restored[CURRENT_INPUT_HASH_KEY] != "old-current"
     assert PREVIOUS_INPUT_HASH_KEY not in restored
     assert LAST_ANALYSIS_HASH_KEY not in restored
     assert LAST_REFRESHED_WORKSPACE_KEY not in restored
@@ -879,3 +884,136 @@ def test_apply_project_syncs_section_girder_length_from_setup_span_source() -> N
     assert restored["section_parameters"]["girder_length_mm"] == pytest.approx(30000.0)
     assert restored["precast_i_girder_girder_length_mm"] == pytest.approx(30000.0)
     assert restored["precast_i_girder_girder_length_mm_locked_from_setup"] == pytest.approx(30000.0)
+
+
+def _minimal_pmm_result() -> PMMSolverResult:
+    return PMMSolverResult(
+        points=[
+            PMMPoint(
+                theta_rad=0.0,
+                c_mm=400.0,
+                Pn_N=2_000_000.0,
+                Mnx_Nmm=300_000_000.0,
+                Mny_Nmm=200_000_000.0,
+                phi=0.65,
+                phiPn_N=1_300_000.0,
+                phiPn_capped_N=1_300_000.0,
+                phiMnx_Nmm=195_000_000.0,
+                phiMny_Nmm=130_000_000.0,
+                eps_t=0.002,
+                strain_condition="transition",
+                concrete_area_mm2=350_000.0,
+                concrete_force_N=1_500_000.0,
+            )
+        ],
+        warnings=[],
+        info=["test cached result"],
+    )
+
+
+def _minimal_analysis_session() -> dict[str, object]:
+    return {
+        "project_name": "Cached pier",
+        "design_code": "ACI 318",
+        "code_edition": "ACI 318-19",
+        "section_preset_key": "rectangle",
+        "section_preset_name": "Rectangle",
+        "section_parameters": {"width_mm": 500.0, "height_mm": 700.0},
+        "section_geometry": rectangle(width_mm=500.0, height_mm=700.0),
+        "concrete_material": ConcreteMaterial(name="C35", fc_MPa=35.0, beta1=0.80),
+        "rebar_materials": [RebarMaterial(name="SD40", fy_MPa=400.0, Es_MPa=200000.0)],
+        "rebars": [
+            Rebar(x_mm=-150.0, y_mm=-250.0, diameter_mm=25.0, material_name="SD40", label="B1"),
+            Rebar(x_mm=150.0, y_mm=250.0, diameter_mm=25.0, material_name="SD40", label="B2"),
+        ],
+        "load_cases": [LoadCase(name="ULS-01", Pu_N=900_000.0, Mux_Nmm=120_000_000.0, Muy_Nmm=40_000_000.0)],
+        "analysis_settings": AnalysisSettings(neutral_axis_angle_steps=24, neutral_axis_depth_steps=40),
+        "analysis_mode_settings": AnalysisModeSettings(member_type="column_pier_pmm"),
+        "analysis_accuracy_preset": "Standard",
+    }
+
+
+def test_project_save_load_restores_valid_pmm_analysis_cache() -> None:
+    session = _minimal_analysis_session()
+    analysis_input = build_analysis_input_from_session_state(session)
+    assert analysis_input is not None
+    pmm_hash = analysis_input_hash(analysis_input, "Standard")
+    dc_hash = demand_capacity_input_hash(pmm_hash, session["load_cases"])
+    session.update(
+        {
+            "rc_pmm_result": _minimal_pmm_result(),
+            "rc_pmm_result_input_hash": pmm_hash,
+            "pmm_last_analysis_hash": pmm_hash,
+            "analysis_runtime_last_status": "Recalculated",
+            "analysis_runtime_cache_status": "Recalculated",
+            "analysis_runtime_last_time_seconds": 1.23,
+            "analysis_runtime_last_run_at": "2026-06-14 08:00:00",
+            "analysis_runtime_last_preset": "Standard",
+            "analysis_runtime_timings": {"PMM interaction generation": 1.23},
+            "rc_demand_capacity_result": DemandCapacitySummary(
+                results=[
+                    DemandCapacityResult(
+                        combo_name="ULS-01",
+                        Pu_N=900_000.0,
+                        Mux_Nmm=120_000_000.0,
+                        Muy_Nmm=40_000_000.0,
+                        Mu_Nmm=126_491_106.4,
+                        moment_angle_rad=0.32175,
+                        capacity_Mn_Nmm=250_000_000.0,
+                        capacity_phiMn_Nmm=162_500_000.0,
+                        capacity_phiPn_N=1_300_000.0,
+                        dcr=0.78,
+                        status="PASS",
+                        message="test pass",
+                    )
+                ],
+                governing_combo="ULS-01",
+                max_dcr=0.78,
+                overall_status="PASS",
+            ),
+            "rc_demand_capacity_result_hash": dc_hash,
+            "rc_demand_capacity_input_hash": dc_hash,
+            "rc_demand_capacity_pmm_result_hash": pmm_hash,
+        }
+    )
+
+    project = project_from_session_state(session)
+    assert ANALYSIS_RESULTS_METADATA_KEY in project.metadata
+    json_text = project_to_json(project)
+    loaded = project_from_json(json_text)
+    restored: dict[str, object] = {}
+
+    apply_project_to_session_state(loaded, restored)
+
+    assert isinstance(restored.get("rc_pmm_result"), PMMSolverResult)
+    assert restored["pmm_last_analysis_hash"] == pmm_hash
+    assert restored["rc_pmm_result_input_hash"] == pmm_hash
+    assert isinstance(restored.get("rc_demand_capacity_result"), DemandCapacitySummary)
+    assert restored["rc_demand_capacity_result"].overall_status == "PASS"
+    assert restored[ANALYSIS_STATUS_KEY] == "Current"
+    assert restored["analysis_runtime_cache_status"] == "Loaded cached result"
+    assert restored["analysis_runtime_dc_cache_status"] == "Loaded cached D/C result"
+
+
+def test_project_load_rejects_stale_saved_pmm_analysis_cache() -> None:
+    session = _minimal_analysis_session()
+    analysis_input = build_analysis_input_from_session_state(session)
+    assert analysis_input is not None
+    pmm_hash = analysis_input_hash(analysis_input, "Standard")
+    session.update(
+        {
+            "rc_pmm_result": _minimal_pmm_result(),
+            "rc_pmm_result_input_hash": pmm_hash,
+            "pmm_last_analysis_hash": pmm_hash,
+        }
+    )
+    project_data = json.loads(project_to_json(project_from_session_state(session)))
+    project_data["metadata"][ANALYSIS_RESULTS_METADATA_KEY]["pmm_result_input_hash"] = "stale-hash"
+    project_data["metadata"][ANALYSIS_RESULTS_METADATA_KEY]["pmm_last_analysis_hash"] = "stale-hash"
+
+    restored: dict[str, object] = {}
+    apply_project_to_session_state(project_from_json(json.dumps(project_data)), restored)
+
+    assert "rc_pmm_result" not in restored
+    assert restored[ANALYSIS_STATUS_KEY] == "Not run"
+    assert restored["analysis_runtime_cache_status"] == "Saved PMM result is stale for loaded inputs"

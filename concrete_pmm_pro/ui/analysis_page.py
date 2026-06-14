@@ -1947,13 +1947,19 @@ def _render_pmm_runtime_control_panel(
     has_cached_result = isinstance(st.session_state.get("rc_pmm_result"), PMMSolverResult)
     cached_hash = st.session_state.get("pmm_last_analysis_hash")
     cache_status = cache_status_for_hash(current_hash, cached_hash, has_cached_result)
-    if st.session_state.get("analysis_runtime_cache_status") != "Recalculated":
+    # Streamlit still reruns the page script when users navigate back to this
+    # workspace.  Keep the heavy PMM solver cache status explicit so a normal UI
+    # rerender is not mistaken for a solver recalculation.
+    if cache_status == "Cached result used" and not bool(st.session_state.get("analysis_force_recalculate", False)):
+        st.session_state["analysis_runtime_cache_status"] = cache_status
+    elif st.session_state.get("analysis_runtime_cache_status") != "Recalculated":
         st.session_state["analysis_runtime_cache_status"] = cache_status
 
     with st.expander("Analysis Runtime Control", expanded=True):
         st.info(
             "Runtime controls manage when existing PMM calculations run. "
-            "They do not change solver equations or engineering sign conventions."
+            "They do not change solver equations or engineering sign conventions. "
+            "Returning to this page rerenders the UI; it should reuse the stored PMM result when the input hash is unchanged."
         )
         preset_options = list(ACCURACY_PRESET_RESOLUTIONS.keys())
         st.selectbox(

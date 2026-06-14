@@ -17,6 +17,7 @@ from concrete_pmm_pro.analysis.runtime import (
     timed_call,
 )
 from concrete_pmm_pro.analysis.capacity_check import DemandCapacityResult, DemandCapacitySummary
+from concrete_pmm_pro.analysis.result_models import PMMPoint, PMMSolverResult
 from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisSettings
 from concrete_pmm_pro.core.models import ConcreteMaterial, LoadCase, PrestressElement, Rebar, RebarMaterial
 from concrete_pmm_pro.geometry.generators import rectangle, rectangular_hollow
@@ -45,6 +46,7 @@ from concrete_pmm_pro.ui.analysis_page import (
     _column_pier_governing_combined_vt_row,
     _column_pier_check_decision_rows,
     _column_pier_uls_decision_summary_cards,
+    _run_pmm_analysis_with_runtime_control,
 )
 
 
@@ -585,6 +587,7 @@ def test_timed_call_returns_result_and_timing() -> None:
     assert timing.elapsed_seconds >= 0
 
 from concrete_pmm_pro.analysis.capacity_check import DemandCapacityResult, DemandCapacitySummary
+from concrete_pmm_pro.analysis.result_models import PMMPoint, PMMSolverResult
 from concrete_pmm_pro.ui.analysis_page import (
     _active_load_case_usage_summary,
     _analysis_result_overview_cards,
@@ -1100,3 +1103,46 @@ def test_validation_status_planned_card_names_sls_check() -> None:
 
     assert planned_card["value"] == "1"
     assert "SLS" in str(planned_card["detail"])
+
+
+def test_runtime_control_reuses_cached_pmm_result_without_solver(monkeypatch) -> None:
+    state = analysis_page_module.st.session_state
+    backup = dict(state)
+    try:
+        state.clear()
+        cached_result = PMMSolverResult(
+            points=[
+                PMMPoint(
+                    theta_rad=0.0,
+                    c_mm=400.0,
+                    Pn_N=2_000_000.0,
+                    Mnx_Nmm=300_000_000.0,
+                    Mny_Nmm=200_000_000.0,
+                    phi=0.65,
+                    phiPn_N=1_300_000.0,
+                    phiPn_capped_N=1_300_000.0,
+                    phiMnx_Nmm=195_000_000.0,
+                    phiMny_Nmm=130_000_000.0,
+                    eps_t=0.002,
+                    strain_condition="transition",
+                    concrete_area_mm2=350_000.0,
+                    concrete_force_N=1_500_000.0,
+                )
+            ]
+        )
+        state["rc_pmm_result"] = cached_result
+        state["pmm_last_analysis_hash"] = "same-hash"
+        state["analysis_force_recalculate"] = False
+
+        def _unexpected_solver_call(*args, **kwargs):
+            raise AssertionError("cached PMM result should be reused without rerunning solver")
+
+        monkeypatch.setattr(analysis_page_module, "run_rc_pmm_solver", _unexpected_solver_call)
+        _run_pmm_analysis_with_runtime_control(_analysis_input(), AnalysisSettings(), [], "same-hash", "Standard")
+
+        assert state["rc_pmm_result"] is cached_result
+        assert state["analysis_runtime_cache_status"] == "Cached result used"
+        assert state["analysis_runtime_last_status"] == "Cached result used"
+    finally:
+        state.clear()
+        state.update(backup)

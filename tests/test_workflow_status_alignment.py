@@ -16,8 +16,8 @@ WORKFLOW_STATUS_DOC = (REPO_ROOT / "docs" / "design" / "workflow_status1.md").re
 
 
 def test_current_app_caption_identifies_latest_state_milestone() -> None:
-    assert "STATE.SECTION1" in APP_SOURCE
-    assert "Section Builder preserves user-edited geometry after workspace navigation" in APP_SOURCE
+    assert "STATE.RESULT1" in APP_SOURCE
+    assert "PMM analysis cache persists across navigation and project save/load" in APP_SOURCE
 
 
 def test_bridge_beam_girder_mode_describes_guarded_preview_scope_not_placeholder() -> None:

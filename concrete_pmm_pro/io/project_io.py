@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import MutableMapping
+from dataclasses import asdict
 from typing import Any
 
 import pandas as pd
 from pydantic import ValidationError
 
+from concrete_pmm_pro.analysis.capacity_check import DemandCapacityResult, DemandCapacitySummary
+from concrete_pmm_pro.analysis.preflight import build_analysis_input_from_session_state
+from concrete_pmm_pro.analysis.result_models import PMMSolverResult
+from concrete_pmm_pro.analysis.runtime import analysis_input_hash
 from concrete_pmm_pro.core.analysis import AnalysisModeSettings, AnalysisSettings
 from concrete_pmm_pro.core.concrete_materials import c45_precast_material, ensure_concrete_material_library
 from concrete_pmm_pro.core.design_code import normalize_project_code_edition, normalize_project_design_code
@@ -48,6 +53,7 @@ from concrete_pmm_pro.state.dirty_state import (
     LAST_REFRESHED_WORKSPACE_KEY,
     PREVIOUS_INPUT_HASH_KEY,
     REPORT_STATUS_KEY,
+    project_input_hash,
 )
 
 
@@ -137,6 +143,9 @@ PRESTRESS_TABLE_METADATA_COLUMNS = [
     "Note",
 ]
 
+ANALYSIS_RESULTS_METADATA_KEY = "analysis_results"
+ANALYSIS_RESULTS_SCHEMA_VERSION = 1
+
 WORKFLOW_LOAD_TABLE_METADATA_KEYS = (
     "column_uls_loads_table",
     "column_sls_loads_table",
@@ -156,6 +165,150 @@ def _workflow_load_table_metadata_from_session(session_state: Any) -> dict[str, 
         df = pd.DataFrame(table)
         tables[key] = df.to_dict(orient="records")
     return tables
+
+
+def _demand_capacity_summary_to_metadata(summary: DemandCapacitySummary) -> dict[str, Any]:
+    """Serialize a stored PMM demand/capacity summary as plain project JSON."""
+
+    return asdict(summary)
+
+
+def _demand_capacity_summary_from_metadata(value: Any) -> DemandCapacitySummary | None:
+    """Restore a stored PMM demand/capacity summary from project metadata."""
+
+    if not isinstance(value, dict):
+        return None
+    try:
+        result_rows = [DemandCapacityResult(**item) for item in value.get("results", []) if isinstance(item, dict)]
+        return DemandCapacitySummary(
+            results=result_rows,
+            governing_combo=value.get("governing_combo"),
+            max_dcr=value.get("max_dcr"),
+            overall_status=str(value.get("overall_status") or "NOT_CHECKED"),
+            warnings=list(value.get("warnings") or []),
+            info=list(value.get("info") or []),
+        )
+    except Exception:
+        return None
+
+
+def _analysis_results_metadata_from_session(session_state: Any) -> dict[str, Any]:
+    """Serialize restorable analysis outputs without rerunning solver logic.
+
+    Stored results are treated as cache artifacts, not as engineering inputs.  A
+    future load restores them only when their saved input hash still matches the
+    loaded project inputs.
+    """
+
+    result = _get_session_value(session_state, "rc_pmm_result", None)
+    if not isinstance(result, PMMSolverResult):
+        return {}
+
+    result_hash = (
+        _get_session_value(session_state, "rc_pmm_result_input_hash", None)
+        or _get_session_value(session_state, "pmm_last_analysis_hash", None)
+    )
+    if not result_hash:
+        return {}
+
+    metadata: dict[str, Any] = {
+        "schema_version": ANALYSIS_RESULTS_SCHEMA_VERSION,
+        "rc_pmm_result": result.model_dump(mode="json"),
+        "pmm_result_input_hash": result_hash,
+        "pmm_last_analysis_hash": _get_session_value(session_state, "pmm_last_analysis_hash", result_hash),
+        "analysis_accuracy_preset": _get_session_value(session_state, "analysis_accuracy_preset", None),
+        "analysis_runtime_last_status": _get_session_value(session_state, "analysis_runtime_last_status", None),
+        "analysis_runtime_last_time_seconds": _get_session_value(session_state, "analysis_runtime_last_time_seconds", None),
+        "analysis_runtime_last_run_at": _get_session_value(session_state, "analysis_runtime_last_run_at", None),
+        "analysis_runtime_last_preset": _get_session_value(session_state, "analysis_runtime_last_preset", None),
+        "analysis_runtime_timings": _get_session_value(session_state, "analysis_runtime_timings", None),
+    }
+
+    rc_only_result = _get_session_value(session_state, "rc_only_comparison_result", None)
+    if isinstance(rc_only_result, PMMSolverResult):
+        metadata["rc_only_comparison_result"] = rc_only_result.model_dump(mode="json")
+    comparison = _get_session_value(session_state, "prestress_comparison_summary", None)
+    if isinstance(comparison, dict):
+        metadata["prestress_comparison_summary"] = dict(comparison)
+
+    dc_summary = _get_session_value(session_state, "rc_demand_capacity_result", None)
+    if isinstance(dc_summary, DemandCapacitySummary):
+        metadata["rc_demand_capacity_result"] = _demand_capacity_summary_to_metadata(dc_summary)
+        metadata["rc_demand_capacity_result_hash"] = _get_session_value(session_state, "rc_demand_capacity_result_hash", None)
+        metadata["rc_demand_capacity_input_hash"] = _get_session_value(session_state, "rc_demand_capacity_input_hash", None)
+        metadata["rc_demand_capacity_pmm_result_hash"] = _get_session_value(session_state, "rc_demand_capacity_pmm_result_hash", None)
+
+    return {key: _clean_table_value(value) for key, value in metadata.items() if value is not None}
+
+
+def _restore_analysis_results_metadata(project: ProjectModel, session_state: MutableMapping[str, Any]) -> bool:
+    """Restore saved analysis cache only when it matches the loaded inputs."""
+
+    metadata = project.metadata.get(ANALYSIS_RESULTS_METADATA_KEY)
+    if not isinstance(metadata, dict):
+        return False
+    if metadata.get("schema_version") not in {ANALYSIS_RESULTS_SCHEMA_VERSION, None}:
+        return False
+
+    preset = metadata.get("analysis_accuracy_preset") or metadata.get("analysis_runtime_last_preset")
+    if isinstance(preset, str) and preset:
+        session_state["analysis_accuracy_preset"] = preset
+
+    stored_hash = str(metadata.get("pmm_result_input_hash") or metadata.get("pmm_last_analysis_hash") or "").strip()
+    if not stored_hash:
+        return False
+
+    analysis_input = build_analysis_input_from_session_state(session_state)
+    if analysis_input is not None:
+        current_hash = analysis_input_hash(analysis_input, str(session_state.get("analysis_accuracy_preset") or "Standard"))
+        if current_hash != stored_hash:
+            session_state["analysis_runtime_cache_status"] = "Saved PMM result is stale for loaded inputs"
+            session_state["analysis_runtime_last_status"] = "Saved result stale"
+            return False
+
+    try:
+        result = PMMSolverResult.model_validate(metadata.get("rc_pmm_result"))
+    except Exception:
+        return False
+
+    session_state["rc_pmm_result"] = result
+    session_state["rc_pmm_result_input_hash"] = stored_hash
+    session_state["pmm_last_analysis_hash"] = stored_hash
+    session_state["analysis_force_recalculate"] = False
+    session_state["analysis_runtime_cache_status"] = "Loaded cached result"
+    session_state["analysis_runtime_last_status"] = "Loaded cached result"
+    if metadata.get("analysis_runtime_last_time_seconds") is not None:
+        session_state["analysis_runtime_last_time_seconds"] = metadata.get("analysis_runtime_last_time_seconds")
+    if metadata.get("analysis_runtime_last_run_at") is not None:
+        session_state["analysis_runtime_last_run_at"] = metadata.get("analysis_runtime_last_run_at")
+    if metadata.get("analysis_runtime_last_preset") is not None:
+        session_state["analysis_runtime_last_preset"] = metadata.get("analysis_runtime_last_preset")
+    if isinstance(metadata.get("analysis_runtime_timings"), dict):
+        session_state["analysis_runtime_timings"] = dict(metadata.get("analysis_runtime_timings") or {})
+
+    rc_only_data = metadata.get("rc_only_comparison_result")
+    if rc_only_data is not None:
+        try:
+            session_state["rc_only_comparison_result"] = PMMSolverResult.model_validate(rc_only_data)
+        except Exception:
+            session_state.pop("rc_only_comparison_result", None)
+    if isinstance(metadata.get("prestress_comparison_summary"), dict):
+        session_state["prestress_comparison_summary"] = dict(metadata.get("prestress_comparison_summary") or {})
+
+    dc_summary = _demand_capacity_summary_from_metadata(metadata.get("rc_demand_capacity_result"))
+    if dc_summary is not None:
+        session_state["rc_demand_capacity_result"] = dc_summary
+        session_state["demand_capacity_summary"] = dc_summary
+        for key in (
+            "rc_demand_capacity_result_hash",
+            "rc_demand_capacity_input_hash",
+            "rc_demand_capacity_pmm_result_hash",
+        ):
+            if metadata.get(key) is not None:
+                session_state[key] = metadata.get(key)
+        session_state["analysis_runtime_dc_cache_status"] = "Loaded cached D/C result"
+
+    return True
 
 
 def _beam_girder_shear_reinforcement_metadata_from_session(session_state: Any) -> list[dict[str, Any]]:
@@ -386,6 +539,11 @@ def project_from_session_state(session_state: Any) -> ProjectModel:
     building_service_load_settings = _building_beam_girder_service_load_settings_metadata_from_session(session_state)
     if building_service_load_settings:
         metadata[BUILDING_BEAM_GIRDER_SERVICE_LOAD_SETTINGS_KEY] = building_service_load_settings
+    analysis_results_metadata = _analysis_results_metadata_from_session(session_state)
+    if analysis_results_metadata:
+        metadata[ANALYSIS_RESULTS_METADATA_KEY] = analysis_results_metadata
+    else:
+        metadata.pop(ANALYSIS_RESULTS_METADATA_KEY, None)
 
     concrete_materials_value = _coerce_list(_get_session_value(session_state, "concrete_materials", []))
     preserve_existing_primary = not bool(concrete_materials_value)
@@ -719,8 +877,8 @@ def _sync_section_girder_length_from_setup_span(session_state: MutableMapping[st
         session_state[f"{preset_key}_girder_length_mm_locked_from_setup"] = span_mm
 
 
-def _reset_loaded_project_dirty_state(session_state: MutableMapping[str, Any]) -> None:
-    """A loaded project must not inherit analysis freshness from the previous session."""
+def _reset_loaded_project_dirty_state(session_state: MutableMapping[str, Any], *, analysis_restored: bool = False) -> None:
+    """Reset dirty-state keys after project load without discarding valid saved results."""
 
     for key in (
         CURRENT_INPUT_HASH_KEY,
@@ -730,8 +888,16 @@ def _reset_loaded_project_dirty_state(session_state: MutableMapping[str, Any]) -
         "_perf_input_group_hashes",
     ):
         session_state.pop(key, None)
-    session_state[ANALYSIS_STATUS_KEY] = "Not run"
-    session_state[REPORT_STATUS_KEY] = "Not run"
+    current_hash = project_input_hash(session_state)
+    session_state[CURRENT_INPUT_HASH_KEY] = current_hash
+    if analysis_restored:
+        session_state[LAST_ANALYSIS_HASH_KEY] = current_hash
+        session_state[ANALYSIS_STATUS_KEY] = "Current"
+        session_state[REPORT_STATUS_KEY] = "Out of date"
+        session_state[LAST_REFRESHED_WORKSPACE_KEY] = "Loaded saved analysis cache"
+    else:
+        session_state[ANALYSIS_STATUS_KEY] = "Not run"
+        session_state[REPORT_STATUS_KEY] = "Not run"
     session_state[CHANGED_GROUPS_KEY] = []
 
 
@@ -829,4 +995,5 @@ def apply_project_to_session_state(project: ProjectModel, session_state: Mutable
     if REINFORCEMENT_FLAGS_PRESET_KEY in project.metadata:
         session_state[REINFORCEMENT_FLAGS_PRESET_KEY] = project.metadata[REINFORCEMENT_FLAGS_PRESET_KEY]
     session_state["project_metadata"] = dict(project.metadata)
-    _reset_loaded_project_dirty_state(session_state)
+    analysis_restored = _restore_analysis_results_metadata(project, session_state)
+    _reset_loaded_project_dirty_state(session_state, analysis_restored=analysis_restored)

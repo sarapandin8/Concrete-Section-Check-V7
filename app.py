@@ -88,7 +88,7 @@ def main() -> None:
     st.set_page_config(page_title="Concrete PMM Pro", layout="wide")
     st.title("Concrete PMM Pro")
     st.caption(
-        "Milestone STATE.SECTION1: Section Builder preserves user-edited geometry after workspace navigation. "
+        "Milestone STATE.RESULT1: PMM analysis cache persists across navigation and project save/load. "
         "Internal units: mm, MPa, N, N-mm."
     )
 
