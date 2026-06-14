@@ -20,7 +20,9 @@ def test_section_builder_professional_layout_sections_are_present() -> None:
     assert "cpmm-section-property-grid" in source
     assert "Geometry Parameters" in source
     assert "cpmm-commercial-section-hero" in source
-    assert "cpmm-commercial-workflow-tab active" in source
+    assert "cpmm-commercial-workflow-tab" not in source
+    assert "Analysis</div>" not in source
+    assert "Report / QA</div>" not in source
     assert "_render_commercial_section_header" in source
     assert "_commercial_panel_title_html" in source
     assert "Preview canvas shows the active concrete polygon" in source
@@ -652,9 +654,9 @@ def test_section_builder_metadata_inputs_restore_from_durable_section_parameters
 def test_commercial_section_builder_layout_is_definition_only_and_solver_safe() -> None:
     source = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "section_builder.py").read_text(encoding="utf-8")
 
-    assert "Definition" in source
-    assert "Analysis" in source
-    assert "Report / QA" in source
+    assert "Definition workspace" in source
+    assert "cpmm-commercial-workflow-tab" not in source
+    assert "Report / QA</div>" not in source
     assert "create_section_preview" in source
     assert "default_registry.geometry" in source
     assert "compute_pmm" not in source

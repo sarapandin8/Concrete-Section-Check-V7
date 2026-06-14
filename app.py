@@ -28,6 +28,94 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 )
 
 
+_COMMERCIAL_TAB_CSS = """
+<style>
+/* UI.COMMERCIAL.TABS1: visual-only polish for existing Streamlit navigation controls. */
+div[data-testid="stSegmentedControl"] {
+  margin: 0.1rem 0 0.65rem 0;
+}
+div[data-testid="stSegmentedControl"] button {
+  border-radius: 0 !important;
+  border: 1px solid #cfd8e3 !important;
+  border-right: 0 !important;
+  background: #ffffff !important;
+  color: #344054 !important;
+  min-height: 2.05rem !important;
+  padding: 0.32rem 0.86rem !important;
+  font-size: 0.82rem !important;
+  font-weight: 650 !important;
+  box-shadow: none !important;
+}
+div[data-testid="stSegmentedControl"] button:first-child {
+  border-radius: 7px 0 0 7px !important;
+}
+div[data-testid="stSegmentedControl"] button:last-child {
+  border-right: 1px solid #cfd8e3 !important;
+  border-radius: 0 7px 7px 0 !important;
+}
+div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
+div[data-testid="stSegmentedControl"] button[data-selected="true"] {
+  background: #1f5f99 !important;
+  color: #ffffff !important;
+  border-color: #1f5f99 !important;
+}
+div[data-testid="stRadio"] > label {
+  color: #344054 !important;
+  font-size: 0.78rem !important;
+  font-weight: 700 !important;
+  margin-bottom: 0.22rem !important;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] {
+  gap: 0 !important;
+  margin: 0.1rem 0 0.65rem 0;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] label {
+  border: 1px solid #cfd8e3;
+  border-right: 0;
+  border-radius: 0;
+  background: #ffffff;
+  min-height: 2.05rem;
+  padding: 0.22rem 0.78rem;
+  color: #344054;
+  font-size: 0.82rem;
+  font-weight: 650;
+  display: inline-flex;
+  align-items: center;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] label:first-child {
+  border-radius: 7px 0 0 7px;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] label:last-child {
+  border-right: 1px solid #cfd8e3;
+  border-radius: 0 7px 7px 0;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
+  background: #1f5f99;
+  color: #ffffff;
+  border-color: #1f5f99;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) + label {
+  border-left-color: #1f5f99;
+}
+div[data-testid="stRadio"] div[role="radiogroup"] label [data-testid="stMarkdownContainer"] p {
+  font-size: inherit;
+  font-weight: inherit;
+}
+</style>
+"""
+
+
+def _render_global_commercial_tab_styles() -> None:
+    """Apply visual-only tab polish to existing navigation widgets.
+
+    This does not add, move, or remove navigation controls; it only styles the
+    existing segmented/radio controls so app tabs read closer to commercial
+    engineering software.
+    """
+
+    st.markdown(_COMMERCIAL_TAB_CSS, unsafe_allow_html=True)
+
+
 def _safe_choice(label: str, options: list[str], *, key: str, horizontal: bool = True) -> str:
     """Return one selected option without rendering inactive pages.
 
@@ -86,6 +174,7 @@ def render_results_workspace() -> None:
 
 def main() -> None:
     st.set_page_config(page_title="Concrete PMM Pro", layout="wide")
+    _render_global_commercial_tab_styles()
     st.title("Concrete PMM Pro")
     st.caption(
         "Milestone STATE.RESULT1: PMM analysis cache persists across navigation and project save/load. "

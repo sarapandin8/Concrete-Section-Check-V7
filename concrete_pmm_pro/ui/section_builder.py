@@ -190,7 +190,6 @@ _SECTION_BUILDER_CSS = """
   align-items: center;
   gap: 1rem;
   padding: 0.72rem 0.92rem;
-  border-bottom: 1px solid #e3e8f0;
 }
 .cpmm-commercial-section-title {
   color: #1f5f99;
@@ -212,29 +211,6 @@ _SECTION_BUILDER_CSS = """
   font-size: 0.74rem;
   font-weight: 700;
   white-space: nowrap;
-}
-.cpmm-commercial-workflow-tabs {
-  display: flex;
-  gap: 0;
-  background: #1f5f99;
-  border-radius: 0 0 9px 9px;
-  overflow: hidden;
-}
-.cpmm-commercial-workflow-tab {
-  padding: 0.55rem 1rem;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.78rem;
-  font-weight: 760;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  border-right: 1px solid rgba(255, 255, 255, 0.18);
-}
-.cpmm-commercial-workflow-tab.active {
-  background: #1a5487;
-  color: #ffffff;
-}
-.cpmm-commercial-workflow-tab.review {
-  color: rgba(255, 255, 255, 0.55);
 }
 .cpmm-commercial-panel-title {
   display: flex;
@@ -1636,11 +1612,6 @@ def _render_commercial_section_header() -> None:
               <div class="cpmm-commercial-section-subtitle">Definition workspace for section geometry, material basis, and analysis-ready gross properties.</div>
             </div>
             <div class="cpmm-commercial-section-mode">{escape(analysis_mode_label(settings))}</div>
-          </div>
-          <div class="cpmm-commercial-workflow-tabs">
-            <div class="cpmm-commercial-workflow-tab active">Definition</div>
-            <div class="cpmm-commercial-workflow-tab review">Analysis</div>
-            <div class="cpmm-commercial-workflow-tab review">Report / QA</div>
           </div>
         </div>
         ''',
