@@ -27,3 +27,13 @@ def test_app_commercial_tabs2_applies_dark_blue_bold_typography_to_existing_cont
     assert "div[data-testid=\"stWidgetLabel\"]" in source
     assert "div[data-testid=\"stNumberInput\"] label" in source
     assert "div[data-baseweb=\"input\"] input" in source
+
+
+def test_ui_commercial_tabs3_styles_actual_streamlit_button_group_tabs() -> None:
+    source = Path("app.py").read_text(encoding="utf-8")
+
+    assert 'div[data-testid="stButtonGroup"]' in source
+    assert 'div[data-testid="stButtonGroup"] button p' in source
+    assert 'div[data-testid="stButtonGroup"] [role="radio"][aria-checked="true"]' in source
+    assert 'font-weight: 800' in source
+    assert '--cpmm-ink-blue' in source

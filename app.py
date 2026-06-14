@@ -30,7 +30,7 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 
 _COMMERCIAL_TAB_CSS = """
 <style>
-/* UI.COMMERCIAL.TABS2: visual-only typography/color polish for existing navigation and input controls. */
+/* UI.COMMERCIAL.TABS2/TABS3: dark-blue bold typography plus actual Streamlit stButtonGroup selector coverage. */
 :root {
   --cpmm-ink-blue: #0b3a66;
   --cpmm-ink-blue-soft: #164f83;
@@ -40,35 +40,66 @@ _COMMERCIAL_TAB_CSS = """
 }
 
 /* Existing app/workspace tabs: bolder, slightly larger, dark-blue text. */
-div[data-testid="stSegmentedControl"] {
+div[data-testid="stSegmentedControl"],
+div[data-testid="stButtonGroup"] {
   margin: 0.1rem 0 0.65rem 0;
 }
-div[data-testid="stSegmentedControl"] button {
+
+/* Streamlit version compatibility:
+   - older segmented controls can expose stSegmentedControl
+   - current segmented_control/pills often render as stButtonGroup
+   - radio fallback remains styled below */
+div[data-testid="stSegmentedControl"] button,
+div[data-testid="stButtonGroup"] button,
+div[data-testid="stButtonGroup"] [role="button"],
+div[data-testid="stButtonGroup"] [role="radio"] {
   border-radius: 0 !important;
   border: 1px solid var(--cpmm-blue-border) !important;
   border-right: 0 !important;
   background: #ffffff !important;
   color: var(--cpmm-ink-blue) !important;
-  min-height: 2.18rem !important;
-  padding: 0.36rem 0.94rem !important;
-  font-size: 0.9rem !important;
-  font-weight: 760 !important;
-  letter-spacing: 0.005em !important;
+  min-height: 2.24rem !important;
+  padding: 0.38rem 1.0rem !important;
+  font-size: 0.94rem !important;
+  font-weight: 800 !important;
+  letter-spacing: 0.004em !important;
   box-shadow: none !important;
 }
-div[data-testid="stSegmentedControl"] button:first-child {
+div[data-testid="stSegmentedControl"] button:first-child,
+div[data-testid="stButtonGroup"] button:first-child,
+div[data-testid="stButtonGroup"] [role="button"]:first-child,
+div[data-testid="stButtonGroup"] [role="radio"]:first-child {
   border-radius: 7px 0 0 7px !important;
 }
-div[data-testid="stSegmentedControl"] button:last-child {
+div[data-testid="stSegmentedControl"] button:last-child,
+div[data-testid="stButtonGroup"] button:last-child,
+div[data-testid="stButtonGroup"] [role="button"]:last-child,
+div[data-testid="stButtonGroup"] [role="radio"]:last-child {
   border-right: 1px solid var(--cpmm-blue-border) !important;
   border-radius: 0 7px 7px 0 !important;
 }
 div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
-div[data-testid="stSegmentedControl"] button[data-selected="true"] {
+div[data-testid="stSegmentedControl"] button[data-selected="true"],
+div[data-testid="stButtonGroup"] button[aria-pressed="true"],
+div[data-testid="stButtonGroup"] button[data-selected="true"],
+div[data-testid="stButtonGroup"] [role="radio"][aria-checked="true"],
+div[data-testid="stButtonGroup"] [role="button"][aria-pressed="true"] {
   background: var(--cpmm-blue-fill) !important;
   color: var(--cpmm-ink-blue) !important;
   border-color: var(--cpmm-ink-blue-soft) !important;
   box-shadow: inset 0 -2px 0 var(--cpmm-ink-blue) !important;
+}
+div[data-testid="stSegmentedControl"] button p,
+div[data-testid="stSegmentedControl"] button span,
+div[data-testid="stButtonGroup"] button p,
+div[data-testid="stButtonGroup"] button span,
+div[data-testid="stButtonGroup"] [role="button"] p,
+div[data-testid="stButtonGroup"] [role="button"] span,
+div[data-testid="stButtonGroup"] [role="radio"] p,
+div[data-testid="stButtonGroup"] [role="radio"] span {
+  color: var(--cpmm-ink-blue) !important;
+  font-size: 0.94rem !important;
+  font-weight: 800 !important;
 }
 
 /* Radio fallback navigation styled as app tabs, not as ordinary radio text. */
@@ -111,9 +142,12 @@ div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
 div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) + label {
   border-left-color: var(--cpmm-ink-blue-soft);
 }
-div[data-testid="stRadio"] div[role="radiogroup"] label [data-testid="stMarkdownContainer"] p {
-  font-size: inherit;
-  font-weight: inherit;
+div[data-testid="stRadio"] div[role="radiogroup"] label [data-testid="stMarkdownContainer"] p,
+div[data-testid="stRadio"] div[role="radiogroup"] label p,
+div[data-testid="stRadio"] div[role="radiogroup"] label span {
+  color: var(--cpmm-ink-blue) !important;
+  font-size: 0.94rem !important;
+  font-weight: 800 !important;
 }
 
 /* Action buttons: commercial-style bold dark-blue text. */
