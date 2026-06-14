@@ -1,4 +1,4 @@
-"""Runtime state helpers for Concrete PMM Pro."""
+"""Runtime state helpers for Concrete Section Pro."""
 
 from .dirty_state import (
     ANALYSIS_STATUS_KEY,

@@ -1,4 +1,4 @@
-"""Verification and validation helpers for Concrete PMM Pro."""
+"""Verification and validation helpers for Concrete Section Pro."""
 
 from concrete_pmm_pro.verification.dc_directional_benchmarks import DCDirectionalBenchmarkSummary, run_valid_dc1_directional_benchmark_pack
 from concrete_pmm_pro.verification.column_pier_vt_benchmarks import (

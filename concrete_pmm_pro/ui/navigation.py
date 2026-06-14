@@ -1,4 +1,4 @@
-"""Navigation helpers for Concrete PMM Pro UI.
+"""Navigation helpers for Concrete Section Pro UI.
 
 These helpers render existing app navigation choices with deterministic active
 state styling.  They intentionally do not change the available navigation

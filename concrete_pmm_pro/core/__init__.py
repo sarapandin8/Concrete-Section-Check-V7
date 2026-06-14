@@ -1,4 +1,4 @@
-"""Core domain models for Concrete PMM Pro."""
+"""Core domain models for Concrete Section Pro."""
 
 from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisModeSettings, AnalysisSettings
 from concrete_pmm_pro.core.models import (

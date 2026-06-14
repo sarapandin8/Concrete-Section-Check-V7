@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 
 @dataclass(frozen=True)
 class ReportMetadata:
-    report_title: str = "Concrete PMM Pro Engineering Report"
+    report_title: str = "Concrete Section Pro Engineering Report"
     project_name: str | None = None
     prepared_by: str | None = None
     checked_by: str | None = None

@@ -1,4 +1,4 @@
-"""Concrete PMM Pro Streamlit application."""
+"""Concrete Section Pro Streamlit application."""
 
 from __future__ import annotations
 
@@ -47,17 +47,18 @@ _COMMERCIAL_TAB_CSS = """
 
 /* UI.ACTIVE.TABS3: make the app feel like a working engineering screen, not a landing page. */
 .block-container {
-  padding-top: 1.05rem !important;
+  padding-top: 1.55rem !important;
 }
 div[data-testid="stVerticalBlock"] {
   gap: 0.48rem !important;
 }
 h1, div[data-testid="stMarkdownContainer"] h1 {
   color: var(--cpmm-ink-blue) !important;
-  font-size: 2.0rem !important;
-  line-height: 1.08 !important;
-  margin-bottom: 0.12rem !important;
+  font-size: 1.95rem !important;
+  line-height: 1.24 !important;
+  margin: 0.12rem 0 0.18rem 0 !important;
   font-weight: 850 !important;
+  overflow: visible !important;
 }
 div[data-testid="stCaptionContainer"] {
   margin-bottom: 0.15rem !important;
@@ -148,6 +149,7 @@ button[data-testid="stBaseButton-segmentedControlActive"] p,
 button[data-testid="stBaseButton-segmentedControlActive"] span {
   color: var(--cpmm-ink-blue) !important;
   font-weight: 850 !important;
+  overflow: visible !important;
 }
 
 
@@ -182,6 +184,7 @@ div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p,
 div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] span {
   color: var(--cpmm-ink-blue) !important;
   font-weight: 850 !important;
+  overflow: visible !important;
 }
 
 /* Radio fallback navigation styled as app tabs, not as ordinary radio text. */
@@ -385,11 +388,11 @@ def render_results_workspace() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Concrete PMM Pro", layout="wide")
+    st.set_page_config(page_title="Concrete Section Pro", layout="wide")
     _render_global_commercial_tab_styles()
-    st.title("Concrete PMM Pro")
+    st.title("Concrete Section Pro")
     st.caption(
-        "Milestone STATE.RESULT1: PMM analysis cache persists across navigation and project save/load. "
+        "Concrete section analysis and design-review workspace. "
         "Internal units: mm, MPa, N, N-mm."
     )
 

@@ -1,4 +1,4 @@
-"""Input/output helpers for Concrete PMM Pro."""
+"""Input/output helpers for Concrete Section Pro."""
 
 from concrete_pmm_pro.io.project_io import (
     ProjectIOError,

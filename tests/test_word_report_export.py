@@ -89,7 +89,7 @@ def test_build_draft_word_report_returns_valid_docx_zip() -> None:
 def test_word_report_includes_report_title() -> None:
     manifest = build_report_manifest({"project_name": "Pier Report"})
 
-    assert "Concrete PMM Pro Engineering Report" in _doc_text(build_draft_word_report(manifest))
+    assert "Concrete Section Pro Engineering Report" in _doc_text(build_draft_word_report(manifest))
 
 
 def test_cover_page_includes_draft_disclaimer() -> None:

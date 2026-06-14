@@ -26,7 +26,7 @@ from concrete_pmm_pro.core.analysis import AnalysisModeSettings
 def test_default_report_metadata_creates_sensible_defaults() -> None:
     metadata = default_report_metadata("Bridge Pier A")
 
-    assert metadata.report_title == "Concrete PMM Pro Engineering Report"
+    assert metadata.report_title == "Concrete Section Pro Engineering Report"
     assert metadata.project_name == "Bridge Pier A"
     assert metadata.revision == "Draft"
 

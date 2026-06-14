@@ -46,4 +46,4 @@ def test_ui_active_tabs3_tightens_navigation_density_and_spacing() -> None:
     assert "17.0 - sum(tab_widths)" in nav_source
     assert 'gap="small"' in nav_source
     assert "min-height: 1.64rem" in app_source
-    assert "padding-top: 1.05rem" in app_source
+    assert "padding-top: 1.55rem" in app_source

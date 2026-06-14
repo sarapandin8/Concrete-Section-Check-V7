@@ -75,8 +75,20 @@ def test_ui_active_tabs3_applies_working_screen_density_polish() -> None:
 
     assert "UI.ACTIVE.TABS3" in source
     assert ".block-container" in source
-    assert "padding-top: 1.05rem" in source
-    assert "font-size: 2.0rem" in source
+    assert "padding-top: 1.55rem" in source
+    assert "font-size: 1.95rem" in source
     assert "min-height: 1.64rem" in source
     assert "0.01rem 0 0.34rem" in source
     assert "inset 0 -2px 0 var(--cpmm-active-tab-accent)" in source
+
+
+def test_app_brand1_renames_visible_app_and_prevents_header_crop() -> None:
+    source = Path("app.py").read_text(encoding="utf-8")
+
+    assert 'page_title="Concrete Section Pro"' in source
+    assert 'st.title("Concrete Section Pro")' in source
+    assert "Concrete section analysis and design-review workspace." in source
+    assert "line-height: 1.24rem" not in source
+    assert "line-height: 1.24" in source
+    assert "padding-top: 1.55rem" in source
+    assert "overflow: visible" in source

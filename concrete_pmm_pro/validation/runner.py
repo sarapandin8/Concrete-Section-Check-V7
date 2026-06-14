@@ -1,4 +1,4 @@
-"""Validation runner for Concrete PMM Pro QA checks."""
+"""Validation runner for Concrete Section Pro QA checks."""
 
 from __future__ import annotations
 

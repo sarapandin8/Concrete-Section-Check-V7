@@ -1,4 +1,4 @@
-"""Pure Python validation framework for Concrete PMM Pro."""
+"""Pure Python validation framework for Concrete Section Pro."""
 
 from concrete_pmm_pro.validation.models import (
     FAIL,

@@ -15,9 +15,10 @@ WORD_EXPORT_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "reporting" / "word_expor
 WORKFLOW_STATUS_DOC = (REPO_ROOT / "docs" / "design" / "workflow_status1.md").read_text(encoding="utf-8")
 
 
-def test_current_app_caption_identifies_latest_state_milestone() -> None:
-    assert "STATE.RESULT1" in APP_SOURCE
-    assert "PMM analysis cache persists across navigation and project save/load" in APP_SOURCE
+def test_current_app_caption_uses_product_workspace_wording() -> None:
+    assert "Concrete Section Pro" in APP_SOURCE
+    assert "Concrete section analysis and design-review workspace" in APP_SOURCE
+    assert "Internal units: mm, MPa, N, N-mm" in APP_SOURCE
 
 
 def test_bridge_beam_girder_mode_describes_guarded_preview_scope_not_placeholder() -> None:

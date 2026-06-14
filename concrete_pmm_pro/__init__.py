@@ -1,4 +1,4 @@
-"""Concrete PMM Pro package."""
+"""Concrete Section Pro package."""
 
 __all__ = ["__version__"]
 

@@ -78,7 +78,7 @@ def add_report_footer_note(document: DocumentObject) -> None:
     for section in document.sections:
         footer = section.footer.paragraphs[0]
         footer.text = (
-            "Concrete PMM Pro draft report - engineering review; "
+            "Concrete Section Pro draft report - engineering review; "
             "finalized production-preview only where explicitly validated"
         )
         footer.style = document.styles["Footer"]

@@ -15435,7 +15435,7 @@ def _render_pre_report_qa_expander() -> None:
         meta_cols = st.columns(2)
         report_title = meta_cols[0].text_input(
             "Report title",
-            value=st.session_state.get("report_title", "Concrete PMM Pro Engineering Report"),
+            value=st.session_state.get("report_title", "Concrete Section Pro Engineering Report"),
             key="report_title",
         )
         report_project_name = meta_cols[1].text_input(
@@ -15449,7 +15449,7 @@ def _render_pre_report_qa_expander() -> None:
         revision = author_cols[2].text_input("Revision", value=st.session_state.get("report_revision", "Draft"), key="report_revision")
         if st.button("Build Report Manifest", use_container_width=True, key="ui_keys1_analysis_page_button_15442"):
             metadata = ReportMetadata(
-                report_title=report_title or "Concrete PMM Pro Engineering Report",
+                report_title=report_title or "Concrete Section Pro Engineering Report",
                 project_name=report_project_name or None,
                 prepared_by=prepared_by or None,
                 checked_by=checked_by or None,
@@ -15588,7 +15588,7 @@ def _render_pre_report_qa_expander() -> None:
             st.warning(f"{snapshot.high_or_critical_limitation_count} high/critical engineering limitation(s) require review.")
         if st.button("Build Draft Word Report", use_container_width=True, key="ui_keys1_analysis_page_button_15573"):
             metadata = ReportMetadata(
-                report_title=report_title or "Concrete PMM Pro Engineering Report",
+                report_title=report_title or "Concrete Section Pro Engineering Report",
                 project_name=report_project_name or None,
                 prepared_by=prepared_by or None,
                 checked_by=checked_by or None,
@@ -15626,7 +15626,7 @@ def _render_pre_report_qa_expander() -> None:
                 qa_manifest = st.session_state.get("report_manifest")
                 if qa_manifest is None:
                     metadata = ReportMetadata(
-                        report_title=report_title or "Concrete PMM Pro Engineering Report",
+                        report_title=report_title or "Concrete Section Pro Engineering Report",
                         project_name=report_project_name or None,
                         prepared_by=prepared_by or None,
                         checked_by=checked_by or None,

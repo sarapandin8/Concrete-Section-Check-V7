@@ -48,7 +48,7 @@ def test_extract_docx_text_returns_text_from_generated_report() -> None:
 
     text = extract_docx_text(report_bytes)
 
-    assert "Concrete PMM Pro Engineering Report" in text
+    assert "Concrete Section Pro Engineering Report" in text
     assert "Engineering Limitations" in text
 
 
