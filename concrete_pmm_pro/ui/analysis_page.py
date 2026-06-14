@@ -2395,7 +2395,11 @@ def _render_input_summary() -> None:
                 "This snapshot uses the stored PMM result and cached demand/capacity summary. "
                 "It is safe to review after navigation without rerunning the solver."
             )
-            _render_analysis_result_transparency_panel(dc_summary, st.session_state.get("load_cases", []))
+            _render_analysis_result_transparency_panel(
+                dc_summary,
+                st.session_state.get("load_cases", []),
+                widget_key_prefix="stored_pmm_snapshot",
+            )
 
             unbonded_ignored_count = int(df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in df else 0
             st.subheader("PMM Visual Review")
@@ -2609,6 +2613,7 @@ def _render_analysis_result_transparency_panel(
     load_cases: list,
     *,
     show_overview_cards: bool = True,
+    widget_key_prefix: str = "analysis_result_transparency",
 ) -> pd.DataFrame:
     st.caption(
         "Active ULS load cases are ranked by PMM demand/capacity. "
@@ -2637,6 +2642,7 @@ def _render_analysis_result_transparency_panel(
             file_name="uls_demand_capacity_trace.csv",
             mime="text/csv",
             use_container_width=True,
+            key=f"{widget_key_prefix}_uls_dc_trace_csv",
         )
     return transparency_df
 
@@ -10135,7 +10141,12 @@ def _render_pmm_slice_dashboard(
             "Detailed method diagnostics remain available in Diagnostics / QA."
         )
         _render_governing_case_card(dc_summary)
-        _render_analysis_result_transparency_panel(dc_summary, load_cases, show_overview_cards=False)
+        _render_analysis_result_transparency_panel(
+            dc_summary,
+            load_cases,
+            show_overview_cards=False,
+            widget_key_prefix="pmm_dashboard_summary",
+        )
         with st.expander("Selected case quick detail", expanded=False):
             _render_analysis_summary_strip(_selected_case_summary_cards(selected_summary, dc_summary), columns=4)
             _render_result_traceability_path(selected_summary)

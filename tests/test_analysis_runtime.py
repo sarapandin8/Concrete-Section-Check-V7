@@ -1206,3 +1206,12 @@ def test_pmm_visual_dashboard_remains_visible_while_raw_outputs_are_gated() -> N
     assert "Render legacy PMM point-cloud plots and raw table/export" in source
     assert "The main PMM Check and 3D Interaction tabs remain visible" in source
     assert "Detailed dashboard/plot rendering is intentionally off by default" not in source
+
+
+def test_state_result4_transparency_panel_download_buttons_have_unique_keys() -> None:
+    source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text()
+
+    assert "widget_key_prefix: str = \"analysis_result_transparency\"" in source
+    assert 'key=f"{widget_key_prefix}_uls_dc_trace_csv"' in source
+    assert 'widget_key_prefix="stored_pmm_snapshot"' in source
+    assert 'widget_key_prefix="pmm_dashboard_summary"' in source
