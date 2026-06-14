@@ -34,4 +34,16 @@ def test_ui_active_tabs2_keeps_navigation_cluster_compact_with_trailing_spacer()
     assert "tab_widths" in nav_source
     assert "trailing_spacer" in nav_source
     assert "cpmm-deterministic-nav-row--compact" in nav_source
-    assert "12.5 - sum(tab_widths)" in nav_source
+    assert "17.0 - sum(tab_widths)" in nav_source
+
+
+def test_ui_active_tabs3_tightens_navigation_density_and_spacing() -> None:
+    nav_source = Path("concrete_pmm_pro/ui/navigation.py").read_text(encoding="utf-8")
+    app_source = Path("app.py").read_text(encoding="utf-8")
+
+    assert "UI.ACTIVE.TABS3" in app_source
+    assert "UI.ACTIVE.TABS3" in nav_source
+    assert "17.0 - sum(tab_widths)" in nav_source
+    assert 'gap="small"' in nav_source
+    assert "min-height: 1.64rem" in app_source
+    assert "padding-top: 1.05rem" in app_source

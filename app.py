@@ -31,7 +31,7 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 
 _COMMERCIAL_TAB_CSS = """
 <style>
-/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1 / UI.ACTIVE.TABS2:
+/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1 / UI.ACTIVE.TABS2 / UI.ACTIVE.TABS3:
    dark-blue bold typography plus compact deterministic active-tab highlight for app-owned navigation. */
 :root {
   --cpmm-ink-blue: #0b3a66;
@@ -43,6 +43,24 @@ _COMMERCIAL_TAB_CSS = """
   --cpmm-active-tab-border: #0b3a66;
   --cpmm-active-tab-accent: #0b3a66;
   --cpmm-active-tab-shadow: rgba(11, 58, 102, 0.12);
+}
+
+/* UI.ACTIVE.TABS3: make the app feel like a working engineering screen, not a landing page. */
+.block-container {
+  padding-top: 1.05rem !important;
+}
+div[data-testid="stVerticalBlock"] {
+  gap: 0.48rem !important;
+}
+h1, div[data-testid="stMarkdownContainer"] h1 {
+  color: var(--cpmm-ink-blue) !important;
+  font-size: 2.0rem !important;
+  line-height: 1.08 !important;
+  margin-bottom: 0.12rem !important;
+  font-weight: 850 !important;
+}
+div[data-testid="stCaptionContainer"] {
+  margin-bottom: 0.15rem !important;
 }
 
 /* Existing app/workspace tabs: bolder, slightly larger, dark-blue text. */
@@ -220,23 +238,23 @@ div[data-testid="stRadio"] div[role="radiogroup"] label span {
   color: var(--cpmm-ink-blue);
   font-size: 0.88rem;
   font-weight: 800;
-  margin: 0.22rem 0 0.16rem 0;
+  margin: 0.10rem 0 0.08rem 0;
 }
 .cpmm-deterministic-nav-row,
 .cpmm-deterministic-nav-row--compact {
-  margin: 0.02rem 0 0.58rem 0;
+  margin: 0.01rem 0 0.34rem 0;
 }
 .cpmm-nav-tab-pill {
   width: 100%;
-  min-height: 2.02rem;
+  min-height: 1.64rem;
   border: 1px solid var(--cpmm-blue-border);
-  border-radius: 7px;
+  border-radius: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.28rem 0.72rem;
+  padding: 0.16rem 0.50rem;
   color: var(--cpmm-ink-blue);
-  font-size: 0.91rem;
+  font-size: 0.84rem;
   font-weight: 850;
   line-height: 1.12;
   white-space: nowrap;
@@ -244,7 +262,7 @@ div[data-testid="stRadio"] div[role="radiogroup"] label span {
 .cpmm-nav-tab-active {
   background: var(--cpmm-active-tab-fill);
   border-color: var(--cpmm-active-tab-border);
-  box-shadow: inset 0 -3px 0 var(--cpmm-active-tab-accent), 0 1px 2px var(--cpmm-active-tab-shadow);
+  box-shadow: inset 0 -2px 0 var(--cpmm-active-tab-accent), 0 1px 1px var(--cpmm-active-tab-shadow);
 }
 
 /* Action buttons: commercial-style bold dark-blue text. */
@@ -253,7 +271,10 @@ div[data-testid="stRadio"] div[role="radiogroup"] label span {
 div[data-testid="stFormSubmitButton"] button {
   color: var(--cpmm-ink-blue) !important;
   font-weight: 780 !important;
-  font-size: 0.9rem !important;
+  font-size: 0.86rem !important;
+  min-height: 1.68rem !important;
+  padding: 0.22rem 0.64rem !important;
+  border-radius: 5px !important;
   border-color: var(--cpmm-blue-border) !important;
 }
 .stButton button[kind="primary"],

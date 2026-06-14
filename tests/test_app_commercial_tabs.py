@@ -64,7 +64,19 @@ def test_ui_active_tabs2_uses_compact_commercial_nav_and_styles_streamlit_tabs()
 
     assert "UI.ACTIVE.TABS2" in source
     assert ".cpmm-deterministic-nav-row--compact" in source
-    assert "min-height: 2.02rem" in source
-    assert "0 1px 2px var(--cpmm-active-tab-shadow)" in source
+    assert "min-height: 1.64rem" in source
+    assert "0 1px 1px var(--cpmm-active-tab-shadow)" in source
     assert 'div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]' in source
     assert "--cpmm-active-tab-accent" in source
+
+
+def test_ui_active_tabs3_applies_working_screen_density_polish() -> None:
+    source = Path("app.py").read_text(encoding="utf-8")
+
+    assert "UI.ACTIVE.TABS3" in source
+    assert ".block-container" in source
+    assert "padding-top: 1.05rem" in source
+    assert "font-size: 2.0rem" in source
+    assert "min-height: 1.64rem" in source
+    assert "0.01rem 0 0.34rem" in source
+    assert "inset 0 -2px 0 var(--cpmm-active-tab-accent)" in source

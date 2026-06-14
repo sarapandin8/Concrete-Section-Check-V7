@@ -46,9 +46,12 @@ def render_active_choice(label: str, options: list[str], *, key: str, horizontal
         # spacer column leaves the tab cluster compact and left-aligned like a
         # commercial desktop tab bar, while each tab remains a real Streamlit
         # button for stable state handling.
-        tab_widths = [max(0.72, min(1.65, 0.48 + len(option) / 13.0)) for option in options]
-        trailing_spacer = max(4.0, 12.5 - sum(tab_widths))
-        columns = st.columns([*tab_widths, trailing_spacer])[: len(options)]
+        # UI.ACTIVE.TABS3 tightens the cluster further.  Keep each option close
+        # to text width and push the unused page width into a large trailing
+        # spacer so the nav reads as a tab strip rather than action buttons.
+        tab_widths = [max(0.62, min(1.08, 0.42 + len(option) / 22.0)) for option in options]
+        trailing_spacer = max(9.5, 17.0 - sum(tab_widths))
+        columns = st.columns([*tab_widths, trailing_spacer], gap="small")[: len(options)]
     else:
         columns = [st.container() for _ in options]
 
