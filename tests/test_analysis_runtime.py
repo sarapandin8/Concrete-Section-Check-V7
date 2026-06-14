@@ -47,6 +47,7 @@ from concrete_pmm_pro.ui.analysis_page import (
     _column_pier_check_decision_rows,
     _column_pier_uls_decision_summary_cards,
     _run_pmm_analysis_with_runtime_control,
+    _get_or_build_pmm_result_display_cache,
 )
 
 
@@ -1146,3 +1147,59 @@ def test_runtime_control_reuses_cached_pmm_result_without_solver(monkeypatch) ->
     finally:
         state.clear()
         state.update(backup)
+
+
+def test_pmm_display_cache_reuses_dataframe_without_rebuilding(monkeypatch) -> None:
+    state = analysis_page_module.st.session_state
+    backup = dict(state)
+    try:
+        state.clear()
+        cached_result = PMMSolverResult(
+            points=[
+                PMMPoint(
+                    theta_rad=0.0,
+                    c_mm=400.0,
+                    Pn_N=2_000_000.0,
+                    Mnx_Nmm=300_000_000.0,
+                    Mny_Nmm=200_000_000.0,
+                    phi=0.65,
+                    phiPn_N=1_300_000.0,
+                    phiPn_capped_N=1_300_000.0,
+                    phiMnx_Nmm=195_000_000.0,
+                    phiMny_Nmm=130_000_000.0,
+                    eps_t=0.002,
+                    strain_condition="transition",
+                    concrete_area_mm2=350_000.0,
+                    concrete_force_N=1_500_000.0,
+                )
+            ]
+        )
+        cached_df = pd.DataFrame({"phiPn_capped_kN": [1300.0], "phiMnx_kNm": [195.0], "phiMny_kNm": [130.0]})
+        cached_summary = {"point_count": 1}
+        cached_numeric_summary = {"warnings": []}
+        state["rc_pmm_display_cache_hash"] = "same-result"
+        state["rc_pmm_display_dataframe"] = cached_df
+        state["rc_pmm_display_summary"] = cached_summary
+        state["rc_pmm_numeric_summary"] = cached_numeric_summary
+
+        def _unexpected_dataframe_rebuild(*args, **kwargs):
+            raise AssertionError("cached PMM display dataframe should be reused after navigation")
+
+        monkeypatch.setattr(analysis_page_module, "pmm_result_to_display_dataframe", _unexpected_dataframe_rebuild)
+        df, summary, numeric_summary = _get_or_build_pmm_result_display_cache(cached_result, "same-result")
+
+        assert df is cached_df
+        assert summary is cached_summary
+        assert numeric_summary is cached_numeric_summary
+        assert state["pmm_result_display_cache_status"] == "Cached display artifacts used"
+    finally:
+        state.clear()
+        state.update(backup)
+
+
+def test_pmm_detail_dashboard_rendering_is_explicitly_gated_in_source() -> None:
+    source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text()
+
+    assert "PMM result rendering control" in source
+    assert "Render detailed PMM dashboard, plots, and raw tables" in source
+    assert "Detailed dashboard/plot rendering is intentionally off by default" in source

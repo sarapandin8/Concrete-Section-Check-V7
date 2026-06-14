@@ -2017,6 +2017,86 @@ def _render_pmm_runtime_control_panel(
     return current_hash
 
 
+def _get_or_build_pmm_result_display_cache(
+    result: PMMSolverResult,
+    result_hash: str | None,
+) -> tuple[pd.DataFrame, dict[str, object], dict[str, object]]:
+    """Return cached PMM display artifacts for the current result identity.
+
+    Streamlit reruns the script when users navigate between pages.  The PMM
+    solver is already guarded by an input hash; this helper prevents the
+    expensive result-to-DataFrame/numeric-summary conversion from being rebuilt
+    on every return to the Flexural (PMM) workspace when the stored solver
+    result is unchanged.  It does not change solver equations, capacity values,
+    or demand/capacity decisions.
+    """
+
+    cache_hash = str(result_hash or hashlib.sha256(result.model_dump_json().encode("utf-8")).hexdigest())
+    cached_hash = st.session_state.get("rc_pmm_display_cache_hash")
+    cached_df = st.session_state.get("rc_pmm_display_dataframe")
+    cached_summary = st.session_state.get("rc_pmm_display_summary")
+    cached_numeric_summary = st.session_state.get("rc_pmm_numeric_summary")
+    if (
+        cached_hash == cache_hash
+        and isinstance(cached_df, pd.DataFrame)
+        and isinstance(cached_summary, dict)
+        and isinstance(cached_numeric_summary, dict)
+    ):
+        st.session_state["pmm_result_display_cache_status"] = "Cached display artifacts used"
+        return cached_df, cached_summary, cached_numeric_summary
+
+    df = pmm_result_to_display_dataframe(result)
+    summary = summarize_pmm_result(result)
+    numeric_summary = check_pmm_dataframe_numerics(df)
+    st.session_state["rc_pmm_display_cache_hash"] = cache_hash
+    st.session_state["rc_pmm_display_dataframe"] = df
+    st.session_state["rc_pmm_display_summary"] = summary
+    st.session_state["rc_pmm_numeric_summary"] = numeric_summary
+    st.session_state["pmm_result_display_cache_status"] = "Display artifacts rebuilt"
+    return df, summary, numeric_summary
+
+
+def _render_pmm_detail_render_control(
+    *,
+    result_hash: str | None,
+    display_cache_status: str | None = None,
+) -> bool:
+    """Return whether expensive PMM dashboard/plot rendering is requested.
+
+    Closed Streamlit expanders and tabs still execute their Python bodies.  The
+    previous layout rebuilt the full PMM dashboard and figures whenever the user
+    merely navigated back to Flexural (PMM).  Keep the decision snapshot visible
+    but require an explicit user toggle before rendering detailed PMM plots,
+    slice dashboard tabs, and raw tables.
+    """
+
+    with st.expander("PMM result rendering control", expanded=False):
+        st.caption(
+            "Navigation reruns the Streamlit page script, but the stored PMM solver result is reused when the input hash is unchanged. "
+            "Detailed dashboard/plot rendering is intentionally off by default to keep page returns fast."
+        )
+        hash_text = "-" if result_hash is None else str(result_hash)[:12]
+        cols = st.columns(3)
+        cols[0].metric("Stored result hash", hash_text)
+        cols[1].metric("Solver cache", st.session_state.get("analysis_runtime_cache_status", "Not run"))
+        cols[2].metric("Display cache", display_cache_status or st.session_state.get("pmm_result_display_cache_status", "Not built"))
+        show_details = st.checkbox(
+            "Render detailed PMM dashboard, plots, and raw tables",
+            value=bool(st.session_state.get("render_detailed_pmm_result", False)),
+            key="render_detailed_pmm_result",
+            help=(
+                "Leave off for normal decision review and fast navigation. Turn on only when you need slice plots, 3D/2D figures, "
+                "or detailed raw PMM export tables. This does not rerun the PMM solver."
+            ),
+        )
+    if not show_details:
+        st.info(
+            "Stored PMM result and ULS D/C summary are being reused. Detailed PMM dashboard/plots are not rendered on this pass; "
+            "enable the rendering control above when you need them."
+        )
+    return bool(show_details)
+
+
 def _get_or_compute_demand_capacity_summary(
     result: PMMSolverResult,
     load_cases: list,
@@ -2199,10 +2279,8 @@ def _render_input_summary() -> None:
             result_has_active_prestress=result_has_active_prestress,
             result_has_passive_prestress=result_has_passive_prestress,
         )
-        df = pmm_result_to_display_dataframe(result)
+        df, summary, numeric_summary = _get_or_build_pmm_result_display_cache(result, result_hash)
         if not df.empty:
-            summary = summarize_pmm_result(result)
-            numeric_summary = check_pmm_dataframe_numerics(df)
             dc_summary = _get_or_compute_demand_capacity_summary(
                 result,
                 st.session_state.get("load_cases", []),
@@ -2311,30 +2389,42 @@ def _render_input_summary() -> None:
             with st.expander("Engineering warnings / limitations", expanded=False):
                 _render_engineering_warnings(engineering_warnings, df=df, dc_summary=dc_summary)
 
-            unbonded_ignored_count = int(df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in df else 0
-            _render_pmm_slice_dashboard(
-                df,
-                st.session_state.get("load_cases", []),
-                dc_summary,
-                result_label,
-                settings.include_prestress,
-                result_has_active_prestress,
-                unbonded_ignored_count,
-                result_hash,
-                engineering_warnings,
+            st.subheader("Stored ULS PMM Result Snapshot")
+            st.caption(
+                "This snapshot uses the stored PMM result and cached demand/capacity summary. "
+                "It is safe to review after navigation without rerunning the solver."
             )
+            _render_analysis_result_transparency_panel(dc_summary, st.session_state.get("load_cases", []))
 
-            with st.expander("Detailed PMM plots", expanded=False):
-                _render_pmm_charts(df, demand_df, dc_summary, key_prefix="analysis_input_diagnostics")
-            with st.expander("Raw PMM result table / export", expanded=False):
-                st.download_button(
-                    "Download RC PMM Result CSV",
-                    data=df.to_csv(index=False),
-                    file_name="rc_pmm_result.csv",
-                    mime="text/csv",
-                    use_container_width=True,
+            unbonded_ignored_count = int(df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in df else 0
+            show_detailed_pmm = _render_pmm_detail_render_control(
+                result_hash=result_hash,
+                display_cache_status=st.session_state.get("pmm_result_display_cache_status"),
+            )
+            if show_detailed_pmm:
+                _render_pmm_slice_dashboard(
+                    df,
+                    st.session_state.get("load_cases", []),
+                    dc_summary,
+                    result_label,
+                    settings.include_prestress,
+                    result_has_active_prestress,
+                    unbonded_ignored_count,
+                    result_hash,
+                    engineering_warnings,
                 )
-                st.dataframe(df.head(20), use_container_width=True, hide_index=True)
+
+                with st.expander("Detailed PMM plots", expanded=False):
+                    _render_pmm_charts(df, demand_df, dc_summary, key_prefix="analysis_input_diagnostics")
+                with st.expander("Raw PMM result table / export", expanded=False):
+                    st.download_button(
+                        "Download RC PMM Result CSV",
+                        data=df.to_csv(index=False),
+                        file_name="rc_pmm_result.csv",
+                        mime="text/csv",
+                        use_container_width=True,
+                    )
+                    st.dataframe(df.head(20), use_container_width=True, hide_index=True)
 
 
 def _demand_capacity_display_dataframe(summary: DemandCapacitySummary) -> pd.DataFrame:
