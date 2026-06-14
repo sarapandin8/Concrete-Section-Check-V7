@@ -57,3 +57,14 @@ def test_ui_active_tabs1_adds_deterministic_active_tab_css() -> None:
     assert ".cpmm-nav-tab-active" in source
     assert "background: var(--cpmm-active-tab-fill)" in source
     assert "render_active_choice" in source
+
+
+def test_ui_active_tabs2_uses_compact_commercial_nav_and_styles_streamlit_tabs() -> None:
+    source = Path("app.py").read_text(encoding="utf-8")
+
+    assert "UI.ACTIVE.TABS2" in source
+    assert ".cpmm-deterministic-nav-row--compact" in source
+    assert "min-height: 2.02rem" in source
+    assert "0 1px 2px var(--cpmm-active-tab-shadow)" in source
+    assert 'div[data-testid="stTabs"] button[role="tab"][aria-selected="true"]' in source
+    assert "--cpmm-active-tab-accent" in source

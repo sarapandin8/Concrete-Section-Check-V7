@@ -25,7 +25,9 @@ def render_active_choice(label: str, options: list[str], *, key: str, horizontal
     This renderer uses the app's own ``session_state`` value to draw the active
     option as a styled pill, while inactive options remain real buttons.  The
     result is predictable active-tab highlighting without relying on fragile CSS
-    selectors for Streamlit internals.
+    selectors for Streamlit internals.  The visual tab cluster is kept compact
+    and left-aligned so it reads as navigation instead of full-width action
+    buttons.
     """
 
     if not options:
@@ -36,11 +38,17 @@ def render_active_choice(label: str, options: list[str], *, key: str, horizontal
     active = str(st.session_state.get(key, options[0]))
 
     st.markdown(f'<div class="cpmm-nav-label">{escape(label)}</div>', unsafe_allow_html=True)
-    st.markdown('<div class="cpmm-deterministic-nav-row">', unsafe_allow_html=True)
+    st.markdown('<div class="cpmm-deterministic-nav-row cpmm-deterministic-nav-row--compact">', unsafe_allow_html=True)
 
     if horizontal:
-        widths = [max(1.25, min(3.0, 0.35 + len(option) / 7.5)) for option in options]
-        columns = st.columns(widths)
+        # UI.ACTIVE.TABS2: keep the existing navigation location/choices, but
+        # stop stretching each tab across the full viewport.  The trailing
+        # spacer column leaves the tab cluster compact and left-aligned like a
+        # commercial desktop tab bar, while each tab remains a real Streamlit
+        # button for stable state handling.
+        tab_widths = [max(0.72, min(1.65, 0.48 + len(option) / 13.0)) for option in options]
+        trailing_spacer = max(4.0, 12.5 - sum(tab_widths))
+        columns = st.columns([*tab_widths, trailing_spacer])[: len(options)]
     else:
         columns = [st.container() for _ in options]
 

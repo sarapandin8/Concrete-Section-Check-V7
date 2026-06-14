@@ -31,17 +31,18 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 
 _COMMERCIAL_TAB_CSS = """
 <style>
-/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1:
-   dark-blue bold typography plus deterministic active-tab highlight for app-owned navigation. */
+/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1 / UI.ACTIVE.TABS2:
+   dark-blue bold typography plus compact deterministic active-tab highlight for app-owned navigation. */
 :root {
   --cpmm-ink-blue: #0b3a66;
   --cpmm-ink-blue-soft: #164f83;
   --cpmm-blue-border: #9fb9d4;
   --cpmm-blue-fill: #e8f1ff;
   --cpmm-blue-fill-strong: #d9eafe;
-  --cpmm-active-tab-fill: #d7e8fb;
+  --cpmm-active-tab-fill: #e7f2ff;
   --cpmm-active-tab-border: #0b3a66;
-  --cpmm-active-tab-shadow: rgba(11, 58, 102, 0.18);
+  --cpmm-active-tab-accent: #0b3a66;
+  --cpmm-active-tab-shadow: rgba(11, 58, 102, 0.12);
 }
 
 /* Existing app/workspace tabs: bolder, slightly larger, dark-blue text. */
@@ -131,6 +132,40 @@ button[data-testid="stBaseButton-segmentedControlActive"] span {
   font-weight: 850 !important;
 }
 
+
+/* Streamlit st.tabs used inside detail workspaces, e.g. Longitudinal/Transverse Rebar.
+   Keep them in the same dark-blue active-tab language instead of the theme red underline. */
+div[data-testid="stTabs"] div[role="tablist"] {
+  gap: 0.12rem !important;
+  border-bottom: 1px solid #d8e2ee !important;
+}
+div[data-testid="stTabs"] button[role="tab"] {
+  color: var(--cpmm-ink-blue) !important;
+  font-size: 0.91rem !important;
+  font-weight: 800 !important;
+  padding: 0.42rem 0.86rem !important;
+  border-radius: 7px 7px 0 0 !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+}
+div[data-testid="stTabs"] button[role="tab"] p,
+div[data-testid="stTabs"] button[role="tab"] span {
+  color: var(--cpmm-ink-blue) !important;
+  font-size: 0.91rem !important;
+  font-weight: 800 !important;
+}
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] {
+  background: var(--cpmm-active-tab-fill) !important;
+  border-color: var(--cpmm-blue-border) !important;
+  border-bottom-color: var(--cpmm-active-tab-accent) !important;
+  box-shadow: inset 0 -3px 0 var(--cpmm-active-tab-accent) !important;
+}
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] p,
+div[data-testid="stTabs"] button[role="tab"][aria-selected="true"] span {
+  color: var(--cpmm-ink-blue) !important;
+  font-weight: 850 !important;
+}
+
 /* Radio fallback navigation styled as app tabs, not as ordinary radio text. */
 div[data-testid="stRadio"] > label {
   color: var(--cpmm-ink-blue) !important;
@@ -183,32 +218,33 @@ div[data-testid="stRadio"] div[role="radiogroup"] label span {
    so the highlight does not depend on Streamlit selected-state DOM internals. */
 .cpmm-nav-label {
   color: var(--cpmm-ink-blue);
-  font-size: 0.9rem;
-  font-weight: 780;
-  margin: 0.34rem 0 0.22rem 0;
+  font-size: 0.88rem;
+  font-weight: 800;
+  margin: 0.22rem 0 0.16rem 0;
 }
-.cpmm-deterministic-nav-row {
-  margin: 0.06rem 0 0.78rem 0;
+.cpmm-deterministic-nav-row,
+.cpmm-deterministic-nav-row--compact {
+  margin: 0.02rem 0 0.58rem 0;
 }
 .cpmm-nav-tab-pill {
   width: 100%;
-  min-height: 2.24rem;
+  min-height: 2.02rem;
   border: 1px solid var(--cpmm-blue-border);
   border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.38rem 0.92rem;
+  padding: 0.28rem 0.72rem;
   color: var(--cpmm-ink-blue);
-  font-size: 0.94rem;
+  font-size: 0.91rem;
   font-weight: 850;
-  line-height: 1.15;
+  line-height: 1.12;
   white-space: nowrap;
 }
 .cpmm-nav-tab-active {
   background: var(--cpmm-active-tab-fill);
   border-color: var(--cpmm-active-tab-border);
-  box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue), 0 0 0 1px var(--cpmm-active-tab-shadow);
+  box-shadow: inset 0 -3px 0 var(--cpmm-active-tab-accent), 0 1px 2px var(--cpmm-active-tab-shadow);
 }
 
 /* Action buttons: commercial-style bold dark-blue text. */

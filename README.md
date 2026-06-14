@@ -1,3 +1,4 @@
+- UI.ACTIVE.TABS2: compact commercial active tab bar; deterministic app-owned navigation now stays left-aligned and detail `st.tabs` use dark-blue active styling.
 # Concrete PMM Pro
 
 ## Current Baseline Note — UI.COMMERCIAL.TABS4
