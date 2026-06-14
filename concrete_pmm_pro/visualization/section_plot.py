@@ -111,7 +111,7 @@ def create_section_preview(
                 mode="lines",
                 fill="toself",
                 fillcolor="rgba(255, 255, 255, 1.0)",
-                line=dict(color="#5b6470", width=1.5, dash="dot"),
+                line=dict(color="#5b6470", width=1.5),
                 name=f"Hole {index}",
             )
         )

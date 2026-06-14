@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from concrete_pmm_pro.core.models import Point2D, SectionGeometry
-from concrete_pmm_pro.geometry.generators import circle, rectangle, rectangular_chamfered, rectangular_chamfered_dimensions, rectangular_filleted, rectangular_filleted_dimensions, rectangular_hollow
+from concrete_pmm_pro.geometry.generators import circle, rectangle, rectangular_chamfered, rectangular_chamfered_dimensions, rectangular_filleted, rectangular_filleted_dimensions, rectangular_hollow, rectangular_hollow_filleted, rectangular_hollow_filleted_dimensions
 from concrete_pmm_pro.geometry.summary import summarize_geometry
 from concrete_pmm_pro.geometry.validation import validate_section_geometry
 
@@ -101,6 +101,57 @@ def test_rectangular_filleted_dimension_guides_show_b_h_and_r() -> None:
     symbols = [item.symbol for item in dimensions]
 
     assert symbols == ["B", "H", "R"]
+
+
+def test_rectangular_hollow_filleted_generates_valid_outer_and_inner_fillet_polygons() -> None:
+    geometry = rectangular_hollow_filleted(
+        width_mm=1000,
+        height_mm=800,
+        t_top_mm=120,
+        t_bottom_mm=140,
+        t_left_mm=110,
+        t_right_mm=130,
+        r_outer_mm=120,
+        r_inner_mm=60,
+    )
+    summary = summarize_geometry(geometry)
+
+    assert len(geometry.holes) == 1
+    assert geometry.metadata["r_outer_mm"] == 120
+    assert geometry.metadata["r_inner_mm"] == 60
+    assert summary.area_mm2 > 0
+
+
+def test_rectangular_hollow_filleted_rejects_inner_radius_too_large_for_void() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="r_inner_mm"):
+        rectangular_hollow_filleted(
+            width_mm=1000,
+            height_mm=800,
+            t_top_mm=120,
+            t_bottom_mm=140,
+            t_left_mm=110,
+            t_right_mm=130,
+            r_outer_mm=0,
+            r_inner_mm=300,
+        )
+
+
+def test_rectangular_hollow_filleted_dimensions_include_radius_guides() -> None:
+    dimensions = rectangular_hollow_filleted_dimensions(
+        width_mm=1000,
+        height_mm=800,
+        t_top_mm=120,
+        t_bottom_mm=140,
+        t_left_mm=110,
+        t_right_mm=130,
+        r_outer_mm=120,
+        r_inner_mm=60,
+    )
+    symbols = [item.symbol for item in dimensions]
+
+    assert symbols == ["B", "H", "t_left", "t_right", "t_top", "t_bottom", "Ro", "Ri"]
 
 
 def test_invalid_polygon() -> None:

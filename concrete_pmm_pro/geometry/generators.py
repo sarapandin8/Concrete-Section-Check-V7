@@ -610,6 +610,63 @@ def rectangular_hollow(
     )
 
 
+def rectangular_hollow_filleted(
+    width_mm: float,
+    height_mm: float,
+    t_top_mm: float | None = None,
+    t_bottom_mm: float | None = None,
+    t_left_mm: float | None = None,
+    t_right_mm: float | None = None,
+    r_outer_mm: float = 0.0,
+    r_inner_mm: float = 0.0,
+    n_fillet: int = 16,
+    wall_thickness_mm: float | None = None,
+    name: str = "Rectangular hollow filleted",
+) -> SectionGeometry:
+    top, bottom, left, right = _resolve_wall_thicknesses(
+        t_top_mm=t_top_mm,
+        t_bottom_mm=t_bottom_mm,
+        t_left_mm=t_left_mm,
+        t_right_mm=t_right_mm,
+        wall_thickness_mm=wall_thickness_mm,
+    )
+    outer_radius = float(r_outer_mm)
+    inner_radius = float(r_inner_mm)
+    _require_non_negative("r_outer_mm", outer_radius)
+    _require_non_negative("r_inner_mm", inner_radius)
+    if n_fillet < 4:
+        raise ValueError("Invalid geometry: n_fillet must be at least 4.")
+    if outer_radius * 2.0 > min(width_mm, height_mm):
+        raise ValueError("Invalid geometry: r_outer_mm is too large for the selected outer dimensions.")
+    inner_bounds = _inner_rect_bounds(
+        width_mm=width_mm,
+        height_mm=height_mm,
+        t_top_mm=top,
+        t_bottom_mm=bottom,
+        t_left_mm=left,
+        t_right_mm=right,
+    )
+    inner_width = inner_bounds[2] - inner_bounds[0]
+    inner_height = inner_bounds[3] - inner_bounds[1]
+    if inner_radius * 2.0 > min(inner_width, inner_height):
+        raise ValueError("Invalid geometry: r_inner_mm is too large for the inner void dimensions.")
+    outer_polygon = _rounded_rectangle_points(width_mm, height_mm, outer_radius, n_fillet)
+    inner_hole = list(reversed(_rounded_rectangle_from_bounds(*inner_bounds, inner_radius, segments_per_corner=n_fillet)))
+    _ensure_valid_polygon_with_holes(outer_polygon, [inner_hole], name)
+    return SectionGeometry(
+        name=name,
+        outer_polygon=outer_polygon,
+        holes=[inner_hole],
+        metadata={
+            "preset": "rectangular_hollow_filleted",
+            "wall_thicknesses_mm": {"top": top, "bottom": bottom, "left": left, "right": right},
+            "r_outer_mm": outer_radius,
+            "r_inner_mm": inner_radius,
+            "n_fillet": int(n_fillet),
+        },
+    )
+
+
 def box_section_fillet(
     width_mm: float,
     height_mm: float,
@@ -1664,6 +1721,66 @@ def rectangular_hollow_dimensions(
     return dims
 
 
+def rectangular_hollow_filleted_dimensions(
+    width_mm: float,
+    height_mm: float,
+    t_top_mm: float | None = None,
+    t_bottom_mm: float | None = None,
+    t_left_mm: float | None = None,
+    t_right_mm: float | None = None,
+    r_outer_mm: float = 0.0,
+    r_inner_mm: float = 0.0,
+    n_fillet: int = 16,
+    wall_thickness_mm: float | None = None,
+    **kwargs: object,
+) -> list[DimensionItem]:
+    _ = (n_fillet,)
+    dims = rectangular_hollow_dimensions(
+        width_mm,
+        height_mm,
+        t_top_mm=t_top_mm,
+        t_bottom_mm=t_bottom_mm,
+        t_left_mm=t_left_mm,
+        t_right_mm=t_right_mm,
+        wall_thickness_mm=wall_thickness_mm,
+        **kwargs,
+    )
+    w = width_mm / 2.0
+    h = height_mm / 2.0
+    if r_outer_mm > 0:
+        dims.append(
+            _dim(
+                "Ro",
+                _point(w - r_outer_mm * (1.0 - math.cos(math.pi / 4.0)), -h + r_outer_mm * (1.0 - math.sin(math.pi / 4.0))),
+                _point(w + 0.6 * r_outer_mm, -h - 0.6 * r_outer_mm),
+                _point(w + 0.38 * r_outer_mm, -h - 0.38 * r_outer_mm),
+                "radial",
+                r_outer_mm,
+            )
+        )
+    if r_inner_mm > 0:
+        top, bottom, left, right = _resolve_wall_thicknesses(
+            t_top_mm=t_top_mm,
+            t_bottom_mm=t_bottom_mm,
+            t_left_mm=t_left_mm,
+            t_right_mm=t_right_mm,
+            wall_thickness_mm=wall_thickness_mm,
+        )
+        inner_right = width_mm / 2.0 - right
+        inner_bottom = -height_mm / 2.0 + bottom
+        dims.append(
+            _dim(
+                "Ri",
+                _point(inner_right - r_inner_mm * (1.0 - math.cos(math.pi / 4.0)), inner_bottom + r_inner_mm * (1.0 - math.sin(math.pi / 4.0))),
+                _point(inner_right + 0.42 * r_inner_mm, inner_bottom - 0.42 * r_inner_mm),
+                _point(inner_right + 0.28 * r_inner_mm, inner_bottom - 0.28 * r_inner_mm),
+                "radial",
+                r_inner_mm,
+            )
+        )
+    return dims
+
+
 def box_section_fillet_dimensions(
     width_mm: float,
     height_mm: float,
@@ -2056,6 +2173,7 @@ def register_builtin_generators(registry: GeometryRegistry) -> None:
         "circle": (circle, circle_dimensions),
         "circular_hollow": (circular_hollow, circular_hollow_dimensions),
         "rectangular_hollow": (rectangular_hollow, rectangular_hollow_dimensions),
+        "rectangular_hollow_filleted": (rectangular_hollow_filleted, rectangular_hollow_filleted_dimensions),
         "box_section_fillet": (box_section_fillet, box_section_fillet_dimensions),
         "precast_box_beam_exterior": (precast_box_beam_exterior, precast_box_beam_exterior_dimensions),
         "psc_i_girder": (psc_i_girder, psc_i_girder_dimensions),
