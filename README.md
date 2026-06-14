@@ -635,3 +635,8 @@ Adds bridge-oriented parametric plank girder presets for **Interior** and **Exte
 
 Corrects the parametric plank-girder concrete outline to follow the user-confirmed reference geometry.  Interior plank width is now generated as B at y = 0 and y = h1, b3 at y = h2, and B - 2*b1 at y = H with symmetric side recesses.  Exterior plank keeps the right exterior edge vertical for full depth; the left interior edge is at x = 0 for y = 0 to h1, x = b2 at y = h2, and x = b1 at y = H.  This is a geometry-shape hotfix only; composite metadata, section-property summary, PMM solver, analysis workspace, and report behavior are unchanged.
 
+
+### UI.ACTIVE.TABS1
+- Added deterministic app-owned active tab highlighting for Workspace, Setup/Sections subpages, Analysis subpages, and Column/Pier ULS checks.
+- Active tab state is rendered from `st.session_state` instead of relying on Streamlit's version-dependent selected-state DOM.
+- No solver, geometry, load, report, rebar, prestress, or project schema changes.

@@ -48,3 +48,12 @@ def test_ui_commercial_tabs4_highlights_active_segmented_tabs() -> None:
     assert 'button[data-testid="stBaseButton-segmentedControlActive"]' in source
     assert 'box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue)' in source
     assert 'label:has(input:checked)' in source
+
+
+def test_ui_active_tabs1_adds_deterministic_active_tab_css() -> None:
+    source = Path("app.py").read_text(encoding="utf-8")
+
+    assert "UI.ACTIVE.TABS1" in source
+    assert ".cpmm-nav-tab-active" in source
+    assert "background: var(--cpmm-active-tab-fill)" in source
+    assert "render_active_choice" in source

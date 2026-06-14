@@ -10,6 +10,7 @@ from concrete_pmm_pro.ui.loads_page import render_loads_page
 from concrete_pmm_pro.ui.materials_page import render_materials_page
 from concrete_pmm_pro.ui.prestress_page import render_prestress_page
 from concrete_pmm_pro.ui.project_page import render_project_page
+from concrete_pmm_pro.ui.navigation import render_active_choice
 from concrete_pmm_pro.ui.rebar_page import render_rebar_page
 from concrete_pmm_pro.ui.section_builder import render_section_builder
 
@@ -30,9 +31,8 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 
 _COMMERCIAL_TAB_CSS = """
 <style>
-/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4:
-   dark-blue bold typography, actual Streamlit segmented-control selector
-   coverage, and clear active-tab highlight. */
+/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1:
+   dark-blue bold typography plus deterministic active-tab highlight for app-owned navigation. */
 :root {
   --cpmm-ink-blue: #0b3a66;
   --cpmm-ink-blue-soft: #164f83;
@@ -179,6 +179,38 @@ div[data-testid="stRadio"] div[role="radiogroup"] label span {
   font-weight: 800 !important;
 }
 
+/* Deterministic app-owned navigation: active option is rendered from session_state,
+   so the highlight does not depend on Streamlit selected-state DOM internals. */
+.cpmm-nav-label {
+  color: var(--cpmm-ink-blue);
+  font-size: 0.9rem;
+  font-weight: 780;
+  margin: 0.34rem 0 0.22rem 0;
+}
+.cpmm-deterministic-nav-row {
+  margin: 0.06rem 0 0.78rem 0;
+}
+.cpmm-nav-tab-pill {
+  width: 100%;
+  min-height: 2.24rem;
+  border: 1px solid var(--cpmm-blue-border);
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.38rem 0.92rem;
+  color: var(--cpmm-ink-blue);
+  font-size: 0.94rem;
+  font-weight: 850;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+.cpmm-nav-tab-active {
+  background: var(--cpmm-active-tab-fill);
+  border-color: var(--cpmm-active-tab-border);
+  box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue), 0 0 0 1px var(--cpmm-active-tab-shadow);
+}
+
 /* Action buttons: commercial-style bold dark-blue text. */
 .stButton button,
 .stDownloadButton button,
@@ -256,27 +288,13 @@ def _render_global_commercial_tab_styles() -> None:
 def _safe_choice(label: str, options: list[str], *, key: str, horizontal: bool = True) -> str:
     """Return one selected option without rendering inactive pages.
 
-    Streamlit tabs execute every tab body on each rerun.  PERF.RERUN1 uses a
-    segmented/radio choice instead so only the selected workspace/subpage runs.
-    This is the key performance gate for heavy Analysis and preview code.
+    Streamlit tabs execute every tab body on each rerun.  PERF.RERUN1 keeps
+    navigation as a single-choice control so only the selected workspace/subpage
+    runs.  UI.ACTIVE.TABS1 renders the active item from app state so the
+    highlight is deterministic and does not depend on Streamlit's internal DOM.
     """
 
-    if not options:
-        raise ValueError("Navigation options must not be empty.")
-    if st.session_state.get(key) not in options:
-        st.session_state[key] = options[0]
-    # Prefer segmented_control when available; fall back to radio for older
-    # Streamlit versions and for lightweight test stubs.
-    segmented = getattr(st, "segmented_control", None)
-    if callable(segmented):
-        try:
-            value = segmented(label, options, key=key, selection_mode="single")
-            if value in options:
-                return str(value)
-        except TypeError:
-            pass
-    value = st.radio(label, options, key=key, horizontal=horizontal, label_visibility="collapsed")
-    return str(value) if value in options else str(st.session_state.get(key, options[0]))
+    return render_active_choice(label, options, key=key, horizontal=horizontal)
 
 
 def render_setup_workspace() -> None:

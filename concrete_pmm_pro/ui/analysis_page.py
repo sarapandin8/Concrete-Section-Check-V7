@@ -87,6 +87,7 @@ from concrete_pmm_pro.core.analysis_modes import (
 )
 from concrete_pmm_pro.core.units import N_to_kN, Nmm_to_kNm
 from concrete_pmm_pro.state.dirty_state import mark_analysis_current, project_input_hash
+from concrete_pmm_pro.ui.navigation import render_active_choice
 from concrete_pmm_pro.geometry.summary import summarize_geometry, to_shapely_polygon
 from concrete_pmm_pro.reporting import (
     build_result_traceability_snapshot,
@@ -9372,20 +9373,7 @@ def _render_column_pier_uls_decision_summary() -> None:
 def _column_pier_uls_check_choice() -> str:
     """Select the active Column/Pier ULS check without executing inactive check bodies."""
 
-    key = "_column_pier_uls_check_subtab"
-    options = list(COLUMN_PIER_ULS_CHECK_SUBTABS)
-    if st.session_state.get(key) not in options:
-        st.session_state[key] = options[0]
-    segmented = getattr(st, "segmented_control", None)
-    if callable(segmented):
-        try:
-            value = segmented("ULS check", options, key=key, selection_mode="single")
-            if value in options:
-                return str(value)
-        except TypeError:
-            pass
-    value = st.radio("ULS check", options, key=key, horizontal=True)
-    return str(value) if value in options else str(st.session_state.get(key, options[0]))
+    return render_active_choice("ULS check", list(COLUMN_PIER_ULS_CHECK_SUBTABS), key="_column_pier_uls_check_subtab")
 
 
 def _column_pier_guarded_strength_check_cards(check_name: str) -> list[dict[str, object]]:
@@ -15855,20 +15843,7 @@ def _analysis_subtabs_for_workflow(settings: AnalysisModeSettings) -> list[str]:
 def _analysis_subpage_choice() -> str:
     """Select one Analysis subpage without executing inactive analysis bodies."""
 
-    key = "_nav_analysis_subpage"
-    options = _analysis_subtabs_for_workflow(_analysis_mode_from_session())
-    if st.session_state.get(key) not in options:
-        st.session_state[key] = options[0]
-    segmented = getattr(st, "segmented_control", None)
-    if callable(segmented):
-        try:
-            value = segmented("Analysis subpage", options, key=key, selection_mode="single")
-            if value in options:
-                return str(value)
-        except TypeError:
-            pass
-    value = st.radio("Analysis subpage", options, key=key, horizontal=True, label_visibility="collapsed")
-    return str(value) if value in options else str(st.session_state.get(key, options[0]))
+    return render_active_choice("Analysis subpage", _analysis_subtabs_for_workflow(_analysis_mode_from_session()), key="_nav_analysis_subpage")
 
 
 def render_analysis_page() -> None:
