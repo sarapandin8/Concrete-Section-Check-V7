@@ -37,3 +37,14 @@ def test_ui_commercial_tabs3_styles_actual_streamlit_button_group_tabs() -> None
     assert 'div[data-testid="stButtonGroup"] [role="radio"][aria-checked="true"]' in source
     assert 'font-weight: 800' in source
     assert '--cpmm-ink-blue' in source
+
+
+def test_ui_commercial_tabs4_highlights_active_segmented_tabs() -> None:
+    source = Path("app.py").read_text(encoding="utf-8")
+
+    assert "UI.COMMERCIAL.TABS4" in source
+    assert "--cpmm-active-tab-fill" in source
+    assert "--cpmm-active-tab-border" in source
+    assert 'button[data-testid="stBaseButton-segmentedControlActive"]' in source
+    assert 'box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue)' in source
+    assert 'label:has(input:checked)' in source

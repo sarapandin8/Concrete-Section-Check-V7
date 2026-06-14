@@ -30,13 +30,18 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 
 _COMMERCIAL_TAB_CSS = """
 <style>
-/* UI.COMMERCIAL.TABS2/TABS3: dark-blue bold typography plus actual Streamlit stButtonGroup selector coverage. */
+/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4:
+   dark-blue bold typography, actual Streamlit segmented-control selector
+   coverage, and clear active-tab highlight. */
 :root {
   --cpmm-ink-blue: #0b3a66;
   --cpmm-ink-blue-soft: #164f83;
   --cpmm-blue-border: #9fb9d4;
   --cpmm-blue-fill: #e8f1ff;
   --cpmm-blue-fill-strong: #d9eafe;
+  --cpmm-active-tab-fill: #d7e8fb;
+  --cpmm-active-tab-border: #0b3a66;
+  --cpmm-active-tab-shadow: rgba(11, 58, 102, 0.18);
 }
 
 /* Existing app/workspace tabs: bolder, slightly larger, dark-blue text. */
@@ -51,6 +56,8 @@ div[data-testid="stButtonGroup"] {
    - radio fallback remains styled below */
 div[data-testid="stSegmentedControl"] button,
 div[data-testid="stButtonGroup"] button,
+button[data-testid="stBaseButton-segmentedControl"],
+button[data-testid="stBaseButton-segmentedControlActive"],
 div[data-testid="stButtonGroup"] [role="button"],
 div[data-testid="stButtonGroup"] [role="radio"] {
   border-radius: 0 !important;
@@ -67,12 +74,16 @@ div[data-testid="stButtonGroup"] [role="radio"] {
 }
 div[data-testid="stSegmentedControl"] button:first-child,
 div[data-testid="stButtonGroup"] button:first-child,
+button[data-testid="stBaseButton-segmentedControl"]:first-child,
+button[data-testid="stBaseButton-segmentedControlActive"]:first-child,
 div[data-testid="stButtonGroup"] [role="button"]:first-child,
 div[data-testid="stButtonGroup"] [role="radio"]:first-child {
   border-radius: 7px 0 0 7px !important;
 }
 div[data-testid="stSegmentedControl"] button:last-child,
 div[data-testid="stButtonGroup"] button:last-child,
+button[data-testid="stBaseButton-segmentedControl"]:last-child,
+button[data-testid="stBaseButton-segmentedControlActive"]:last-child,
 div[data-testid="stButtonGroup"] [role="button"]:last-child,
 div[data-testid="stButtonGroup"] [role="radio"]:last-child {
   border-right: 1px solid var(--cpmm-blue-border) !important;
@@ -80,19 +91,26 @@ div[data-testid="stButtonGroup"] [role="radio"]:last-child {
 }
 div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
 div[data-testid="stSegmentedControl"] button[data-selected="true"],
+div[data-testid="stSegmentedControl"] button[data-testid="stBaseButton-segmentedControlActive"],
 div[data-testid="stButtonGroup"] button[aria-pressed="true"],
 div[data-testid="stButtonGroup"] button[data-selected="true"],
+div[data-testid="stButtonGroup"] button[data-testid="stBaseButton-segmentedControlActive"],
+button[data-testid="stBaseButton-segmentedControlActive"],
 div[data-testid="stButtonGroup"] [role="radio"][aria-checked="true"],
 div[data-testid="stButtonGroup"] [role="button"][aria-pressed="true"] {
-  background: var(--cpmm-blue-fill) !important;
+  background: var(--cpmm-active-tab-fill) !important;
   color: var(--cpmm-ink-blue) !important;
-  border-color: var(--cpmm-ink-blue-soft) !important;
-  box-shadow: inset 0 -2px 0 var(--cpmm-ink-blue) !important;
+  border-color: var(--cpmm-active-tab-border) !important;
+  box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue), 0 0 0 1px var(--cpmm-active-tab-shadow) !important;
 }
 div[data-testid="stSegmentedControl"] button p,
 div[data-testid="stSegmentedControl"] button span,
 div[data-testid="stButtonGroup"] button p,
 div[data-testid="stButtonGroup"] button span,
+button[data-testid="stBaseButton-segmentedControl"] p,
+button[data-testid="stBaseButton-segmentedControl"] span,
+button[data-testid="stBaseButton-segmentedControlActive"] p,
+button[data-testid="stBaseButton-segmentedControlActive"] span,
 div[data-testid="stButtonGroup"] [role="button"] p,
 div[data-testid="stButtonGroup"] [role="button"] span,
 div[data-testid="stButtonGroup"] [role="radio"] p,
@@ -100,6 +118,17 @@ div[data-testid="stButtonGroup"] [role="radio"] span {
   color: var(--cpmm-ink-blue) !important;
   font-size: 0.94rem !important;
   font-weight: 800 !important;
+}
+
+/* Active tab text should stay dark-blue and bold even when Streamlit theme tries to color it red. */
+div[data-testid="stSegmentedControl"] button[data-testid="stBaseButton-segmentedControlActive"] p,
+div[data-testid="stSegmentedControl"] button[data-testid="stBaseButton-segmentedControlActive"] span,
+div[data-testid="stButtonGroup"] button[data-testid="stBaseButton-segmentedControlActive"] p,
+div[data-testid="stButtonGroup"] button[data-testid="stBaseButton-segmentedControlActive"] span,
+button[data-testid="stBaseButton-segmentedControlActive"] p,
+button[data-testid="stBaseButton-segmentedControlActive"] span {
+  color: var(--cpmm-ink-blue) !important;
+  font-weight: 850 !important;
 }
 
 /* Radio fallback navigation styled as app tabs, not as ordinary radio text. */
@@ -134,10 +163,10 @@ div[data-testid="stRadio"] div[role="radiogroup"] label:last-child {
   border-radius: 0 7px 7px 0;
 }
 div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
-  background: var(--cpmm-blue-fill);
+  background: var(--cpmm-active-tab-fill);
   color: var(--cpmm-ink-blue);
-  border-color: var(--cpmm-ink-blue-soft);
-  box-shadow: inset 0 -2px 0 var(--cpmm-ink-blue);
+  border-color: var(--cpmm-active-tab-border);
+  box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue), 0 0 0 1px var(--cpmm-active-tab-shadow);
 }
 div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) + label {
   border-left-color: var(--cpmm-ink-blue-soft);
