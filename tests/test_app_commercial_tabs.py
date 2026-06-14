@@ -12,3 +12,18 @@ def test_app_uses_visual_only_commercial_tab_styles_without_new_navigation() -> 
     assert "div[data-testid=\"stRadio\"] div[role=\"radiogroup\"]" in source
     assert "This does not add, move, or remove navigation controls" in source
     assert source.count('"Analysis": ["ULS / PMM", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]') == 1
+
+
+def test_app_commercial_tabs2_applies_dark_blue_bold_typography_to_existing_controls() -> None:
+    source = Path("app.py").read_text(encoding="utf-8")
+
+    assert "UI.COMMERCIAL.TABS2" in source
+    assert "--cpmm-ink-blue: #0b3a66" in source
+    assert "font-weight: 760" in source
+    assert "font-weight: 780" in source
+    assert "font-size: 0.9rem" in source
+    assert ".stButton button" in source
+    assert ".stDownloadButton button" in source
+    assert "div[data-testid=\"stWidgetLabel\"]" in source
+    assert "div[data-testid=\"stNumberInput\"] label" in source
+    assert "div[data-baseweb=\"input\"] input" in source

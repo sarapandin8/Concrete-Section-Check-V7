@@ -30,55 +30,68 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 
 _COMMERCIAL_TAB_CSS = """
 <style>
-/* UI.COMMERCIAL.TABS1: visual-only polish for existing Streamlit navigation controls. */
+/* UI.COMMERCIAL.TABS2: visual-only typography/color polish for existing navigation and input controls. */
+:root {
+  --cpmm-ink-blue: #0b3a66;
+  --cpmm-ink-blue-soft: #164f83;
+  --cpmm-blue-border: #9fb9d4;
+  --cpmm-blue-fill: #e8f1ff;
+  --cpmm-blue-fill-strong: #d9eafe;
+}
+
+/* Existing app/workspace tabs: bolder, slightly larger, dark-blue text. */
 div[data-testid="stSegmentedControl"] {
   margin: 0.1rem 0 0.65rem 0;
 }
 div[data-testid="stSegmentedControl"] button {
   border-radius: 0 !important;
-  border: 1px solid #cfd8e3 !important;
+  border: 1px solid var(--cpmm-blue-border) !important;
   border-right: 0 !important;
   background: #ffffff !important;
-  color: #344054 !important;
-  min-height: 2.05rem !important;
-  padding: 0.32rem 0.86rem !important;
-  font-size: 0.82rem !important;
-  font-weight: 650 !important;
+  color: var(--cpmm-ink-blue) !important;
+  min-height: 2.18rem !important;
+  padding: 0.36rem 0.94rem !important;
+  font-size: 0.9rem !important;
+  font-weight: 760 !important;
+  letter-spacing: 0.005em !important;
   box-shadow: none !important;
 }
 div[data-testid="stSegmentedControl"] button:first-child {
   border-radius: 7px 0 0 7px !important;
 }
 div[data-testid="stSegmentedControl"] button:last-child {
-  border-right: 1px solid #cfd8e3 !important;
+  border-right: 1px solid var(--cpmm-blue-border) !important;
   border-radius: 0 7px 7px 0 !important;
 }
 div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
 div[data-testid="stSegmentedControl"] button[data-selected="true"] {
-  background: #1f5f99 !important;
-  color: #ffffff !important;
-  border-color: #1f5f99 !important;
+  background: var(--cpmm-blue-fill) !important;
+  color: var(--cpmm-ink-blue) !important;
+  border-color: var(--cpmm-ink-blue-soft) !important;
+  box-shadow: inset 0 -2px 0 var(--cpmm-ink-blue) !important;
 }
+
+/* Radio fallback navigation styled as app tabs, not as ordinary radio text. */
 div[data-testid="stRadio"] > label {
-  color: #344054 !important;
-  font-size: 0.78rem !important;
-  font-weight: 700 !important;
-  margin-bottom: 0.22rem !important;
+  color: var(--cpmm-ink-blue) !important;
+  font-size: 0.84rem !important;
+  font-weight: 780 !important;
+  margin-bottom: 0.24rem !important;
 }
 div[data-testid="stRadio"] div[role="radiogroup"] {
   gap: 0 !important;
   margin: 0.1rem 0 0.65rem 0;
 }
 div[data-testid="stRadio"] div[role="radiogroup"] label {
-  border: 1px solid #cfd8e3;
+  border: 1px solid var(--cpmm-blue-border);
   border-right: 0;
   border-radius: 0;
   background: #ffffff;
-  min-height: 2.05rem;
-  padding: 0.22rem 0.78rem;
-  color: #344054;
-  font-size: 0.82rem;
-  font-weight: 650;
+  min-height: 2.18rem;
+  padding: 0.24rem 0.84rem;
+  color: var(--cpmm-ink-blue);
+  font-size: 0.9rem;
+  font-weight: 760;
   display: inline-flex;
   align-items: center;
 }
@@ -86,20 +99,81 @@ div[data-testid="stRadio"] div[role="radiogroup"] label:first-child {
   border-radius: 7px 0 0 7px;
 }
 div[data-testid="stRadio"] div[role="radiogroup"] label:last-child {
-  border-right: 1px solid #cfd8e3;
+  border-right: 1px solid var(--cpmm-blue-border);
   border-radius: 0 7px 7px 0;
 }
 div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
-  background: #1f5f99;
-  color: #ffffff;
-  border-color: #1f5f99;
+  background: var(--cpmm-blue-fill);
+  color: var(--cpmm-ink-blue);
+  border-color: var(--cpmm-ink-blue-soft);
+  box-shadow: inset 0 -2px 0 var(--cpmm-ink-blue);
 }
 div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) + label {
-  border-left-color: #1f5f99;
+  border-left-color: var(--cpmm-ink-blue-soft);
 }
 div[data-testid="stRadio"] div[role="radiogroup"] label [data-testid="stMarkdownContainer"] p {
   font-size: inherit;
   font-weight: inherit;
+}
+
+/* Action buttons: commercial-style bold dark-blue text. */
+.stButton button,
+.stDownloadButton button,
+div[data-testid="stFormSubmitButton"] button {
+  color: var(--cpmm-ink-blue) !important;
+  font-weight: 780 !important;
+  font-size: 0.9rem !important;
+  border-color: var(--cpmm-blue-border) !important;
+}
+.stButton button[kind="primary"],
+.stDownloadButton button[kind="primary"],
+div[data-testid="stFormSubmitButton"] button[kind="primary"] {
+  background: var(--cpmm-blue-fill) !important;
+  color: var(--cpmm-ink-blue) !important;
+  border-color: var(--cpmm-ink-blue-soft) !important;
+}
+.stButton button:hover,
+.stDownloadButton button:hover,
+div[data-testid="stFormSubmitButton"] button:hover {
+  color: var(--cpmm-ink-blue) !important;
+  border-color: var(--cpmm-ink-blue) !important;
+  background: var(--cpmm-blue-fill-strong) !important;
+}
+
+/* Labels for user input points and selectable/editable controls. */
+div[data-testid="stWidgetLabel"] label,
+div[data-testid="stWidgetLabel"] p,
+div[data-testid="stSelectbox"] label,
+div[data-testid="stMultiSelect"] label,
+div[data-testid="stNumberInput"] label,
+div[data-testid="stTextInput"] label,
+div[data-testid="stTextArea"] label,
+div[data-testid="stDateInput"] label,
+div[data-testid="stFileUploader"] label,
+div[data-testid="stCheckbox"] label,
+div[data-testid="stToggle"] label,
+div[data-testid="stDataFrame"] label,
+div[data-testid="stDataEditor"] label {
+  color: var(--cpmm-ink-blue) !important;
+  font-weight: 760 !important;
+}
+
+/* Field text and select display values should read as engineering inputs. */
+div[data-baseweb="input"] input,
+div[data-baseweb="textarea"] textarea,
+div[data-baseweb="select"] div,
+div[data-baseweb="base-input"] input {
+  color: var(--cpmm-ink-blue) !important;
+  font-weight: 650 !important;
+}
+
+/* Section/card headings that tell the user where to act. */
+h2, h3, h4,
+div[data-testid="stMarkdownContainer"] h2,
+div[data-testid="stMarkdownContainer"] h3,
+div[data-testid="stMarkdownContainer"] h4 {
+  color: var(--cpmm-ink-blue);
+  font-weight: 760;
 }
 </style>
 """
