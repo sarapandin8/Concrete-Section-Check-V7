@@ -105,3 +105,20 @@ def test_ui_pmm_compact1_collapses_flexural_diagnostics_and_prioritizes_visual_r
     assert "Decision graphics use the stored PMM result and cached D/C summary" in source
     assert "show_summary_cards=False" in source
     assert source.index('st.subheader("PMM Visual Review")') < source.index('with st.expander("Stored calculation snapshot / D/C trace", expanded=False)')
+
+
+def test_ui_action_buttons1_highlights_primary_actions_without_dark_fill() -> None:
+    app_source = Path("app.py").read_text(encoding="utf-8")
+    analysis_source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
+    project_source = Path("concrete_pmm_pro/ui/project_page.py").read_text(encoding="utf-8")
+
+    assert "UI.ACTION.BUTTONS1" in app_source
+    assert "--cpmm-action-fill: #fff4d8" in app_source
+    assert "--cpmm-action-fill-hover: #ffe9ac" in app_source
+    assert "button[kind=\"primary\"]" in app_source
+    assert 'button[data-testid="stBaseButton-primary"]' in app_source
+    assert 'div[data-testid="stFileUploader"] button' in app_source
+    assert "font-weight: 850" in app_source
+    assert 'type="primary"' in analysis_source and 'ui_keys1_analysis_page_button_1983' in analysis_source
+    assert '"Save Project"' in project_source and 'type="primary"' in project_source
+    assert '"Load Project JSON"' in project_source and 'type="primary"' in project_source

@@ -356,7 +356,7 @@ def _render_prestress_section() -> None:
         row = db.loc[db["name"] == product].iloc[0]
         selected_material = prestress_material_from_database_row(row)
         st.dataframe(pd.DataFrame([selected_material.model_dump()]), use_container_width=True, hide_index=True)
-        if st.button("Add selected product to project materials", use_container_width=True, key="ui_keys1_materials_page_button_359"):
+        if st.button("Add selected product to project materials", use_container_width=True, type="primary", key="ui_keys1_materials_page_button_359"):
             st.session_state["prestress_materials"] = _upsert_by_name(st.session_state["prestress_materials"], selected_material)
             st.session_state["active_prestress_material_name"] = selected_material.name
             st.success(f"Added {selected_material.name}.")
@@ -381,7 +381,7 @@ def _render_prestress_section() -> None:
         is_catalog_verified = st.checkbox("Catalog verified", value=False)
         note = st.text_area("Prestress material note", value="")
 
-        if st.button("Add / Update Custom Prestress Material", use_container_width=True, key="ui_keys1_materials_page_button_384"):
+        if st.button("Add / Update Custom Prestress Material", use_container_width=True, type="primary", key="ui_keys1_materials_page_button_384"):
             try:
                 material = PrestressSteelMaterial(
                     name=name,

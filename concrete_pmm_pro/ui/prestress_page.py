@@ -4321,7 +4321,7 @@ def _render_girder_advisory_debonding_recommendation(
     if proposed_count <= 0:
         st.info("No candidate strands were selected by the conservative code-aware starter rule.")
         return
-    if st.button("Apply advisory layout to strand table", key="girder_ps6b_apply_advisory_layout"):
+    if st.button("Apply advisory layout to strand table", type="primary", key="girder_ps6b_apply_advisory_layout"):
         applied = _apply_girder_advisory_debonding_recommendation(
             table,
             generated,
@@ -5491,7 +5491,7 @@ def _render_tendon_product_tools() -> None:
         assert product is not None
         st.dataframe(_tendon_product_summary_dataframe([product]), use_container_width=True, hide_index=True)
         row = apply_tendon_product_to_row(base_row, product)
-        if st.button("Add standard tendon to table", use_container_width=True, key="ui_keys1_prestress_page_button_5494"):
+        if st.button("Add standard tendon to table", use_container_width=True, type="primary", key="ui_keys1_prestress_page_button_5494"):
             st.session_state["prestress_table"] = _normalize_prestress_table_for_display(_append_prestress_row(pd.DataFrame(current_table), row))
             st.success(f"Added tendon product {product.label}. Pe_eff remains user-controlled.")
         return
@@ -5516,7 +5516,7 @@ def _render_tendon_product_tools() -> None:
     )
     st.dataframe(_tendon_product_summary_dataframe([product]), use_container_width=True, hide_index=True)
     row = apply_tendon_product_to_row(base_row, product)
-    if st.button("Add custom tendon to table", use_container_width=True, key="ui_keys1_prestress_page_button_5519"):
+    if st.button("Add custom tendon to table", use_container_width=True, type="primary", key="ui_keys1_prestress_page_button_5519"):
         st.session_state["prestress_table"] = _normalize_prestress_table_for_display(_append_prestress_row(pd.DataFrame(current_table), row))
         st.success(f"Added custom tendon {product.label}. Pe_eff remains user-controlled.")
 
@@ -5867,7 +5867,7 @@ def render_prestress_page() -> None:
                 with apply_col:
                     st.write("")
                     st.write("")
-                    if st.button("Apply to active rows", use_container_width=True, key="prestress_apply_force_input_method"):
+                    if st.button("Apply to active rows", use_container_width=True, type="primary", key="prestress_apply_force_input_method"):
                         applied_table = _apply_force_input_method_to_active_rows(
                             pd.DataFrame(st.session_state["prestress_table"]),
                             selected_force_method,

@@ -31,14 +31,18 @@ RESULTS_WORKSPACE_PLACEHOLDER = (
 
 _COMMERCIAL_TAB_CSS = """
 <style>
-/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1 / UI.ACTIVE.TABS2 / UI.ACTIVE.TABS3:
-   dark-blue bold typography plus compact deterministic active-tab highlight for app-owned navigation. */
+/* UI.COMMERCIAL.TABS2 / UI.COMMERCIAL.TABS3 / UI.COMMERCIAL.TABS4 / UI.ACTIVE.TABS1 / UI.ACTIVE.TABS2 / UI.ACTIVE.TABS3 / UI.ACTION.BUTTONS1:
+   dark-blue bold typography plus compact deterministic active-tab highlight and highlighted primary action buttons. */
 :root {
   --cpmm-ink-blue: #0b3a66;
   --cpmm-ink-blue-soft: #164f83;
   --cpmm-blue-border: #9fb9d4;
   --cpmm-blue-fill: #e8f1ff;
   --cpmm-blue-fill-strong: #d9eafe;
+  --cpmm-action-fill: #fff4d8;
+  --cpmm-action-fill-hover: #ffe9ac;
+  --cpmm-action-border: #d8aa2e;
+  --cpmm-action-border-hover: #b98a12;
   --cpmm-active-tab-fill: #e7f2ff;
   --cpmm-active-tab-border: #0b3a66;
   --cpmm-active-tab-accent: #0b3a66;
@@ -268,12 +272,15 @@ div[data-testid="stRadio"] div[role="radiogroup"] label span {
   box-shadow: inset 0 -2px 0 var(--cpmm-active-tab-accent), 0 1px 1px var(--cpmm-active-tab-shadow);
 }
 
-/* Action buttons: commercial-style bold dark-blue text. */
+/* Action buttons: commercial-style bold dark-blue text.
+   Primary/action buttons are intentionally highlighted with a soft amber fill
+   so Run, Save, Upload/Load, Apply, Replace, Append, and confirm actions are
+   easy to find without using a heavy/dark color. */
 .stButton button,
 .stDownloadButton button,
 div[data-testid="stFormSubmitButton"] button {
   color: var(--cpmm-ink-blue) !important;
-  font-weight: 780 !important;
+  font-weight: 800 !important;
   font-size: 0.86rem !important;
   min-height: 1.68rem !important;
   padding: 0.22rem 0.64rem !important;
@@ -282,10 +289,24 @@ div[data-testid="stFormSubmitButton"] button {
 }
 .stButton button[kind="primary"],
 .stDownloadButton button[kind="primary"],
-div[data-testid="stFormSubmitButton"] button[kind="primary"] {
-  background: var(--cpmm-blue-fill) !important;
+div[data-testid="stFormSubmitButton"] button[kind="primary"],
+button[data-testid="stBaseButton-primary"] {
+  background: var(--cpmm-action-fill) !important;
   color: var(--cpmm-ink-blue) !important;
-  border-color: var(--cpmm-ink-blue-soft) !important;
+  border-color: var(--cpmm-action-border) !important;
+  font-weight: 850 !important;
+  box-shadow: inset 0 -2px 0 rgba(216, 170, 46, 0.32) !important;
+}
+.stButton button[kind="primary"] p,
+.stDownloadButton button[kind="primary"] p,
+div[data-testid="stFormSubmitButton"] button[kind="primary"] p,
+button[data-testid="stBaseButton-primary"] p,
+.stButton button[kind="primary"] span,
+.stDownloadButton button[kind="primary"] span,
+div[data-testid="stFormSubmitButton"] button[kind="primary"] span,
+button[data-testid="stBaseButton-primary"] span {
+  color: var(--cpmm-ink-blue) !important;
+  font-weight: 850 !important;
 }
 .stButton button:hover,
 .stDownloadButton button:hover,
@@ -293,6 +314,28 @@ div[data-testid="stFormSubmitButton"] button:hover {
   color: var(--cpmm-ink-blue) !important;
   border-color: var(--cpmm-ink-blue) !important;
   background: var(--cpmm-blue-fill-strong) !important;
+}
+.stButton button[kind="primary"]:hover,
+.stDownloadButton button[kind="primary"]:hover,
+div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
+button[data-testid="stBaseButton-primary"]:hover {
+  color: var(--cpmm-ink-blue) !important;
+  border-color: var(--cpmm-action-border-hover) !important;
+  background: var(--cpmm-action-fill-hover) !important;
+}
+/* Upload controls have a built-in Browse button; keep that button in the same
+   soft action language so project/import workflows are easy to spot. */
+div[data-testid="stFileUploader"] button,
+div[data-testid="stFileUploaderDropzone"] button {
+  background: var(--cpmm-action-fill) !important;
+  color: var(--cpmm-ink-blue) !important;
+  border-color: var(--cpmm-action-border) !important;
+  font-weight: 850 !important;
+}
+div[data-testid="stFileUploader"] button:hover,
+div[data-testid="stFileUploaderDropzone"] button:hover {
+  background: var(--cpmm-action-fill-hover) !important;
+  border-color: var(--cpmm-action-border-hover) !important;
 }
 
 /* Labels for user input points and selectable/editable controls. */

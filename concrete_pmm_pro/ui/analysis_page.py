@@ -1978,6 +1978,7 @@ def _render_pmm_runtime_control_panel(
                 disabled=analysis_input is None,
                 help=f"Runs or reuses the cached {solver_mode_label} result depending on the engineering input hash.",
                 use_container_width=True,
+                type="primary",
                 key="ui_keys1_analysis_page_button_1983",
             )
 

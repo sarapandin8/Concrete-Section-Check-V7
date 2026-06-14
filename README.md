@@ -643,3 +643,11 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Added deterministic app-owned active tab highlighting for Workspace, Setup/Sections subpages, Analysis subpages, and Column/Pier ULS checks.
 - Active tab state is rendered from `st.session_state` instead of relying on Streamlit's version-dependent selected-state DOM.
 - No solver, geometry, load, report, rebar, prestress, or project schema changes.
+
+
+## UI.ACTION.BUTTONS1
+
+- Highlight primary action buttons with a soft amber fill and bold dark-blue text.
+- Apply the same action language to upload browse buttons.
+- Mark PMM Run, Save Project, Load Project JSON, and project info update as primary actions.
+- No solver, geometry, loads, rebar, prestress, report, or project schema changes.
