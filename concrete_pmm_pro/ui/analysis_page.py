@@ -1624,6 +1624,7 @@ def _render_method_validation_status_panel(
     *,
     result_has_active_prestress: bool,
     result_has_passive_prestress: bool,
+    show_summary_cards: bool = True,
 ) -> None:
     """Render commercial validation status instead of relying on prototype wording."""
 
@@ -1631,7 +1632,8 @@ def _render_method_validation_status_panel(
         result_has_active_prestress=result_has_active_prestress,
         result_has_passive_prestress=result_has_passive_prestress,
     )
-    _render_analysis_summary_strip(_method_validation_status_cards(rows), columns=4)
+    if show_summary_cards:
+        _render_analysis_summary_strip(_method_validation_status_cards(rows), columns=4)
     with st.expander("Validation status / method notes", expanded=False):
         st.caption(
             "This panel separates validation evidence from final-design limitations. "
@@ -1646,7 +1648,8 @@ def _render_prestress_check_panel(summary: PrestressCheckSummary, include_prestr
     """Render prestress QA as diagnostics instead of main-page content."""
 
     if not summary.checks:
-        st.info("No prestress elements are defined.")
+        with st.expander("Prestress diagnostics", expanded=False):
+            st.info("No prestress elements are defined.")
         return
 
     if summary.errors:
@@ -1948,51 +1951,46 @@ def _render_pmm_runtime_control_panel(
     has_cached_result = isinstance(st.session_state.get("rc_pmm_result"), PMMSolverResult)
     cached_hash = st.session_state.get("pmm_last_analysis_hash")
     cache_status = cache_status_for_hash(current_hash, cached_hash, has_cached_result)
-    # Streamlit still reruns the page script when users navigate back to this
-    # workspace.  Keep the heavy PMM solver cache status explicit so a normal UI
-    # rerender is not mistaken for a solver recalculation.
     if cache_status == "Cached result used" and not bool(st.session_state.get("analysis_force_recalculate", False)):
         st.session_state["analysis_runtime_cache_status"] = cache_status
     elif st.session_state.get("analysis_runtime_cache_status") != "Recalculated":
         st.session_state["analysis_runtime_cache_status"] = cache_status
 
-    with st.expander("Analysis Runtime Control", expanded=True):
-        st.info(
-            "Runtime controls manage when existing PMM calculations run. "
-            "They do not change solver equations or engineering sign conventions. "
-            "Returning to this page rerenders the UI; it should reuse the stored PMM result when the input hash is unchanged."
-        )
+    with st.expander("Run / cache controls", expanded=True):
         preset_options = list(ACCURACY_PRESET_RESOLUTIONS.keys())
-        st.selectbox(
-            "Accuracy preset",
-            preset_options,
-            index=preset_options.index(preset),
-            key="analysis_accuracy_preset",
-            help="Fast is lowest-cost; Standard is the practical default; High Accuracy increases sweep resolution for review cases.",
-        )
+        control_cols = st.columns([1.2, 1.0, 1.0, 2.2])
+        with control_cols[0]:
+            st.selectbox(
+                "Accuracy preset",
+                preset_options,
+                index=preset_options.index(preset),
+                key="analysis_accuracy_preset",
+                help="Fast is lowest-cost; Standard is the practical default; High Accuracy increases sweep resolution for review cases.",
+            )
+        with control_cols[1]:
+            st.checkbox("Force recalculation", value=False, key="analysis_force_recalculate")
+        with control_cols[2]:
+            resolution = accuracy_preset_resolution(st.session_state.get("analysis_accuracy_preset", preset))
+            st.metric("Sweep", f"{resolution['neutral_axis_angle_steps']} x {resolution['neutral_axis_depth_steps']}")
+        with control_cols[3]:
+            run_clicked = st.button(
+                "Run / Recalculate Analysis",
+                disabled=analysis_input is None,
+                help=f"Runs or reuses the cached {solver_mode_label} result depending on the engineering input hash.",
+                use_container_width=True,
+                key="ui_keys1_analysis_page_button_1983",
+            )
 
-        resolution = accuracy_preset_resolution(st.session_state.get("analysis_accuracy_preset", preset))
-        st.caption(
-            "Preset resolution: "
-            f"{resolution['neutral_axis_angle_steps']} angle steps x {resolution['neutral_axis_depth_steps']} depth steps."
-        )
         if st.session_state.get("analysis_accuracy_preset") == "High Accuracy":
             st.warning("High Accuracy increases neutral-axis sweep resolution and may significantly increase runtime.")
         if cache_status == "Input changed, recalculation required":
             st.warning("Engineering inputs have changed since the cached PMM result. Recalculate before using displayed results.")
-        st.checkbox("Force recalculation even if cached", value=False, key="analysis_force_recalculate")
-        run_clicked = st.button(
-            "Run / Recalculate Analysis",
-            disabled=analysis_input is None,
-            help=f"Runs or reuses the cached {solver_mode_label} result depending on the engineering input hash.",
-            use_container_width=True,
-            key="ui_keys1_analysis_page_button_1983",
-        )
         if analysis_input is None:
             readiness = check_analysis_readiness(st.session_state)
             if readiness.errors:
                 st.caption("Run is disabled until Analysis Readiness errors are corrected.")
-                st.dataframe(_readiness_actions_to_dataframe(readiness.errors), use_container_width=True, hide_index=True)
+                with st.expander("Run blocking actions", expanded=False):
+                    st.dataframe(_readiness_actions_to_dataframe(readiness.errors), use_container_width=True, hide_index=True)
             else:
                 st.caption("Run is disabled until analysis input can be built from the current project data.")
 
@@ -2012,12 +2010,14 @@ def _render_pmm_runtime_control_panel(
             cache_status = st.session_state.get("analysis_runtime_cache_status", cache_status)
 
         status_cols = st.columns(3)
-        status_cols[0].metric("Last run status", st.session_state.get("analysis_runtime_last_status", "Not run"))
+        status_cols[0].metric("Run status", st.session_state.get("analysis_runtime_last_status", "Not run"))
         last_time = st.session_state.get("analysis_runtime_last_time_seconds")
-        status_cols[1].metric("Last run time", "N/A" if last_time is None else f"{float(last_time):.2f} s")
-        status_cols[2].metric("Result cache status", cache_status)
+        status_cols[1].metric("Runtime", "N/A" if last_time is None else f"{float(last_time):.2f} s")
+        status_cols[2].metric("Cache", cache_status)
+        st.caption(
+            "Runtime controls do not change solver equations or sign conventions. Navigation rerenders the UI; cached PMM results are reused when the input hash is unchanged."
+        )
     return current_hash
-
 
 def _get_or_build_pmm_result_display_cache(
     result: PMMSolverResult,
@@ -2152,55 +2152,56 @@ def _render_input_summary() -> None:
     )
     prestress_check_summary = check_prestress_elements_for_analysis(prestress_elements)
 
-    st.subheader("Analysis Workspace Overview")
-    beta1 = concrete_material.beta1 if concrete_material is not None and concrete_material.beta1 is not None else (
-        aci_beta1(concrete_material.fc_MPa) if concrete_material is not None else None
-    )
-    overview_cards = [
-        {
-            "title": "Section",
-            "value": "Available" if section_geometry is not None else "Missing",
-            "detail": "Geometry ready for PMM" if section_geometry is not None else "Define section geometry first",
-            "status": "ready" if section_geometry is not None else "danger",
-        },
-        {
-            "title": "Active ULS",
-            "value": f"{len(load_cases):,}",
-            "detail": "Used by ULS / PMM D/C",
-            "status": "ready" if load_cases else "warning",
-        },
-        {
-            "title": "Rebar / Prestress",
-            "value": f"{len(rebars):,} / {len(prestress_elements):,}",
-            "detail": (
-                f"Included. Stored {len(stored_rebars):,} / {len(stored_prestress_elements):,}; "
-                f"Bonded PS {len(bonded_prestress_elements):,}; unbonded ignored {len(unbonded_prestress_elements):,}"
-            ),
-            "status": "warning" if unbonded_prestress_elements or not rebar_system_enabled or not prestress_system_enabled else "neutral",
-        },
-        {
-            "title": "Solver Mode",
-            "value": solver_mode_label,
-            "detail": f"f'c {concrete_material.fc_MPa:g} MPa, beta1 {beta1:.3g}" if concrete_material is not None and beta1 is not None else "Concrete material missing",
-            "status": "ready" if concrete_material is not None else "danger",
-        },
-    ]
-    _render_analysis_summary_strip(overview_cards, columns=4)
+    with st.expander("Analysis input overview / diagnostics", expanded=False):
+        st.markdown("**Analysis Workspace Overview**")
+        beta1 = concrete_material.beta1 if concrete_material is not None and concrete_material.beta1 is not None else (
+            aci_beta1(concrete_material.fc_MPa) if concrete_material is not None else None
+        )
+        overview_cards = [
+            {
+                "title": "Section",
+                "value": "Available" if section_geometry is not None else "Missing",
+                "detail": "Geometry ready for PMM" if section_geometry is not None else "Define section geometry first",
+                "status": "ready" if section_geometry is not None else "danger",
+            },
+            {
+                "title": "Active ULS",
+                "value": f"{len(load_cases):,}",
+                "detail": "Used by ULS / PMM D/C",
+                "status": "ready" if load_cases else "warning",
+            },
+            {
+                "title": "Rebar / Prestress",
+                "value": f"{len(rebars):,} / {len(prestress_elements):,}",
+                "detail": (
+                    f"Included. Stored {len(stored_rebars):,} / {len(stored_prestress_elements):,}; "
+                    f"Bonded PS {len(bonded_prestress_elements):,}; unbonded ignored {len(unbonded_prestress_elements):,}"
+                ),
+                "status": "warning" if unbonded_prestress_elements or not rebar_system_enabled or not prestress_system_enabled else "neutral",
+            },
+            {
+                "title": "Solver Mode",
+                "value": solver_mode_label,
+                "detail": f"f'c {concrete_material.fc_MPa:g} MPa, beta1 {beta1:.3g}" if concrete_material is not None and beta1 is not None else "Concrete material missing",
+                "status": "ready" if concrete_material is not None else "danger",
+            },
+        ]
+        _render_analysis_summary_strip(overview_cards, columns=4)
 
-    if not rebar_system_enabled:
-        st.info("Ordinary rebar is disabled for this section; stored rebar rows are preserved but ignored by analysis.")
-    if not prestress_system_enabled:
-        st.info("Prestressing steel is disabled for this section; stored prestress rows are preserved but ignored by analysis.")
-    if unbonded_prestress_elements:
-        st.warning("Unbonded prestress elements are present and are ignored by the current PMM/SLS solvers.")
-    if not settings.subtract_rebar_displaced_concrete:
-        st.warning("Displaced concrete at ordinary rebar locations is not subtracted. Compression capacity may be overestimated.")
-    if analysis_input is not None:
-        st.success("AnalysisInput can be built from the current session data.")
-    else:
-        st.info("AnalysisInput will be built after readiness errors are resolved.")
+        if not rebar_system_enabled:
+            st.info("Ordinary rebar is disabled for this section; stored rebar rows are preserved but ignored by analysis.")
+        if not prestress_system_enabled:
+            st.info("Prestressing steel is disabled for this section; stored prestress rows are preserved but ignored by analysis.")
+        if unbonded_prestress_elements:
+            st.warning("Unbonded prestress elements are present and are ignored by the current PMM/SLS solvers.")
+        if not settings.subtract_rebar_displaced_concrete:
+            st.warning("Displaced concrete at ordinary rebar locations is not subtracted. Compression capacity may be overestimated.")
+        if analysis_input is not None:
+            st.success("AnalysisInput can be built from the current session data.")
+        else:
+            st.info("AnalysisInput will be built after readiness errors are resolved.")
 
-    with st.expander("Input diagnostics / section totals", expanded=False):
+        st.markdown("**Input diagnostics / section totals**")
         cols = st.columns(4)
         cols[0].metric("Section available", "Yes" if section_geometry is not None else "No")
         cols[1].metric("Strength load cases", f"{len(load_cases):,}")
@@ -2281,6 +2282,7 @@ def _render_input_summary() -> None:
         _render_method_validation_status_panel(
             result_has_active_prestress=result_has_active_prestress,
             result_has_passive_prestress=result_has_passive_prestress,
+            show_summary_cards=False,
         )
         df, summary, numeric_summary = _get_or_build_pmm_result_display_cache(result, result_hash)
         if not df.empty:
@@ -2392,21 +2394,10 @@ def _render_input_summary() -> None:
             with st.expander("Engineering warnings / limitations", expanded=False):
                 _render_engineering_warnings(engineering_warnings, df=df, dc_summary=dc_summary)
 
-            st.subheader("Stored ULS PMM Result Snapshot")
-            st.caption(
-                "This snapshot uses the stored PMM result and cached demand/capacity summary. "
-                "It is safe to review after navigation without rerunning the solver."
-            )
-            _render_analysis_result_transparency_panel(
-                dc_summary,
-                st.session_state.get("load_cases", []),
-                widget_key_prefix="stored_pmm_snapshot",
-            )
-
             unbonded_ignored_count = int(df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in df else 0
             st.subheader("PMM Visual Review")
             st.caption(
-                "The PMM Check and 3D Interaction tabs use the stored PMM result. They do not rerun the PMM solver when you navigate back to this page."
+                "Decision graphics use the stored PMM result and cached D/C summary. They do not rerun the solver when you navigate back to this page."
             )
             _render_pmm_slice_dashboard(
                 df,
@@ -2419,6 +2410,17 @@ def _render_input_summary() -> None:
                 result_hash,
                 engineering_warnings,
             )
+
+            with st.expander("Stored calculation snapshot / D/C trace", expanded=False):
+                st.caption(
+                    "This snapshot uses the stored PMM result and cached demand/capacity summary. "
+                    "It is safe to review after navigation without rerunning the solver."
+                )
+                _render_analysis_result_transparency_panel(
+                    dc_summary,
+                    st.session_state.get("load_cases", []),
+                    widget_key_prefix="stored_pmm_snapshot",
+                )
 
             show_advanced_pmm = _render_pmm_advanced_render_control(
                 result_hash=result_hash,
@@ -9411,14 +9413,15 @@ def _column_pier_guarded_strength_check_cards(check_name: str) -> list[dict[str,
 
 def _render_column_pier_flexural_pmm_workspace() -> None:
     st.markdown("#### Flexural (PMM)")
-    st.caption("Axial-biaxial PMM strength workspace for Pu, Mux, and Muy.")
+    st.caption("Decision-first axial-biaxial PMM strength workspace for Pu, Mux, and Muy.")
     st.info(
         "ULS compression Pu remains positive. Prestress is treated as internal prestress/reinforcement action "
         "and should not be duplicated as external Pu demand."
     )
-    _render_analysis_mode_section()
-    _render_analysis_settings_panel()
-    _render_readiness_panel()
+    with st.expander("Analysis setup / readiness", expanded=False):
+        _render_analysis_mode_section()
+        _render_analysis_settings_panel()
+        _render_readiness_panel()
     _render_input_summary()
     _render_verification_expander()
 

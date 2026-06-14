@@ -92,3 +92,16 @@ def test_app_brand1_renames_visible_app_and_prevents_header_crop() -> None:
     assert "line-height: 1.24" in source
     assert "padding-top: 1.55rem" in source
     assert "overflow: visible" in source
+
+
+def test_ui_pmm_compact1_collapses_flexural_diagnostics_and_prioritizes_visual_review() -> None:
+    source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
+
+    assert "Decision-first axial-biaxial PMM strength workspace" in source
+    assert 'with st.expander("Analysis setup / readiness", expanded=False)' in source
+    assert 'with st.expander("Analysis input overview / diagnostics", expanded=False)' in source
+    assert 'with st.expander("Run / cache controls", expanded=True)' in source
+    assert 'with st.expander("Stored calculation snapshot / D/C trace", expanded=False)' in source
+    assert "Decision graphics use the stored PMM result and cached D/C summary" in source
+    assert "show_summary_cards=False" in source
+    assert source.index('st.subheader("PMM Visual Review")') < source.index('with st.expander("Stored calculation snapshot / D/C trace", expanded=False)')
