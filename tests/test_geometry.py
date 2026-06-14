@@ -66,6 +66,20 @@ def test_rectangular_chamfered_dimension_guides_show_cx_and_cy() -> None:
     assert symbols == ["B", "H", "cx", "cy"]
 
 
+def test_rectangular_chamfered_dimension_guides_keep_full_height_h_clear_of_cy() -> None:
+    dimensions = rectangular_chamfered_dimensions(width_mm=500, height_mm=500, chamfer_x_mm=100, chamfer_y_mm=50)
+    by_symbol = {item.symbol: item for item in dimensions}
+
+    h_dim = by_symbol["H"]
+    cy_dim = by_symbol["cy"]
+
+    assert h_dim.start.y == -250
+    assert h_dim.end.y == 250
+    assert h_dim.value_mm == 500
+    assert h_dim.start.x > cy_dim.start.x
+    assert h_dim.text_position.x > cy_dim.text_position.x
+
+
 def test_invalid_polygon() -> None:
     geometry = SectionGeometry(
         name="bowtie",

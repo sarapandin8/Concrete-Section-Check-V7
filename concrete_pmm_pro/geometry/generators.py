@@ -1547,17 +1547,28 @@ def rectangular_chamfered_dimensions(
     chamfer_y_mm: float | None = None,
     **kwargs: object,
 ) -> list[DimensionItem]:
-    dims = rectangle_dimensions(width_mm, height_mm, **kwargs)
     w = width_mm / 2.0
     h = height_mm / 2.0
     legacy_chamfer = 0.0 if chamfer_mm is None else float(chamfer_mm)
     cx = legacy_chamfer if chamfer_x_mm is None else float(chamfer_x_mm)
     cy = legacy_chamfer if chamfer_y_mm is None else float(chamfer_y_mm)
     offset = max(width_mm, height_mm) * 0.08
+
+    # Keep the global B/H guides clear of local chamfer guides.  For this
+    # section the local cy dimension sits near the top-right chamfer, so the
+    # overall H dimension is pushed farther outward to avoid visually merging
+    # the two vertical guides.
+    cy_x = w + offset
+    h_x = w + (2.0 * offset if cy > 0.0 else offset)
+
+    dims = [
+        _dim("B", _point(-w, -h - offset), _point(w, -h - offset), _point(0, -h - 1.6 * offset), "horizontal", width_mm),
+        _dim("H", _point(h_x, -h), _point(h_x, h), _point(h_x + 0.8 * offset, 0), "vertical", height_mm),
+    ]
     if cx > 0:
         dims.append(_dim("cx", _point(w - cx, h + offset), _point(w, h + offset), _point(w - cx / 2.0, h + 1.6 * offset), "horizontal", cx))
     if cy > 0:
-        dims.append(_dim("cy", _point(w + offset, h - cy), _point(w + offset, h), _point(w + 1.8 * offset, h - cy / 2.0), "vertical", cy))
+        dims.append(_dim("cy", _point(cy_x, h - cy), _point(cy_x, h), _point(cy_x + 0.8 * offset, h - cy / 2.0), "vertical", cy))
     return dims
 
 
