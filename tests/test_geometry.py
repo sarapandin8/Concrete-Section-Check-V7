@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from concrete_pmm_pro.core.models import Point2D, SectionGeometry
-from concrete_pmm_pro.geometry.generators import circle, rectangle, rectangular_chamfered, rectangular_chamfered_dimensions, rectangular_hollow
+from concrete_pmm_pro.geometry.generators import circle, rectangle, rectangular_chamfered, rectangular_chamfered_dimensions, rectangular_filleted, rectangular_filleted_dimensions, rectangular_hollow
 from concrete_pmm_pro.geometry.summary import summarize_geometry
 from concrete_pmm_pro.geometry.validation import validate_section_geometry
 
@@ -78,6 +78,29 @@ def test_rectangular_chamfered_dimension_guides_keep_full_height_h_clear_of_cy()
     assert h_dim.value_mm == 500
     assert h_dim.start.x > cy_dim.start.x
     assert h_dim.text_position.x > cy_dim.text_position.x
+
+
+def test_rectangular_filleted_area_matches_rounded_rectangle_formula() -> None:
+    geometry = rectangular_filleted(width_mm=1000, height_mm=1000, corner_radius_mm=200)
+    summary = summarize_geometry(geometry)
+    expected = 1000 * 1000 - (4.0 - math.pi) * 200**2
+
+    assert summary.area_mm2 == pytest_approx(expected, rel=0.002)
+    assert geometry.metadata["corner_radius_mm"] == 200
+
+
+def test_rectangular_filleted_rejects_radius_larger_than_half_min_dimension() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="corner_radius_mm"):
+        rectangular_filleted(width_mm=800, height_mm=600, corner_radius_mm=301)
+
+
+def test_rectangular_filleted_dimension_guides_show_b_h_and_r() -> None:
+    dimensions = rectangular_filleted_dimensions(width_mm=1000, height_mm=1000, corner_radius_mm=200)
+    symbols = [item.symbol for item in dimensions]
+
+    assert symbols == ["B", "H", "R"]
 
 
 def test_invalid_polygon() -> None:

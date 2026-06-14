@@ -531,6 +531,34 @@ def rectangular_chamfered(
     )
 
 
+def rectangular_filleted(
+    width_mm: float,
+    height_mm: float,
+    corner_radius_mm: float,
+    n_fillet: int = 16,
+    name: str = "Rectangular filleted",
+) -> SectionGeometry:
+    _require_positive("B", width_mm)
+    _require_positive("H", height_mm)
+    _require_non_negative("corner_radius_mm", corner_radius_mm)
+    if corner_radius_mm * 2.0 > min(width_mm, height_mm):
+        raise ValueError("Invalid geometry: corner_radius_mm must be smaller than or equal to min(B, H)/2.")
+    if n_fillet < 4:
+        raise ValueError("Invalid geometry: n_fillet must be at least 4.")
+    points = _rounded_rectangle_points(width_mm, height_mm, corner_radius_mm, n_fillet)
+    _ensure_valid_simple_polygon(points, name)
+    return SectionGeometry(
+        name=name,
+        outer_polygon=points,
+        holes=[],
+        metadata={
+            "preset": "rectangular_filleted",
+            "corner_radius_mm": float(corner_radius_mm),
+            "n_fillet": int(n_fillet),
+        },
+    )
+
+
 def circle(diameter_mm: float, segments: int = 128, name: str = "Circle") -> SectionGeometry:
     _require_positive("D", diameter_mm)
     return SectionGeometry(name=name, outer_polygon=_circle_points(diameter_mm / 2.0, segments), holes=[], metadata={"preset": "circle"})
@@ -1572,6 +1600,27 @@ def rectangular_chamfered_dimensions(
     return dims
 
 
+def rectangular_filleted_dimensions(
+    width_mm: float,
+    height_mm: float,
+    corner_radius_mm: float,
+    n_fillet: int = 16,
+    **kwargs: object,
+) -> list[DimensionItem]:
+    # n_fillet is part of geometry discretization only; dimension guides show the analytical section size.
+    _ = (n_fillet, kwargs)
+    dims = rectangle_dimensions(width_mm, height_mm)
+    if corner_radius_mm > 0:
+        w = width_mm / 2.0
+        h = height_mm / 2.0
+        r = float(corner_radius_mm)
+        arc_point = _point(w - r * (1.0 - math.cos(math.pi / 4.0)), -h + r * (1.0 - math.sin(math.pi / 4.0)))
+        leader_end = _point(w + 0.6 * r, -h - 0.6 * r)
+        text_point = _point(w + 0.38 * r, -h - 0.38 * r)
+        dims.append(_dim("R", arc_point, leader_end, text_point, "radial", r))
+    return dims
+
+
 def circle_dimensions(diameter_mm: float, **_: object) -> list[DimensionItem]:
     r = diameter_mm / 2.0
     return [_dim("D", _point(-r, 0), _point(r, 0), _point(0, -0.18 * diameter_mm), "diameter", diameter_mm)]
@@ -2003,6 +2052,7 @@ def register_builtin_generators(registry: GeometryRegistry) -> None:
     entries = {
         "rectangle": (rectangle, rectangle_dimensions),
         "rectangular_chamfered": (rectangular_chamfered, rectangular_chamfered_dimensions),
+        "rectangular_filleted": (rectangular_filleted, rectangular_filleted_dimensions),
         "circle": (circle, circle_dimensions),
         "circular_hollow": (circular_hollow, circular_hollow_dimensions),
         "rectangular_hollow": (rectangular_hollow, rectangular_hollow_dimensions),
