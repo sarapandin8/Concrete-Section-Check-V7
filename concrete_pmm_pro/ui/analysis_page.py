@@ -2056,45 +2056,46 @@ def _get_or_build_pmm_result_display_cache(
     return df, summary, numeric_summary
 
 
-def _render_pmm_detail_render_control(
+def _render_pmm_advanced_render_control(
     *,
     result_hash: str | None,
     display_cache_status: str | None = None,
 ) -> bool:
-    """Return whether expensive PMM dashboard/plot rendering is requested.
+    """Return whether legacy raw PMM plots/tables should be rendered.
 
-    Closed Streamlit expanders and tabs still execute their Python bodies.  The
-    previous layout rebuilt the full PMM dashboard and figures whenever the user
-    merely navigated back to Flexural (PMM).  Keep the decision snapshot visible
-    but require an explicit user toggle before rendering detailed PMM plots,
-    slice dashboard tabs, and raw tables.
+    STATE.RESULT2 over-gated the Flexural (PMM) workspace and made the main PMM
+    Check / 3D Interaction tabs disappear behind a checkbox.  That protected
+    navigation speed but violated the product expectation that available PMM
+    visuals remain discoverable after a successful run.  Keep the commercial
+    PMM dashboard visible; gate only the redundant legacy point-cloud charts and
+    raw export table that are useful for diagnostics but not needed for first
+    screen review.
     """
 
-    with st.expander("PMM result rendering control", expanded=False):
+    with st.expander("Advanced PMM result rendering control", expanded=False):
         st.caption(
             "Navigation reruns the Streamlit page script, but the stored PMM solver result is reused when the input hash is unchanged. "
-            "Detailed dashboard/plot rendering is intentionally off by default to keep page returns fast."
+            "The main PMM Check and 3D Interaction tabs remain visible. Only legacy raw point-cloud plots and raw PMM tables are optional."
         )
         hash_text = "-" if result_hash is None else str(result_hash)[:12]
         cols = st.columns(3)
         cols[0].metric("Stored result hash", hash_text)
         cols[1].metric("Solver cache", st.session_state.get("analysis_runtime_cache_status", "Not run"))
         cols[2].metric("Display cache", display_cache_status or st.session_state.get("pmm_result_display_cache_status", "Not built"))
-        show_details = st.checkbox(
-            "Render detailed PMM dashboard, plots, and raw tables",
-            value=bool(st.session_state.get("render_detailed_pmm_result", False)),
-            key="render_detailed_pmm_result",
+        show_advanced = st.checkbox(
+            "Render legacy PMM point-cloud plots and raw table/export",
+            value=bool(st.session_state.get("render_advanced_pmm_raw_outputs", False)),
+            key="render_advanced_pmm_raw_outputs",
             help=(
-                "Leave off for normal decision review and fast navigation. Turn on only when you need slice plots, 3D/2D figures, "
-                "or detailed raw PMM export tables. This does not rerun the PMM solver."
+                "Leave off for normal PMM review and fast navigation. The PMM Check slice plot and 3D Interaction tab stay available. "
+                "Turn this on only when you need the older full point-cloud plots or the raw PMM table/export. This does not rerun the PMM solver."
             ),
         )
-    if not show_details:
-        st.info(
-            "Stored PMM result and ULS D/C summary are being reused. Detailed PMM dashboard/plots are not rendered on this pass; "
-            "enable the rendering control above when you need them."
+    if not show_advanced:
+        st.caption(
+            "Using stored PMM result and cached display artifacts. Advanced raw point-cloud plots/table are not rendered on this pass."
         )
-    return bool(show_details)
+    return bool(show_advanced)
 
 
 def _get_or_compute_demand_capacity_summary(
@@ -2397,24 +2398,28 @@ def _render_input_summary() -> None:
             _render_analysis_result_transparency_panel(dc_summary, st.session_state.get("load_cases", []))
 
             unbonded_ignored_count = int(df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in df else 0
-            show_detailed_pmm = _render_pmm_detail_render_control(
+            st.subheader("PMM Visual Review")
+            st.caption(
+                "The PMM Check and 3D Interaction tabs use the stored PMM result. They do not rerun the PMM solver when you navigate back to this page."
+            )
+            _render_pmm_slice_dashboard(
+                df,
+                st.session_state.get("load_cases", []),
+                dc_summary,
+                result_label,
+                settings.include_prestress,
+                result_has_active_prestress,
+                unbonded_ignored_count,
+                result_hash,
+                engineering_warnings,
+            )
+
+            show_advanced_pmm = _render_pmm_advanced_render_control(
                 result_hash=result_hash,
                 display_cache_status=st.session_state.get("pmm_result_display_cache_status"),
             )
-            if show_detailed_pmm:
-                _render_pmm_slice_dashboard(
-                    df,
-                    st.session_state.get("load_cases", []),
-                    dc_summary,
-                    result_label,
-                    settings.include_prestress,
-                    result_has_active_prestress,
-                    unbonded_ignored_count,
-                    result_hash,
-                    engineering_warnings,
-                )
-
-                with st.expander("Detailed PMM plots", expanded=False):
+            if show_advanced_pmm:
+                with st.expander("Legacy PMM point-cloud plots", expanded=False):
                     _render_pmm_charts(df, demand_df, dc_summary, key_prefix="analysis_input_diagnostics")
                 with st.expander("Raw PMM result table / export", expanded=False):
                     st.download_button(

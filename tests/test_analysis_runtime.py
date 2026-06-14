@@ -1197,9 +1197,12 @@ def test_pmm_display_cache_reuses_dataframe_without_rebuilding(monkeypatch) -> N
         state.update(backup)
 
 
-def test_pmm_detail_dashboard_rendering_is_explicitly_gated_in_source() -> None:
+def test_pmm_visual_dashboard_remains_visible_while_raw_outputs_are_gated() -> None:
     source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text()
 
-    assert "PMM result rendering control" in source
-    assert "Render detailed PMM dashboard, plots, and raw tables" in source
-    assert "Detailed dashboard/plot rendering is intentionally off by default" in source
+    assert "PMM Visual Review" in source
+    assert "_render_pmm_slice_dashboard(" in source
+    assert "Advanced PMM result rendering control" in source
+    assert "Render legacy PMM point-cloud plots and raw table/export" in source
+    assert "The main PMM Check and 3D Interaction tabs remain visible" in source
+    assert "Detailed dashboard/plot rendering is intentionally off by default" not in source
