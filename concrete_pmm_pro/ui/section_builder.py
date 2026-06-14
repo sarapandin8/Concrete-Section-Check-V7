@@ -176,6 +176,108 @@ _SECTION_BUILDER_CSS = """
   line-height: 1.25;
   margin-top: 0.16rem;
 }
+
+.cpmm-commercial-section-hero {
+  border: 1px solid #d5dde8;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%);
+  margin: 0.35rem 0 0.85rem 0;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
+}
+.cpmm-commercial-section-topline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.72rem 0.92rem;
+  border-bottom: 1px solid #e3e8f0;
+}
+.cpmm-commercial-section-title {
+  color: #1f5f99;
+  font-size: 1.05rem;
+  font-weight: 760;
+  letter-spacing: 0;
+}
+.cpmm-commercial-section-subtitle {
+  color: #667085;
+  font-size: 0.78rem;
+  margin-top: 0.1rem;
+}
+.cpmm-commercial-section-mode {
+  color: #475467;
+  background: #eef5fb;
+  border: 1px solid #d4e6f5;
+  border-radius: 999px;
+  padding: 0.18rem 0.62rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.cpmm-commercial-workflow-tabs {
+  display: flex;
+  gap: 0;
+  background: #1f5f99;
+  border-radius: 0 0 9px 9px;
+  overflow: hidden;
+}
+.cpmm-commercial-workflow-tab {
+  padding: 0.55rem 1rem;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.78rem;
+  font-weight: 760;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-right: 1px solid rgba(255, 255, 255, 0.18);
+}
+.cpmm-commercial-workflow-tab.active {
+  background: #1a5487;
+  color: #ffffff;
+}
+.cpmm-commercial-workflow-tab.review {
+  color: rgba(255, 255, 255, 0.55);
+}
+.cpmm-commercial-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.35rem;
+}
+.cpmm-commercial-panel-title-main {
+  color: #1f2937;
+  font-size: 1.02rem;
+  font-weight: 760;
+}
+.cpmm-commercial-panel-kicker {
+  color: #667085;
+  font-size: 0.72rem;
+  font-weight: 720;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.cpmm-commercial-mini-actions {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.cpmm-commercial-pill {
+  border: 1px solid #d8e4ef;
+  border-radius: 999px;
+  background: #f6f9fc;
+  color: #475467;
+  font-size: 0.72rem;
+  font-weight: 680;
+  padding: 0.16rem 0.52rem;
+}
+.cpmm-commercial-preview-note {
+  border-left: 3px solid #1f5f99;
+  background: #f4f8fb;
+  color: #667085;
+  font-size: 0.78rem;
+  padding: 0.46rem 0.62rem;
+  margin: 0.32rem 0 0.62rem 0;
+  border-radius: 6px;
+}
 @media (max-width: 1200px) {
   .cpmm-section-property-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -1523,6 +1625,42 @@ def _render_validation_panel(result: ValidationResult) -> None:
         st.markdown(_message_list_html([f"INFO: {info}" for info in result.info]), unsafe_allow_html=True)
 
 
+def _render_commercial_section_header() -> None:
+    settings = _analysis_mode_from_session_state()
+    st.markdown(
+        f'''
+        <div class="cpmm-commercial-section-hero">
+          <div class="cpmm-commercial-section-topline">
+            <div>
+              <div class="cpmm-commercial-section-title">Section Builder</div>
+              <div class="cpmm-commercial-section-subtitle">Definition workspace for section geometry, material basis, and analysis-ready gross properties.</div>
+            </div>
+            <div class="cpmm-commercial-section-mode">{escape(analysis_mode_label(settings))}</div>
+          </div>
+          <div class="cpmm-commercial-workflow-tabs">
+            <div class="cpmm-commercial-workflow-tab active">Definition</div>
+            <div class="cpmm-commercial-workflow-tab review">Analysis</div>
+            <div class="cpmm-commercial-workflow-tab review">Report / QA</div>
+          </div>
+        </div>
+        ''',
+        unsafe_allow_html=True,
+    )
+
+
+def _commercial_panel_title_html(title: str, kicker: str, *pills: str) -> str:
+    pill_html = "".join(f'<span class="cpmm-commercial-pill">{escape(str(pill))}</span>' for pill in pills if str(pill))
+    return (
+        '<div class="cpmm-commercial-panel-title">'
+        '<div>'
+        f'<div class="cpmm-commercial-panel-kicker">{escape(kicker)}</div>'
+        f'<div class="cpmm-commercial-panel-title-main">{escape(title)}</div>'
+        '</div>'
+        f'<div class="cpmm-commercial-mini-actions">{pill_html}</div>'
+        '</div>'
+    )
+
+
 def _render_section_definition_panel(
     presets: list[dict[str, Any]],
     categories: list[str],
@@ -1534,7 +1672,10 @@ def _render_section_definition_panel(
     available_categories = _categories_for_filtered_presets(categories, available_presets)
 
     with st.container(border=True):
-        st.markdown("#### Section Definition")
+        st.markdown(
+            _commercial_panel_title_html("Section Definition", "Definition", "Preset", "Material", "System"),
+            unsafe_allow_html=True,
+        )
         st.markdown(
             '<div class="cpmm-section-note">Select the active concrete section. The main dimension editor is shown below beside the live section preview.</div>',
             unsafe_allow_html=True,
@@ -1617,7 +1758,10 @@ def _render_geometry_parameters_workspace(
     """Render the main geometry input workspace shown beside the live preview."""
 
     with st.container(border=True):
-        st.markdown("#### Geometry Parameters")
+        st.markdown(
+            _commercial_panel_title_html("Geometry Parameters", "Input", "Dimensions", "Live"),
+            unsafe_allow_html=True,
+        )
         st.markdown(
             '<div class="cpmm-section-note">Primary section dimensions are kept at the same level as the live preview. '
             'Workflow, axis, reinforcement, and material details remain collapsed above.</div>',
@@ -1778,7 +1922,14 @@ def _render_section_preview_panel(
     preview_prestress_elements: list[Any] = []
 
     with st.container(border=True):
-        st.markdown("#### Live Section Preview")
+        st.markdown(
+            _commercial_panel_title_html("Live Section Preview", "Canvas", "Geometry only"),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="cpmm-commercial-preview-note">Preview canvas shows the active concrete polygon and dimension guides. Rebar and prestress graphics remain controlled on their own pages.</div>',
+            unsafe_allow_html=True,
+        )
         if geometry is not None and validation.is_valid:
             st.plotly_chart(
                 create_section_preview(
@@ -1906,7 +2057,10 @@ def _render_section_properties_summary(
     geometry: Any | None,
     validation: ValidationResult,
 ) -> None:
-    st.subheader("Precast Gross Section Properties")
+    st.markdown(
+        _commercial_panel_title_html("Precast Gross Section Properties", "Properties", "Gross", "Concrete polygon"),
+        unsafe_allow_html=True,
+    )
     st.markdown(
         '<div class="cpmm-section-note">A, centroid, Ix, Iy, fiber distances, and section modulus shown here are based on the '
         'generated gross concrete polygon only. Composite slab/topping properties are metadata at this stage and are not included '
@@ -2025,8 +2179,7 @@ def _render_section_properties_summary(
 def render_section_builder() -> None:
     _ensure_section_parameter_owner_from_session()
     st.markdown(_SECTION_BUILDER_CSS, unsafe_allow_html=True)
-    st.subheader("Section Builder")
-    st.caption("Build the active concrete section geometry and review its live preview before running analysis.")
+    _render_commercial_section_header()
 
     presets = load_section_presets()
     categories = load_section_categories()

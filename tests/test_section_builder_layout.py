@@ -19,6 +19,11 @@ def test_section_builder_professional_layout_sections_are_present() -> None:
     assert "Section Properties" in source
     assert "cpmm-section-property-grid" in source
     assert "Geometry Parameters" in source
+    assert "cpmm-commercial-section-hero" in source
+    assert "cpmm-commercial-workflow-tab active" in source
+    assert "_render_commercial_section_header" in source
+    assert "_commercial_panel_title_html" in source
+    assert "Preview canvas shows the active concrete polygon" in source
     assert "st.sidebar" not in source
 
 
@@ -642,3 +647,15 @@ def test_section_builder_metadata_inputs_restore_from_durable_section_parameters
         "Be_mode", "parametric_i_girder", "Manual", ["Manual", "AASHTO helper"]
     ) == "AASHTO helper"
     assert section_builder._durable_bool_default("composite_enabled", "parametric_i_girder", True) is False
+
+
+def test_commercial_section_builder_layout_is_definition_only_and_solver_safe() -> None:
+    source = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "section_builder.py").read_text(encoding="utf-8")
+
+    assert "Definition" in source
+    assert "Analysis" in source
+    assert "Report / QA" in source
+    assert "create_section_preview" in source
+    assert "default_registry.geometry" in source
+    assert "compute_pmm" not in source
+    assert "demand_capacity" not in source
