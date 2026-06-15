@@ -5,11 +5,20 @@ PRESTRESS_SOURCE = (ROOT / "concrete_pmm_pro" / "ui" / "prestress_page.py").read
 REBAR_SOURCE = (ROOT / "concrete_pmm_pro" / "ui" / "rebar_page.py").read_text()
 
 
-def test_prestress_page_default_preview_hides_ordinary_rebar():
+def test_prestress_page_default_preview_hides_ordinary_rebar_and_dimensions():
     assert "Section Preview with Prestress" in PRESTRESS_SOURCE
     assert "Default preview shows prestressing steel only" in PRESTRESS_SOURCE
+    assert "dimension guides are intentionally hidden" in PRESTRESS_SOURCE
     assert "prestress_only_section_preview" in PRESTRESS_SOURCE
-    assert "create_section_preview(\n            geometry,\n            dimensions,\n            \"symbol_value\",\n            [],\n            active_prestress" in PRESTRESS_SOURCE
+    preview_label_index = PRESTRESS_SOURCE.index("Section Preview with Prestress")
+    preview_call_start = PRESTRESS_SOURCE.index("fig = create_section_preview(", preview_label_index)
+    preview_call_end = PRESTRESS_SOURCE.index("fig.update_layout", preview_call_start)
+    preview_call = PRESTRESS_SOURCE[preview_call_start:preview_call_end]
+    assert "geometry" in preview_call
+    assert "preview_dimensions" in preview_call
+    assert "active_prestress" in preview_call
+    assert 'st.session_state.get("section_dimensions", [])' not in preview_call
+    assert "preview_dimensions: list[Any] = []" in PRESTRESS_SOURCE
 
 
 def test_rebar_page_default_preview_hides_prestressing_steel_and_dimensions():
@@ -45,6 +54,11 @@ def test_combined_reinforcement_preview_is_explicit_and_collapsed():
     assert "Coordination view only" in REBAR_SOURCE
     assert "prestress_combined_reinforcement_preview" in PRESTRESS_SOURCE
     assert "rebar_combined_reinforcement_preview" in REBAR_SOURCE
+    combined_index = PRESTRESS_SOURCE.index("prestress_combined_reinforcement_preview")
+    combined_call_start = PRESTRESS_SOURCE.rindex("combined_fig = create_section_preview(", 0, combined_index)
+    combined_call = PRESTRESS_SOURCE[combined_call_start:combined_index]
+    assert "preview_dimensions" in combined_call
+    assert 'st.session_state.get("section_dimensions", [])' not in combined_call
 
 
 def test_prestress_page_hides_section_level_table_for_precast_girder_workflow():

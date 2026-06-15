@@ -1,3 +1,4 @@
+- PRESTRESS.RAIL.UGIRDER1: adds Railway U-Girder default strand layout and drawing debond symbol metadata. The preset now seeds 72 strands (36 per side) using 12.7 mm ASTM A416 Grade 270 low-relaxation strands with five rows at 95/150/205/260/315 mm from the bottom. Debond pattern symbols (0/1000/2000/3000/4000/5000 mm) are preview metadata only and do not change station-based analysis yet. No solver, SLS, PMM, shear/torsion, geometry, rebar, report, or project schema changes.
 - SECTION.RAIL.UGIRDER3: polishes the Railway U-Girder input wording and dimension labels by renaming h1 to `Step from bottom`, h2 to `Bottom recess`, and separating hx/hy annotations onto opposite haunches to avoid label overlap. No concrete polygon, solver, rebar, prestress, SLS, shear/torsion, report, or schema changes.
 - SECTION.RAIL.UGIRDER2: refines the Railway U-Girder preset with editable Haunch X/Y and h1-h4 drawing controls (h1 step height, h2 bottom opening, h3 side floor thickness, h4 center floor thickness) while keeping the 50 mm exterior notch derived and six 25 mm chamfers fixed drawing details. No solver, rebar, prestress, SLS, shear/torsion, report, or schema changes.
 - SECTION.RAIL.UGIRDER1: adds a Bridge Beam/Girder Railway U-Girder non-composite through-trough preset from the provided railway section drawing defaults (B=5500 mm, H=1600 mm, top wall 600 mm, bottom side block 650 mm, inner haunch 300 x 300 mm, floor thickness 395/450 mm) with derived 50 mm exterior notches and six fixed 25 mm chamfers. No solver, rebar, prestress, SLS, shear/torsion, report, or schema changes.
@@ -709,3 +710,8 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Align Building Beam/Girder shared prestressed girder ordinary-rebar inclusion defaults with Section Builder.
 - Stored ordinary rebar remains preserved but is excluded from analysis when the ordinary-rebar system is disabled or workflow-default excluded.
 - No solver, section property, or project schema changes.
+
+### UI.PRESTRESS.PREVIEW2 — Hide Dimension Guides on Prestress Preview
+- Prestress page previews now hide Section Builder dimension guides so the canvas focuses on prestressing steel layout.
+- Geometry-only and combined reinforcement coordination previews on the Prestress page also suppress dimension guides for readability.
+- Section Builder remains the owner of dimension review; no prestress force, parser, geometry, solver, SLS, report, or project-schema logic was changed.

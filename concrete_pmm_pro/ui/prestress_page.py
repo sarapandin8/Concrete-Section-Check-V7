@@ -303,6 +303,7 @@ GIRDER_STRAND_LAYOUT_COLUMNS = [
     "Left debond m",
     "Right debond m",
     "Debonded strand nos",
+    "Debond pattern mm",
     "Note",
 ]
 
@@ -334,6 +335,7 @@ GIRDER_STRAND_LAYOUT_EDITOR_COLUMNS = [
     "Left debond m",
     "Right debond m",
     "Debonded strand nos",
+    "Debond pattern mm",
     "Note",
 ]
 
@@ -352,6 +354,7 @@ GIRDER_STRAND_LAYOUT_AUDIT_COLUMNS = [
     "Left debond m",
     "Right debond m",
     "Debonded strand nos",
+    "Debond pattern mm",
 ]
 
 GIRDER_DEBOND_MODE_OPTIONS = [
@@ -413,11 +416,32 @@ PRECAST_PLANK_GIRDER_PRESET_KEYS = frozenset(
     }
 )
 BOX_PLANK_PRACTICAL_DEBOND_LENGTH_M = 1.0
+RAILWAY_U_GIRDER_PRESET_KEY = "railway_u_girder"
+RAILWAY_U_GIRDER_STRAND_SPACING_MM = 55.0
+RAILWAY_U_GIRDER_STRAND_EDGE_OUTER_MM = 130.0
+RAILWAY_U_GIRDER_STRAND_EDGE_INNER_MM = 80.0
+RAILWAY_U_GIRDER_ROW_Y_FROM_BOTTOM_MM = (95.0, 150.0, 205.0, 260.0, 315.0)
+RAILWAY_U_GIRDER_ROW_INDEX_SETS = (
+    tuple(range(9)),
+    tuple(range(9)),
+    tuple(range(1, 8)),
+    tuple(range(1, 8)),
+    tuple(range(2, 6)),
+)
+RAILWAY_U_GIRDER_DEBOND_SYMBOLS_MM = {
+    0: ("Bonded", "circle-open"),
+    1000: ("Debonded at 1000 mm", "cross-open"),
+    2000: ("Debonded at 2000 mm", "asterisk-open"),
+    3000: ("Debonded at 3000 mm", "x-open"),
+    4000: ("Debonded at 4000 mm", "triangle-down-open"),
+    5000: ("Debonded at 5000 mm", "triangle-up-open"),
+}
 
 GIRDER_PRESTRESS_UI_PRESET_KEYS = frozenset(
     {
         "parametric_i_girder",
         "u_girder",
+        RAILWAY_U_GIRDER_PRESET_KEY,
         "box_section_fillet",
         "precast_box_beam_exterior",
         "parametric_plank_girder_interior",
@@ -3381,6 +3405,120 @@ def _box_plank_practical_debonded_numbers(count: int) -> str:
     return ""
 
 
+def _format_debond_pattern_mm(values: list[int | float]) -> str:
+    """Return compact comma-separated drawing debond symbols in mm."""
+
+    cleaned: list[str] = []
+    for value in values:
+        try:
+            length = int(round(float(value)))
+        except (TypeError, ValueError):
+            length = 0
+        cleaned.append(str(length))
+    return ",".join(cleaned)
+
+
+def _parse_debond_pattern_mm(value: Any, expected_count: int) -> list[int]:
+    """Parse optional per-strand drawing debond lengths in millimetres.
+
+    This is preview metadata only.  It maps drawing symbols such as 1000, 2000,
+    3000, 4000, and 5000 mm to strand markers.  It intentionally does not
+    alter row-based station/debonding calculations, which continue to use the
+    existing Left/Right debond fields until a station-based pattern milestone.
+    """
+
+    if value is None:
+        return []
+    text_value = str(value).strip()
+    if not text_value:
+        return []
+    text_value = text_value.replace("bonded", "0").replace("Bonded", "0")
+    tokens = [part.strip() for part in re.split(r"[,;|\s]+", text_value) if part.strip()]
+    parsed: list[int] = []
+    for token in tokens:
+        try:
+            length = int(round(float(token)))
+        except (TypeError, ValueError):
+            return []
+        if length not in RAILWAY_U_GIRDER_DEBOND_SYMBOLS_MM:
+            return []
+        parsed.append(length)
+    if len(parsed) != int(expected_count):
+        return []
+    return parsed
+
+
+def _railway_u_girder_side_x_positions(side: str, index_set: tuple[int, ...]) -> list[float]:
+    """Return Railway U-Girder strand x positions ordered outer face to inner face."""
+
+    width = 5500.0
+    bottom_side_width = 650.0
+    half_width = width / 2.0
+    left_outer = -half_width + RAILWAY_U_GIRDER_STRAND_EDGE_OUTER_MM
+    right_outer = half_width - RAILWAY_U_GIRDER_STRAND_EDGE_OUTER_MM
+    if side.upper() == "L":
+        base = [left_outer + i * RAILWAY_U_GIRDER_STRAND_SPACING_MM for i in range(9)]
+    else:
+        base = [right_outer - i * RAILWAY_U_GIRDER_STRAND_SPACING_MM for i in range(9)]
+    # The drawing check is deliberately kept here: 130 + 8@55 + 80 = 650 mm.
+    _ = bottom_side_width - RAILWAY_U_GIRDER_STRAND_EDGE_OUTER_MM - 8.0 * RAILWAY_U_GIRDER_STRAND_SPACING_MM
+    return [float(base[index]) for index in index_set]
+
+
+def _railway_u_girder_default_strand_layout_table(geometry: SectionGeometry | None = None) -> pd.DataFrame:
+    """Return the drawing-based Railway U-Girder 72-strand starter layout.
+
+    The layout is based on the user-supplied railway through U-girder drawing:
+    36 strands per side, 12.7 mm ASTM A416 Grade 270 low-relaxation strand,
+    five rows at 95/150/205/260/315 mm from the bottom fiber, and a 9-column
+    strand grid using 130 mm outside edge distance, 8 @ 55 mm spacing, and
+    80 mm inside edge distance.  Debond pattern symbols are preview metadata
+    only and are left bonded/blank until the project-specific debonding pattern
+    is entered.
+    """
+
+    _ = geometry
+    strand_size = DEFAULT_GIRDER_STRAND_SIZE
+    props = _strand_size_properties(strand_size)
+    pe_transfer = _default_pe_transfer_per_strand_kn(strand_size)
+    pe_final = _default_pe_final_per_strand_kn(strand_size)
+    rows: list[dict[str, Any]] = []
+    for side in ("L", "R"):
+        side_label = "Left" if side == "L" else "Right"
+        for row_index, (y_from_bottom, index_set) in enumerate(
+            zip(RAILWAY_U_GIRDER_ROW_Y_FROM_BOTTOM_MM, RAILWAY_U_GIRDER_ROW_INDEX_SETS, strict=True),
+            start=1,
+        ):
+            x_positions = _railway_u_girder_side_x_positions(side, index_set)
+            count = len(x_positions)
+            rows.append(
+                {
+                    "Active": True,
+                    "Group ID": f"{side} Row {row_index}",
+                    "Layer": f"Railway U-Girder {side_label} {row_index}st row" if row_index == 1 else f"Railway U-Girder {side_label} Row {row_index}",
+                    "Strand Size": strand_size,
+                    "No. Strands": count,
+                    "Area/Strand_mm2": props["area_mm2"],
+                    "Total Aps_mm2": count * props["area_mm2"],
+                    "Row center x_mm": sum(x_positions) / max(count, 1),
+                    "Strand x positions mm": _format_explicit_x_positions(x_positions),
+                    "y_mm_from_bottom": y_from_bottom,
+                    "Edge CL_mm": props["recommended_edge_cl_mm"],
+                    "Min spacing_mm": props["recommended_min_spacing_mm"],
+                    "Computed spacing_mm": 0.0,
+                    "Pe_transfer/strand_kN": pe_transfer,
+                    "Pe_construction/strand_kN": pe_transfer,
+                    "Pe_eff_final/strand_kN": pe_final,
+                    "Left debond m": 0.0,
+                    "Right debond m": 0.0,
+                    "Debonded strand nos": "",
+                    "Debond pattern mm": "",
+                    "Note": "Railway U-Girder drawing default: 12.7 mm ASTM A416 Gr.270 LR strand; debond symbol pattern pending project data.",
+                }
+            )
+    return pd.DataFrame(rows, columns=GIRDER_STRAND_LAYOUT_COLUMNS)
+
+
 def _practical_box_beam_strand_layout_table(geometry: SectionGeometry | None) -> pd.DataFrame:
     strand_size = DEFAULT_GIRDER_STRAND_SIZE
     props = _strand_size_properties(strand_size)
@@ -3534,6 +3672,8 @@ def _practical_plank_girder_strand_layout_table(geometry: SectionGeometry | None
 
 def _practical_box_plank_default_girder_strand_layout_table(geometry: SectionGeometry | None = None) -> pd.DataFrame | None:
     preset_key = _current_or_geometry_section_preset_key(geometry)
+    if preset_key == RAILWAY_U_GIRDER_PRESET_KEY:
+        return _railway_u_girder_default_strand_layout_table(geometry)
     if preset_key in PRECAST_BOX_BEAM_PRESET_KEYS:
         return _practical_box_beam_strand_layout_table(geometry)
     if preset_key in PRECAST_PLANK_GIRDER_PRESET_KEYS:
@@ -3687,6 +3827,9 @@ def _normalize_girder_strand_layout_table(
         pe_transfer = _to_float(current.get("Pe_transfer/strand_kN"))
         pe_construction = _to_float(current.get("Pe_construction/strand_kN"))
         pe_final = _to_float(current.get("Pe_eff_final/strand_kN"))
+        raw_debond_pattern = "" if _is_blank(current.get("Debond pattern mm")) else str(current.get("Debond pattern mm")).strip()
+        parsed_debond_pattern = _parse_debond_pattern_mm(raw_debond_pattern, int(no_strands)) if raw_debond_pattern else []
+        normalized_debond_pattern = _format_debond_pattern_mm(parsed_debond_pattern) if parsed_debond_pattern else raw_debond_pattern
         rows.append(
             {
                 "Active": active,
@@ -3708,6 +3851,7 @@ def _normalize_girder_strand_layout_table(
                 "Left debond m": left_debond,
                 "Right debond m": right_debond,
                 "Debonded strand nos": str(current.get("Debonded strand nos") or "").strip(),
+                "Debond pattern mm": normalized_debond_pattern,
                 "Note": str(current.get("Note") or "").strip(),
             }
         )
@@ -3735,16 +3879,16 @@ def _strand_group_effective_at_station(row: pd.Series, x_m: float, span_length_m
     return strand_group_effective_at_station(row.to_dict() if hasattr(row, "to_dict") else row, x_m, span_length_m)
 
 
-def _section_horizontal_segment_at_y(geometry: SectionGeometry | None, y_abs_mm: float) -> tuple[float, float] | None:
-    """Return the widest horizontal section segment at a given absolute y."""
+def _section_horizontal_segments_at_y(geometry: SectionGeometry | None, y_abs_mm: float) -> list[tuple[float, float]]:
+    """Return all concrete horizontal segments at a given absolute y."""
 
     if geometry is None:
-        return None
+        return []
     try:
         polygon = to_shapely_polygon(geometry)
         minx, miny, maxx, maxy = polygon.bounds
         if y_abs_mm < miny - 1e-9 or y_abs_mm > maxy + 1e-9:
-            return None
+            return []
         extension = max(maxx - minx, maxy - miny, 1000.0) * 2.0
         line = LineString([(minx - extension, y_abs_mm), (maxx + extension, y_abs_mm)])
         intersection = polygon.intersection(line)
@@ -3759,11 +3903,33 @@ def _section_horizontal_segment_at_y(geometry: SectionGeometry | None, y_abs_mm:
                     segments.append((float(min(xs)), float(max(xs))))
             elif geom.geom_type == "Point":
                 segments.append((float(geom.x), float(geom.x)))
-        if not segments:
-            return None
-        return max(segments, key=lambda item: item[1] - item[0])
+        return sorted(segments, key=lambda item: item[0])
     except Exception:
+        return []
+
+
+def _section_horizontal_segment_at_y(geometry: SectionGeometry | None, y_abs_mm: float) -> tuple[float, float] | None:
+    """Return the widest horizontal section segment at a given absolute y."""
+
+    segments = _section_horizontal_segments_at_y(geometry, y_abs_mm)
+    if not segments:
         return None
+    return max(segments, key=lambda item: item[1] - item[0])
+
+
+def _section_horizontal_segment_for_points_at_y(geometry: SectionGeometry | None, y_abs_mm: float, points_x: list[float]) -> tuple[float, float] | None:
+    """Return the segment containing the strand points, or the widest segment."""
+
+    segments = _section_horizontal_segments_at_y(geometry, y_abs_mm)
+    if not segments:
+        return None
+    if points_x:
+        x_min = min(points_x)
+        x_max = max(points_x)
+        for left, right in segments:
+            if x_min >= left - 1e-9 and x_max <= right + 1e-9:
+                return (left, right)
+    return max(segments, key=lambda item: item[1] - item[0])
 
 
 def _strand_point_clearance_review_messages(
@@ -3864,7 +4030,7 @@ def _strand_row_point_layout(row: pd.Series, geometry: SectionGeometry | None) -
         offsets = [(float(i) - (float(count) - 1.0) / 2.0) * spacing for i in range(count)]
         points_x = [center_x + offset for offset in offsets]
 
-    segment = _section_horizontal_segment_at_y(geometry, y_abs)
+    segment = _section_horizontal_segment_for_points_at_y(geometry, y_abs, points_x)
     if segment is not None:
         left_edge, right_edge = segment
         left_limit = left_edge + edge_cl
@@ -3903,6 +4069,9 @@ def _strand_row_point_layout(row: pd.Series, geometry: SectionGeometry | None) -
     )
 
     debonded_numbers = set(debonded_strand_numbers_for_row(row.to_dict() if hasattr(row, "to_dict") else row))
+    drawing_pattern = _parse_debond_pattern_mm(row.get("Debond pattern mm"), count)
+    if not drawing_pattern:
+        drawing_pattern = [0 for _ in range(count)]
     points = [
         {
             "Group ID": group,
@@ -3915,6 +4084,7 @@ def _strand_row_point_layout(row: pd.Series, geometry: SectionGeometry | None) -
             "Edge CL_mm": edge_cl,
             "Strand Size": str(row.get("Strand Size") or DEFAULT_GIRDER_STRAND_SIZE),
             "Debonded selected": (i + 1) in debonded_numbers,
+            "Drawing debond length mm": int(drawing_pattern[i]) if i < len(drawing_pattern) else 0,
         }
         for i in range(count)
     ]
@@ -4130,6 +4300,12 @@ def _validate_girder_strand_layout(table: pd.DataFrame, *, span_length_m: float,
             warnings.append(
                 f"{group}: x coordinates must contain exactly {count} numeric value(s); "
                 "layout preview falls back to the row center and practical spacing until corrected."
+            )
+        raw_debond_pattern = "" if _is_blank(row.get("Debond pattern mm")) else str(row.get("Debond pattern mm")).strip()
+        if raw_debond_pattern and count > 0 and not _parse_debond_pattern_mm(raw_debond_pattern, count):
+            warnings.append(
+                f"{group}: debond pattern must contain exactly {count} value(s), each one of 0/1000/2000/3000/4000/5000 mm. "
+                "This drawing-symbol metadata is ignored until corrected."
             )
         _, _, row_layout_messages = _strand_row_point_layout(row, geometry)
         warnings.extend(row_layout_messages)
@@ -4434,6 +4610,9 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
             point, status, left, right = record
             state = "Debonded selected" if bool(point.get("Debonded selected")) else "Bonded through row sleeve"
             details = [f"{point['Group ID']} #{point['Strand no.']}", f"Status = {state}"]
+            drawing_length = int(float(point.get("Drawing debond length mm") or 0.0))
+            if drawing_length > 0:
+                details.append(f"Drawing symbol = debonded at {drawing_length} mm")
             if left > 1e-9 or right > 1e-9:
                 details.append(f"Row debond = {status}")
                 details.append(f"L debond = {left:.3f} m")
@@ -4471,6 +4650,38 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
                     },
                     name="Debonded",
                     text=[_point_hover(record) for record in debonded_points],
+                    hovertemplate="%{text}<br>x=%{x:.1f} mm<br>y=%{y:.1f} mm<extra></extra>",
+                )
+            )
+
+        drawing_symbol_traces: dict[int, list[tuple[float, float, str]]] = {}
+        for _, point in points.iterrows():
+            drawing_length = int(float(point.get("Drawing debond length mm") or 0.0))
+            if drawing_length <= 0:
+                continue
+            drawing_symbol_traces.setdefault(drawing_length, []).append(
+                (
+                    float(point["x_mm"]),
+                    float(point["y_mm_abs"]),
+                    f"{point['Group ID']} #{int(point['Strand no.'])}<br>Drawing debond = {drawing_length} mm",
+                )
+            )
+        for drawing_length in sorted(drawing_symbol_traces):
+            label, symbol = RAILWAY_U_GIRDER_DEBOND_SYMBOLS_MM.get(drawing_length, (f"Debonded at {drawing_length} mm", "x-open"))
+            trace_points = drawing_symbol_traces[drawing_length]
+            fig.add_trace(
+                go.Scatter(
+                    x=[item[0] for item in trace_points],
+                    y=[item[1] for item in trace_points],
+                    mode="markers",
+                    marker={
+                        "size": 12,
+                        "color": "rgba(15, 23, 42, 0.96)",
+                        "symbol": symbol,
+                        "line": {"color": "rgba(15, 23, 42, 0.96)", "width": 1.4},
+                    },
+                    name=label,
+                    text=[item[2] for item in trace_points],
                     hovertemplate="%{text}<br>x=%{x:.1f} mm<br>y=%{y:.1f} mm<extra></extra>",
                 )
             )
@@ -4685,7 +4896,7 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
 
     if st.button(
         "Rebuild default strand layout from current section",
-        help="Replace the current strand table with the current section's practical strand preset. Box/Plank use BP1 practical layouts; other girders use the section-based starter layout.",
+        help="Replace the current strand table with the current section's practical strand preset. Railway U-Girder uses the drawing-based 72-strand layout; Box/Plank use BP1 practical layouts; other girders use the section-based starter layout.",
         key="rebuild_girder_strand_layout_defaults",
     ):
         seeded = _apply_computed_girder_strand_spacing(_default_girder_strand_layout_table(geometry), geometry)
@@ -4704,7 +4915,7 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
     )
     st.caption(
         "🟨 Primary input columns: strand size, number of strands, editable strand x coordinates, y-position, left/right debond lengths, optional debonded strand numbers, and stage Pe per strand. "
-        "Defaults use 12.7 mm low-relaxation strand. Box/Plank presets use practical BP1 layouts; other girders use 2 rows at y=50/100 mm, 45 mm edge CL, and 50 mm x/y spacing. "
+        "Defaults use 12.7 mm low-relaxation strand. Railway U-Girder uses the drawing-based 72-strand layout; Box/Plank presets use practical BP1 layouts; other girders use 2 rows at y=50/100 mm, 45 mm edge CL, and 50 mm x/y spacing. "
         "Area, minimum spacing, and total Aps are auto-calculated."
     )
     edited = st.data_editor(
@@ -4738,6 +4949,10 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
             "Debonded strand nos": st.column_config.TextColumn(
                 "🟨 Debonded strand nos",
                 help="Optional PS6A individual selection, e.g. 1,2,18,19 or 1-4. Blank keeps PS5 row-based all-strands debonding when L/R debond length is nonzero.",
+            ),
+            "Debond pattern mm": st.column_config.TextColumn(
+                "Debond pattern (mm)",
+                help="Optional per-strand drawing symbols only: enter 0/1000/2000/3000/4000/5000 for each strand. This preview metadata does not change station-based analysis yet.",
             ),
             "Note": st.column_config.TextColumn("Note"),
         },
@@ -4776,6 +4991,7 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
         with st.expander("Plot assumptions", expanded=False):
             st.caption(
                 "Cross-section symbols show row-level debonding status from the left/right debond inputs. "
+                "Railway U-Girder drawing debond symbols (0/1000/2000/3000/4000/5000 mm) are preview metadata only until a station-based pattern milestone. "
                 "PS6A supports optional individual bonded/unbonded strand selection within a row. Blank debonded strand numbers keep the previous row-based all-strands debonding fallback."
             )
     with tab_debond:
@@ -5709,19 +5925,24 @@ def _render_prestress_section_preview_panel(
         st.caption("Section geometry is not available yet. Build a valid section before previewing prestress layout.")
         return
 
-    dimensions = st.session_state.get("section_dimensions", [])
+    # Prestress-page previews are steel-layout views, not dimension-review views.
+    # Keep section dimension guides owned by Section Builder so tendon graphics are
+    # not crowded by bridge-girder dimension annotations.
+    preview_dimensions: list[Any] = []
     active_prestress = list(result.elements or [])
 
     if active_prestress:
         if _has_active_prestress_force(active_prestress):
-            st.caption("Default preview shows prestressing steel only. Ordinary rebar is intentionally hidden on the Prestress page.")
+            st.caption(
+                "Default preview shows prestressing steel only. Ordinary rebar and dimension guides are intentionally hidden on the Prestress page."
+            )
         else:
             st.caption(
-                "Preview shows active prestress/reference rows immediately. Reference-only rows do not add Pe to analysis until Pe_eff, fpe, or initial stress is assigned."
+                "Preview shows active prestress/reference rows immediately. Dimension guides are intentionally hidden; reference-only rows do not add Pe to analysis until Pe_eff, fpe, or initial stress is assigned."
             )
         fig = create_section_preview(
             geometry,
-            dimensions,
+            preview_dimensions,
             "symbol_value",
             [],
             active_prestress,
@@ -5729,10 +5950,12 @@ def _render_prestress_section_preview_panel(
         fig.update_layout(height=380, margin=dict(l=10, r=10, t=34, b=8))
         st.plotly_chart(fig, use_container_width=True, key="prestress_only_section_preview")
     else:
-        st.caption("Prestress is enabled, but no active prestressing steel rows are available yet. Geometry-only preview is shown until tendon rows are activated.")
+        st.caption(
+            "Prestress is enabled, but no active prestressing steel rows are available yet. Geometry-only preview is shown without dimension guides until tendon rows are activated."
+        )
         fig = create_section_preview(
             geometry,
-            dimensions,
+            preview_dimensions,
             "symbol_value",
             [],
             [],
@@ -5750,7 +5973,7 @@ def _render_prestress_section_preview_panel(
                 )
                 combined_fig = create_section_preview(
                     geometry,
-                    dimensions,
+                    preview_dimensions,
                     "symbol_value",
                     rebars,
                     active_prestress,
