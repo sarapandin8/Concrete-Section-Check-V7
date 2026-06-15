@@ -661,3 +661,15 @@ def test_commercial_section_builder_layout_is_definition_only_and_solver_safe() 
     assert "default_registry.geometry" in source
     assert "compute_pmm" not in source
     assert "demand_capacity" not in source
+
+
+def test_ui_section_compact1_moves_properties_into_left_working_column_and_compacts_preview() -> None:
+    source = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "section_builder.py").read_text(encoding="utf-8")
+
+    assert "UI.SECTION.COMPACT1" in (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "st.columns([0.47, 0.53], gap=\"medium\")" in source
+    assert "with parameter_col:\n        _render_section_properties_summary" in source
+    assert "preview_figure.update_layout(height=430" in source
+    assert "cpmm-section-preview-status-compact" in source
+    assert "Preview validation details" in source
+    assert "repeat(auto-fit, minmax(145px, 1fr))" in source

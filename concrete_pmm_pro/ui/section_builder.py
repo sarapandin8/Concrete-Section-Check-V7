@@ -145,16 +145,16 @@ _SECTION_BUILDER_CSS = """
 }
 .cpmm-section-property-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.55rem;
-  margin-bottom: 0.45rem;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.42rem;
+  margin-bottom: 0.36rem;
 }
 .cpmm-section-property-chip {
   border: 1px solid #d9dee7;
   border-radius: 8px;
   background: #ffffff;
-  padding: 0.56rem 0.68rem;
-  min-height: 72px;
+  padding: 0.46rem 0.56rem;
+  min-height: 60px;
 }
 .cpmm-section-property-label {
   color: #667085;
@@ -165,15 +165,15 @@ _SECTION_BUILDER_CSS = """
 }
 .cpmm-section-property-value {
   color: #101828;
-  font-size: 0.94rem;
+  font-size: 0.88rem;
   font-weight: 720;
-  line-height: 1.22;
+  line-height: 1.18;
   overflow-wrap: anywhere;
 }
 .cpmm-section-property-detail {
   color: #667085;
-  font-size: 0.74rem;
-  line-height: 1.25;
+  font-size: 0.71rem;
+  line-height: 1.18;
   margin-top: 0.16rem;
 }
 
@@ -181,7 +181,7 @@ _SECTION_BUILDER_CSS = """
   border: 1px solid #d5dde8;
   border-radius: 10px;
   background: linear-gradient(180deg, #ffffff 0%, #f6f9fc 100%);
-  margin: 0.35rem 0 0.85rem 0;
+  margin: 0.24rem 0 0.56rem 0;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05);
 }
 .cpmm-commercial-section-topline {
@@ -189,7 +189,7 @@ _SECTION_BUILDER_CSS = """
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
-  padding: 0.72rem 0.92rem;
+  padding: 0.56rem 0.78rem;
 }
 .cpmm-commercial-section-title {
   color: #1f5f99;
@@ -217,7 +217,7 @@ _SECTION_BUILDER_CSS = """
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.24rem;
 }
 .cpmm-commercial-panel-title-main {
   color: #1f2937;
@@ -250,9 +250,18 @@ _SECTION_BUILDER_CSS = """
   background: #f4f8fb;
   color: #667085;
   font-size: 0.78rem;
-  padding: 0.46rem 0.62rem;
-  margin: 0.32rem 0 0.62rem 0;
+  padding: 0.36rem 0.52rem;
+  margin: 0.22rem 0 0.42rem 0;
   border-radius: 6px;
+}
+.cpmm-section-preview-status-compact {
+  margin-top: 0.34rem;
+}
+.cpmm-section-builder-compact-note {
+  color: #667085;
+  font-size: 0.74rem;
+  line-height: 1.22;
+  margin: 0.1rem 0 0.35rem 0;
 }
 @media (max-width: 1200px) {
   .cpmm-section-property-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1902,29 +1911,42 @@ def _render_section_preview_panel(
             unsafe_allow_html=True,
         )
         if geometry is not None and validation.is_valid:
+            preview_figure = create_section_preview(
+                geometry,
+                dimensions,
+                label_mode,
+                preview_rebars,
+                preview_prestress_elements,
+            )
+            preview_figure.update_layout(height=430, margin=dict(l=10, r=10, t=28, b=6))
             st.plotly_chart(
-                create_section_preview(
-                    geometry,
-                    dimensions,
-                    label_mode,
-                    preview_rebars,
-                    preview_prestress_elements,
-                ),
+                preview_figure,
                 use_container_width=True,
                 key="section_builder_preview",
             )
         else:
             st.info("Preview is paused until geometry inputs are valid.")
 
-        st.caption(
-            "Section Builder preview is locked to geometry only. "
-            "Ordinary rebar and prestressing steel are previewed on the Rebar and Prestress pages."
-        )
         st.markdown(
-            _kv_panel_html(_geometry_status_rows(geometry, dimensions, validation)),
+            '<div class="cpmm-section-builder-compact-note">Section Builder preview is locked to geometry only. Rebar and prestress graphics are controlled on their own pages.</div>',
             unsafe_allow_html=True,
         )
-        _render_validation_panel(validation)
+        st.markdown(
+            '<div class="cpmm-section-preview-status-compact">'
+            + _property_strip_html(
+                [
+                    SectionMetric("Geometry", "Ready" if geometry is not None and validation.is_valid else "Not Ready", "active concrete polygon", "ready" if geometry is not None and validation.is_valid else "danger", True),
+                    SectionMetric("Validation", _validation_label(validation), f"{len(validation.errors):,} errors / {len(validation.warnings):,} warnings", _validation_status(validation), True),
+                    SectionMetric("Dimensions", f"{len(dimensions):,}", "visible dimension guides", "neutral"),
+                    SectionMetric("Steel preview", "Hidden", "Rebar/Prestress pages own steel graphics", "info"),
+                ]
+            )
+            + '</div>',
+            unsafe_allow_html=True,
+        )
+        if validation.errors or validation.warnings or validation.info:
+            with st.expander("Preview validation details", expanded=bool(validation.errors)):
+                _render_validation_panel(validation)
 
 
 def _parameter_rows(preset: dict[str, Any], params: dict[str, Any]) -> list[tuple[str, str]]:
@@ -2162,7 +2184,7 @@ def render_section_builder() -> None:
 
     preset, material_assignment = selection
 
-    parameter_col, preview_col = st.columns([0.92, 1.08], gap="large")
+    parameter_col, preview_col = st.columns([0.47, 0.53], gap="medium")
     with parameter_col:
         label_mode, params = _render_geometry_parameters_workspace(preset, material_assignment)
 
@@ -2173,10 +2195,11 @@ def render_section_builder() -> None:
     else:
         _clear_section_geometry_state()
 
+    with parameter_col:
+        _render_section_properties_summary(preset, params, geometry, validation)
+
     with preview_col:
         _render_section_preview_panel(geometry, dimensions, label_mode, validation)
-
-    _render_section_properties_summary(preset, params, geometry, validation)
 
     if geometry is not None:
         with st.expander("Generated SectionGeometry"):

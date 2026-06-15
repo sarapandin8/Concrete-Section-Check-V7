@@ -652,3 +652,10 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Apply the same action language to upload browse buttons.
 - Mark PMM Run, Save Project, Load Project JSON, and project info update as primary actions.
 - No solver, geometry, loads, rebar, prestress, report, or project schema changes.
+
+
+## UI.SECTION.COMPACT1 — Section Builder compact working layout
+
+- Reflowed Section Builder into a compact working layout: geometry inputs and gross properties now stack in the left column while live preview remains in the right column.
+- Reduced preview canvas height and converted preview status into compact cards to remove the large unused left-side whitespace.
+- Kept geometry generation, section-property calculations, PMM solver, reinforcement/prestress data, and project schema unchanged.
