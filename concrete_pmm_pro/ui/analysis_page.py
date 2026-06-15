@@ -2275,6 +2275,7 @@ def _render_input_summary() -> None:
 
     result = st.session_state.get("rc_pmm_result")
     if isinstance(result, PMMSolverResult):
+        rendered_pmm_result_views = False
         result_hash = st.session_state.get("rc_pmm_result_input_hash")
         if current_analysis_hash is not None and result_hash != current_analysis_hash:
             st.warning("Displayed PMM results are stale because engineering inputs have changed. Run / Recalculate Analysis to update them.")
@@ -2287,6 +2288,43 @@ def _render_input_summary() -> None:
             result_label = "RC + Passive PS Steel PMM"
         else:
             result_label = "RC PMM"
+
+        nav2_df, _nav2_display_summary, nav2_numeric_summary = _get_or_build_pmm_result_display_cache(result, result_hash)
+        if not nav2_df.empty:
+            nav2_dc_summary = _get_or_compute_demand_capacity_summary(
+                result,
+                st.session_state.get("load_cases", []),
+                result_hash,
+            )
+            nav2_engineering_warnings = _collect_engineering_warnings(
+                result.warnings,
+                prestress_check_summary.errors,
+                prestress_check_summary.warnings,
+                nav2_dc_summary.warnings,
+                nav2_numeric_summary["warnings"],
+            )
+            nav2_engineering_warnings = _filter_pmm_closeout_warnings(
+                nav2_engineering_warnings,
+                result_has_bonded_prestress=result_has_bonded_prestress,
+            )
+            nav2_unbonded_ignored_count = int(nav2_df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in nav2_df else 0
+            st.markdown("##### PMM Result Views")
+            st.caption(
+                "Select the Flexural PMM result view first. Runtime controls, stored snapshots, and method QA remain below for review without cluttering the first decision screen."
+            )
+            _render_pmm_slice_dashboard(
+                nav2_df,
+                st.session_state.get("load_cases", []),
+                nav2_dc_summary,
+                result_label,
+                settings.include_prestress,
+                result_has_active_prestress,
+                nav2_unbonded_ignored_count,
+                result_hash,
+                nav2_engineering_warnings,
+            )
+            rendered_pmm_result_views = True
+
         st.subheader(f"{result_label} Result")
         if result_has_bonded_prestress:
             st.caption(
@@ -2414,21 +2452,22 @@ def _render_input_summary() -> None:
                 _render_engineering_warnings(engineering_warnings, df=df, dc_summary=dc_summary)
 
             unbonded_ignored_count = int(df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in df else 0
-            st.subheader("PMM Visual Review")
-            st.caption(
-                "Decision graphics use the stored PMM result and cached D/C summary. They do not rerun the solver when you navigate back to this page."
-            )
-            _render_pmm_slice_dashboard(
-                df,
-                st.session_state.get("load_cases", []),
-                dc_summary,
-                result_label,
-                settings.include_prestress,
-                result_has_active_prestress,
-                unbonded_ignored_count,
-                result_hash,
-                engineering_warnings,
-            )
+            if not rendered_pmm_result_views:
+                st.subheader("PMM Visual Review")
+                st.caption(
+                    "Decision graphics use the stored PMM result and cached D/C summary. They do not rerun the solver when you navigate back to this page."
+                )
+                _render_pmm_slice_dashboard(
+                    df,
+                    st.session_state.get("load_cases", []),
+                    dc_summary,
+                    result_label,
+                    settings.include_prestress,
+                    result_has_active_prestress,
+                    unbonded_ignored_count,
+                    result_hash,
+                    engineering_warnings,
+                )
 
             with st.expander("Stored calculation snapshot / D/C trace", expanded=False):
                 st.caption(

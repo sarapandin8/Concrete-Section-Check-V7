@@ -107,6 +107,17 @@ def test_ui_pmm_compact1_collapses_flexural_diagnostics_and_prioritizes_visual_r
     assert source.index('st.subheader("PMM Visual Review")') < source.index('with st.expander("Stored calculation snapshot / D/C trace", expanded=False)')
 
 
+
+
+def test_ui_pmm_nav2_moves_result_view_tabs_up_under_flexural() -> None:
+    source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
+
+    assert 'st.markdown("##### PMM Result Views")' in source
+    assert "Select the Flexural PMM result view first" in source
+    assert "rendered_pmm_result_views = True" in source
+    assert source.index('st.markdown("##### PMM Result Views")') < source.index('st.subheader(f"{result_label} Result")')
+    assert source.index('st.markdown("##### PMM Result Views")') < source.index('with st.expander("Stored calculation snapshot / D/C trace", expanded=False)')
+
 def test_ui_action_buttons1_highlights_primary_actions_without_dark_fill() -> None:
     app_source = Path("app.py").read_text(encoding="utf-8")
     analysis_source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
