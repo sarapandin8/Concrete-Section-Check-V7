@@ -17,8 +17,15 @@ def test_rebar_page_default_preview_hides_prestressing_steel_and_dimensions():
     assert "Default preview shows ordinary rebar only" in REBAR_SOURCE
     assert "Dimension guides are intentionally hidden here" in REBAR_SOURCE
     assert "rebar_section_preview" in REBAR_SOURCE
-    assert "create_section_preview(\n                geometry,\n                [],\n                \"symbol_value\",\n                st.session_state[\"rebars\"],\n                []," in REBAR_SOURCE
-    assert "create_section_preview(\n                geometry,\n                st.session_state.get(\"section_dimensions\", []),\n                \"symbol_value\",\n                st.session_state[\"rebars\"]," not in REBAR_SOURCE
+    preview_label_index = REBAR_SOURCE.index("Section Preview with Rebar")
+    preview_call_start = REBAR_SOURCE.index("preview_fig = create_section_preview(", preview_label_index)
+    preview_call_end = REBAR_SOURCE.index("preview_fig.update_layout", preview_call_start)
+    preview_call = REBAR_SOURCE[preview_call_start:preview_call_end]
+    assert "geometry" in preview_call
+    assert "[]" in preview_call
+    assert 'st.session_state["rebars"]' in preview_call
+    assert 'st.session_state.get("section_dimensions", [])' not in preview_call
+
 
 
 def test_rebar_page_disabled_ordinary_rebar_is_marked_stored_excluded():

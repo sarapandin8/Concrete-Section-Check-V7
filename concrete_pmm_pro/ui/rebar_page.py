@@ -124,16 +124,41 @@ _REBAR_PAGE_CSS = """
 <style>
 .cpmm-rebar-strip {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.55rem;
-  margin-bottom: 0.75rem;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+.cpmm-rebar-panel-title {
+  color: #101828;
+  font-size: 0.94rem;
+  font-weight: 760;
+  line-height: 1.25;
+  margin-bottom: 0.14rem;
+}
+.cpmm-rebar-panel-subtitle {
+  color: #667085;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin-bottom: 0.5rem;
+}
+.cpmm-rebar-preview-title {
+  color: #101828;
+  font-size: 0.9rem;
+  font-weight: 720;
+  margin-bottom: 0.1rem;
+}
+.cpmm-rebar-preview-caption {
+  color: #667085;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin-bottom: 0.32rem;
 }
 .cpmm-rebar-chip {
   border: 1px solid #d9dee7;
   border-radius: 8px;
   background: #ffffff;
-  padding: 0.58rem 0.7rem;
-  min-height: 76px;
+  padding: 0.5rem 0.62rem;
+  min-height: 68px;
 }
 .cpmm-rebar-chip-label {
   color: #667085;
@@ -589,10 +614,10 @@ def _render_summary_strip(
     st.markdown(
         _strip_html(
             [
+                RebarMetric("Analysis Participation", "Included", "Ordinary rebar enabled", "ready", True),
                 RebarMetric("Active Bars", f"{len(result.rebars):,}", "Expanded by Count"),
                 RebarMetric("Total As", f"{total_as:,.1f} mm^2"),
                 RebarMetric("Valid for Analysis", "Yes" if valid_for_analysis else "No", "", _valid_status(valid_for_analysis), True),
-                RebarMetric("Material", _dominant_material_label(result.rebars, active_material_name)),
                 RebarMetric("Rebar Ratio", _reinforcement_ratio_label(total_as, geometry), "As / concrete area"),
                 RebarMetric("Input Mode", input_mode),
             ]
@@ -608,7 +633,11 @@ def _render_validation(
     valid_for_analysis: bool,
     active_prestress_count: int = 0,
 ) -> None:
-    st.markdown("#### Rebar Status")
+    st.markdown(
+        '<div class="cpmm-rebar-panel-title">Rebar Status</div>'
+        '<div class="cpmm-rebar-panel-subtitle">Active analysis participation and validation gate for the current longitudinal table.</div>',
+        unsafe_allow_html=True,
+    )
     all_errors = [*result.errors, *geometry_errors]
     warnings = list(result.warnings)
     contextual_notes: list[str] = []
@@ -1834,10 +1863,6 @@ def _render_longitudinal_rebar_tab(
             "For Beam/Girder torsion, active ordinary bars are also the review-only Al source; do not duplicate Al in a separate table."
         )
     if not ordinary_rebar_enabled(st.session_state, default=True):
-        st.info(
-            "Ordinary rebar is disabled for the current section in Section Builder. "
-            "Stored Rebar table data is preserved for later use, but ordinary rebar and torsion Al are excluded from analysis until you enable it again."
-        )
         table = st.session_state.get("rebar_table")
         stored_df = _ensure_rebar_table_columns(pd.DataFrame(table)) if table is not None else pd.DataFrame(columns=REBAR_TABLE_COLUMNS)
         result = rebars_from_dataframe(stored_df, rebar_db) if table is not None else RebarParseResult([], [], [], [])
@@ -1849,42 +1874,75 @@ def _render_longitudinal_rebar_tab(
         st.session_state["rebars_stored_excluded"] = result.rebars
         st.session_state["rebars"] = []
         st.session_state["rebars_valid_for_analysis"] = False
-        st.markdown(
-            _strip_html(
-                [
-                    RebarMetric("Stored Bars", f"{len(result.rebars):,}", "Preserved table rows"),
-                    RebarMetric("Stored As", f"{_total_as_mm2(result.rebars):,.1f} mm^2"),
-                    RebarMetric("Analysis Participation", "Excluded", "Disabled in Section Builder", "warning", True),
-                    RebarMetric("Active Analysis Bars", "0", "Ordinary rebar ignored"),
-                    RebarMetric("Active Analysis As", "0.0 mm^2"),
-                    RebarMetric("Material", _dominant_material_label(result.rebars, active_material_name)),
-                ]
-            ),
-            unsafe_allow_html=True,
-        )
-        with st.expander("Stored Rebar table preview", expanded=True):
-            if table is None or stored_df.empty:
-                st.caption("No stored Rebar table is available yet.")
-            else:
-                st.caption("Stored rows are shown for review only. They are not included in PMM/SLS/shear/torsion assembly while ordinary rebar is disabled.")
-                st.dataframe(stored_df, use_container_width=True, hide_index=True)
-        geometry = st.session_state.get("section_geometry")
-        if geometry is not None and result.rebars:
-            st.subheader("Stored Rebar Preview — Excluded from Analysis")
-            st.caption("Preview only — these stored bars are excluded from analysis. Dimension guides are intentionally hidden on the Rebar page; use Section Builder for section dimensions.")
-            preview_fig = create_section_preview(
-                geometry,
-                [],
-                "symbol_value",
-                result.rebars,
-                [],
-            )
-            preview_fig.update_layout(height=430, margin=dict(l=10, r=10, t=36, b=10))
-            st.plotly_chart(
-                preview_fig,
-                use_container_width=True,
-                key="rebar_stored_excluded_section_preview",
-            )
+
+        input_col, review_col = st.columns([1.22, 1.0], gap="large")
+        with input_col:
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="cpmm-rebar-panel-title">Stored Longitudinal Rebar</div>'
+                    '<div class="cpmm-rebar-panel-subtitle">Ordinary rebar is disabled in Section Builder. Stored Rebar table data is preserved for later use, but ordinary rebar and torsion Al are excluded from analysis until you enable it again.</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    _strip_html(
+                        [
+                            RebarMetric("Stored Bars", f"{len(result.rebars):,}", "Preserved table rows"),
+                            RebarMetric("Stored As", f"{_total_as_mm2(result.rebars):,.1f} mm^2"),
+                            RebarMetric("Analysis Participation", "Excluded", "Disabled in Section Builder", "warning", True),
+                            RebarMetric("Active Analysis Bars", "0", "Ordinary rebar ignored"),
+                            RebarMetric("Active Analysis As", "0.0 mm^2"),
+                            RebarMetric("Material", _dominant_material_label(result.rebars, active_material_name)),
+                        ]
+                    ),
+                    unsafe_allow_html=True,
+                )
+                with st.expander("Stored Rebar table preview", expanded=False):
+                    if table is None or stored_df.empty:
+                        st.caption("No stored Rebar table is available yet.")
+                    else:
+                        st.caption("Stored rows are shown for review only. They are not included in PMM/SLS/shear/torsion assembly while ordinary rebar is disabled.")
+                        st.dataframe(stored_df, use_container_width=True, hide_index=True)
+
+        with review_col:
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="cpmm-rebar-panel-title">Analysis Participation</div>'
+                    '<div class="cpmm-rebar-panel-subtitle">Stored but excluded from analysis. Active ordinary rebar is intentionally published as zero.</div>',
+                    unsafe_allow_html=True,
+                )
+                st.markdown(
+                    _kv_panel_html(
+                        [
+                            ("Ordinary rebar system", "Disabled"),
+                            ("Stored rows", f"{len(result.rebars):,}"),
+                            ("Active analysis bars", "0"),
+                            ("Active analysis As", "0.0 mm^2"),
+                            ("Analysis state", "Preview only — excluded from analysis"),
+                        ]
+                    ),
+                    unsafe_allow_html=True,
+                )
+            geometry = st.session_state.get("section_geometry")
+            if geometry is not None and result.rebars:
+                with st.container(border=True):
+                    st.markdown(
+                        '<div class="cpmm-rebar-preview-title">Stored Rebar Preview — Excluded from Analysis</div>'
+                        '<div class="cpmm-rebar-preview-caption">Preview only — these stored bars are excluded from analysis. Dimension guides are intentionally hidden on the Rebar page; use Section Builder for section dimensions.</div>',
+                        unsafe_allow_html=True,
+                    )
+                    preview_fig = create_section_preview(
+                        geometry,
+                        [],
+                        "symbol_value",
+                        result.rebars,
+                        [],
+                    )
+                    preview_fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10))
+                    st.plotly_chart(
+                        preview_fig,
+                        use_container_width=True,
+                        key="rebar_stored_excluded_section_preview",
+                    )
         return
 
     if "rebar_table" not in st.session_state:
@@ -1896,11 +1954,15 @@ def _render_longitudinal_rebar_tab(
     input_mode = "Manual table"
     edited_df = st.session_state["rebar_table"]
 
-    input_col, status_col = st.columns([1.45, 0.85], gap="large")
+    input_col, status_col = st.columns([1.28, 1.0], gap="large")
     summary_slot = None
     with input_col:
         with st.container(border=True):
-            st.markdown("#### Longitudinal Rebar Input")
+            st.markdown(
+                '<div class="cpmm-rebar-panel-title">Longitudinal Rebar Input</div>'
+                '<div class="cpmm-rebar-panel-subtitle">Single source of truth for ordinary longitudinal bars used by PMM/SLS/flexure and review-only torsion Al workflows.</div>',
+                unsafe_allow_html=True,
+            )
             # Keep the summary visually above the editor. The placeholder is
             # filled after data_editor returns so the metrics still use the
             # normalized table from the current rerun instead of stale pre-edit
@@ -1963,21 +2025,25 @@ def _render_longitudinal_rebar_tab(
             )
 
         if geometry is not None:
-            st.subheader("Section Preview with Rebar — Longitudinal")
-            st.caption("Default preview shows ordinary rebar only. Dimension guides are intentionally hidden here; use Section Builder for section dimensions.")
-            preview_fig = create_section_preview(
-                geometry,
-                [],
-                "symbol_value",
-                st.session_state["rebars"],
-                [],
-            )
-            preview_fig.update_layout(height=430, margin=dict(l=10, r=10, t=36, b=10))
-            st.plotly_chart(
-                preview_fig,
-                use_container_width=True,
-                key="rebar_section_preview",
-            )
+            with st.container(border=True):
+                st.markdown(
+                    '<div class="cpmm-rebar-preview-title">Section Preview with Rebar — Longitudinal</div>'
+                    '<div class="cpmm-rebar-preview-caption">Default preview shows ordinary rebar only. Dimension guides are intentionally hidden here; use Section Builder for section dimensions.</div>',
+                    unsafe_allow_html=True,
+                )
+                preview_fig = create_section_preview(
+                    geometry,
+                    [],
+                    "symbol_value",
+                    st.session_state["rebars"],
+                    [],
+                )
+                preview_fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10))
+                st.plotly_chart(
+                    preview_fig,
+                    use_container_width=True,
+                    key="rebar_section_preview",
+                )
             if prestressing_steel_enabled(st.session_state, default=True):
                 prestress_elements = list(st.session_state.get("prestress_elements", []) or [])
                 if prestress_elements:
@@ -1993,15 +2059,15 @@ def _render_longitudinal_rebar_tab(
                             st.session_state["rebars"],
                             prestress_elements,
                         )
-                        combined_fig.update_layout(height=430, margin=dict(l=10, r=10, t=36, b=10))
+                        combined_fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10))
                         st.plotly_chart(
                             combined_fig,
                             use_container_width=True,
                             key="rebar_combined_reinforcement_preview",
                         )
 
-    st.subheader("Longitudinal Rebar Summary")
-    st.dataframe(rebar_summary_dataframe(st.session_state["rebars"]), use_container_width=True, hide_index=True)
+    with st.expander("Longitudinal Rebar Summary", expanded=False):
+        st.dataframe(rebar_summary_dataframe(st.session_state["rebars"]), use_container_width=True, hide_index=True)
 
     with st.expander("Longitudinal rebar / torsion Al workflow notes", expanded=False):
         st.write("- This ordinary Rebar table remains the single source of truth for longitudinal bars in PMM/SLS/flexure analysis.")

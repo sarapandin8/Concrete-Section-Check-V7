@@ -138,4 +138,7 @@ def test_inclusion4_rebar_page_disabled_visual_state_preserves_stored_rows_and_p
     assert "Stored Rebar Preview — Excluded from Analysis" in disabled_branch
     assert "Preview only — these stored bars are excluded from analysis" in disabled_branch
     assert "Dimension guides are intentionally hidden on the Rebar page" in disabled_branch
-    assert "create_section_preview(\n                geometry,\n                []," in disabled_branch
+    assert "create_section_preview(" in disabled_branch
+    assert "geometry" in disabled_branch
+    assert "result.rebars" in disabled_branch
+    assert 'st.session_state.get("section_dimensions", [])' not in disabled_branch
