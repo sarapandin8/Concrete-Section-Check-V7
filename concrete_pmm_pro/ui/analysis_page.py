@@ -2142,6 +2142,78 @@ def _get_or_compute_demand_capacity_summary(
     return summary
 
 
+def _render_pmm_result_views_first_screen() -> bool:
+    """Render PMM result-view tabs immediately under Flexural (PMM) when a stored result exists.
+
+    This is a UI placement helper only.  It reuses the stored PMM result, stored
+    load cases, and cached display artifacts; it does not run the solver or
+    change D/C equations.  The diagnostics/snapshot section below uses the same
+    session result and is guarded from rendering the PMM dashboard a second time.
+    """
+
+    result = st.session_state.get("rc_pmm_result")
+    if not isinstance(result, PMMSolverResult):
+        st.markdown("##### PMM Result Views")
+        st.info("Run / Recalculate Analysis to create PMM result views for Summary, PMM Check, 3D Interaction, SLS, and Diagnostics / QA.")
+        return False
+
+    settings = _settings_from_session()
+    stored_prestress_elements = list(st.session_state.get("prestress_elements", []) or [])
+    prestress_elements = effective_prestress_for_analysis(stored_prestress_elements, st.session_state, settings)
+    prestress_check_summary = check_prestress_elements_for_analysis(prestress_elements)
+    result_hash = st.session_state.get("rc_pmm_result_input_hash")
+    result_has_active_prestress = any(getattr(point, "active_prestress_count", point.bonded_prestress_count) > 0 for point in result.points)
+    result_has_passive_prestress = any(getattr(point, "passive_prestress_count", 0) > 0 for point in result.points)
+    result_has_bonded_prestress = result_has_active_prestress or result_has_passive_prestress
+    if result_has_active_prestress:
+        result_label = "RC + Active Bonded Prestress PMM"
+    elif result_has_passive_prestress:
+        result_label = "RC + Passive PS Steel PMM"
+    else:
+        result_label = "RC PMM"
+
+    pmm_df, _display_summary, numeric_summary = _get_or_build_pmm_result_display_cache(result, result_hash)
+    if pmm_df.empty:
+        st.info("Stored PMM result is available, but no displayable PMM points were generated.")
+        return False
+
+    dc_summary = _get_or_compute_demand_capacity_summary(
+        result,
+        st.session_state.get("load_cases", []),
+        result_hash,
+    )
+    engineering_warnings = _collect_engineering_warnings(
+        result.warnings,
+        prestress_check_summary.errors,
+        prestress_check_summary.warnings,
+        dc_summary.warnings,
+        numeric_summary["warnings"],
+    )
+    engineering_warnings = _filter_pmm_closeout_warnings(
+        engineering_warnings,
+        result_has_bonded_prestress=result_has_bonded_prestress,
+    )
+    unbonded_ignored_count = int(pmm_df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in pmm_df else 0
+    st.markdown("##### PMM Result Views")
+    st.caption(
+        "Primary Flexural PMM result views are shown immediately after the Flexural workspace header. "
+        "Run/cache controls and detailed diagnostics remain below."
+    )
+    _render_pmm_slice_dashboard(
+        pmm_df,
+        st.session_state.get("load_cases", []),
+        dc_summary,
+        result_label,
+        settings.include_prestress,
+        result_has_active_prestress,
+        unbonded_ignored_count,
+        result_hash,
+        engineering_warnings,
+    )
+    st.session_state["_pmm_result_views_rendered_upstream"] = True
+    return True
+
+
 def _render_input_summary() -> None:
     settings = _settings_from_session()
     mode_settings = _analysis_mode_from_session()
@@ -2275,7 +2347,7 @@ def _render_input_summary() -> None:
 
     result = st.session_state.get("rc_pmm_result")
     if isinstance(result, PMMSolverResult):
-        rendered_pmm_result_views = False
+        rendered_pmm_result_views = bool(st.session_state.pop("_pmm_result_views_rendered_upstream", False))
         result_hash = st.session_state.get("rc_pmm_result_input_hash")
         if current_analysis_hash is not None and result_hash != current_analysis_hash:
             st.warning("Displayed PMM results are stale because engineering inputs have changed. Run / Recalculate Analysis to update them.")
@@ -2288,42 +2360,6 @@ def _render_input_summary() -> None:
             result_label = "RC + Passive PS Steel PMM"
         else:
             result_label = "RC PMM"
-
-        nav2_df, _nav2_display_summary, nav2_numeric_summary = _get_or_build_pmm_result_display_cache(result, result_hash)
-        if not nav2_df.empty:
-            nav2_dc_summary = _get_or_compute_demand_capacity_summary(
-                result,
-                st.session_state.get("load_cases", []),
-                result_hash,
-            )
-            nav2_engineering_warnings = _collect_engineering_warnings(
-                result.warnings,
-                prestress_check_summary.errors,
-                prestress_check_summary.warnings,
-                nav2_dc_summary.warnings,
-                nav2_numeric_summary["warnings"],
-            )
-            nav2_engineering_warnings = _filter_pmm_closeout_warnings(
-                nav2_engineering_warnings,
-                result_has_bonded_prestress=result_has_bonded_prestress,
-            )
-            nav2_unbonded_ignored_count = int(nav2_df["unbonded_prestress_ignored_count"].max()) if "unbonded_prestress_ignored_count" in nav2_df else 0
-            st.markdown("##### PMM Result Views")
-            st.caption(
-                "Select the Flexural PMM result view first. Runtime controls, stored snapshots, and method QA remain below for review without cluttering the first decision screen."
-            )
-            _render_pmm_slice_dashboard(
-                nav2_df,
-                st.session_state.get("load_cases", []),
-                nav2_dc_summary,
-                result_label,
-                settings.include_prestress,
-                result_has_active_prestress,
-                nav2_unbonded_ignored_count,
-                result_hash,
-                nav2_engineering_warnings,
-            )
-            rendered_pmm_result_views = True
 
         st.subheader(f"{result_label} Result")
         if result_has_bonded_prestress:
@@ -9476,6 +9512,7 @@ def _render_column_pier_flexural_pmm_workspace() -> None:
         "ULS compression Pu remains positive. Prestress is treated as internal prestress/reinforcement action "
         "and should not be duplicated as external Pu demand."
     )
+    _render_pmm_result_views_first_screen()
     with st.expander("Analysis setup / readiness", expanded=False):
         _render_analysis_mode_section()
         _render_analysis_settings_panel()

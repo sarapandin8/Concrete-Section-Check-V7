@@ -109,14 +109,17 @@ def test_ui_pmm_compact1_collapses_flexural_diagnostics_and_prioritizes_visual_r
 
 
 
-def test_ui_pmm_nav2_moves_result_view_tabs_up_under_flexural() -> None:
+def test_ui_pmm_nav3_moves_result_view_tabs_immediately_under_flexural() -> None:
     source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
 
-    assert 'st.markdown("##### PMM Result Views")' in source
-    assert "Select the Flexural PMM result view first" in source
-    assert "rendered_pmm_result_views = True" in source
-    assert source.index('st.markdown("##### PMM Result Views")') < source.index('st.subheader(f"{result_label} Result")')
-    assert source.index('st.markdown("##### PMM Result Views")') < source.index('with st.expander("Stored calculation snapshot / D/C trace", expanded=False)')
+    assert "def _render_pmm_result_views_first_screen" in source
+    assert "Primary Flexural PMM result views are shown immediately after the Flexural workspace header" in source
+    assert "_pmm_result_views_rendered_upstream" in source
+    assert source.index("_render_pmm_result_views_first_screen()") < source.index('with st.expander("Analysis setup / readiness", expanded=False)')
+    call_index = source.index("    _render_pmm_result_views_first_screen()")
+    assert call_index < source.index('with st.expander("Analysis setup / readiness", expanded=False)')
+    assert call_index < source.index('    _render_input_summary()')
+    assert 'with st.expander("Stored calculation snapshot / D/C trace", expanded=False)' in source
 
 def test_ui_action_buttons1_highlights_primary_actions_without_dark_fill() -> None:
     app_source = Path("app.py").read_text(encoding="utf-8")
