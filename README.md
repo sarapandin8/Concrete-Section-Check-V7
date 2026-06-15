@@ -659,3 +659,10 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Reflowed Section Builder into a compact working layout: geometry inputs and gross properties now stack in the left column while live preview remains in the right column.
 - Reduced preview canvas height and converted preview status into compact cards to remove the large unused left-side whitespace.
 - Kept geometry generation, section-property calculations, PMM solver, reinforcement/prestress data, and project schema unchanged.
+
+
+### UI.PRESTRESS.PREVIEW1 — Prestress preview visible by default
+- Shows the Prestress page section preview directly when Prestress is enabled from Section Builder, including passive/reference prestress rows.
+- Keeps ordinary rebar hidden from the default Prestress preview; combined rebar + prestress remains a collapsed coordination preview.
+- Shows a geometry-only preview when Prestress is enabled but no active prestress rows are available yet.
+- No prestress calculation, PMM, SLS, shear/torsion, report, or schema changes.

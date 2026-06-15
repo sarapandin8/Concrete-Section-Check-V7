@@ -5698,7 +5698,10 @@ def _render_prestress_section_preview_panel(
 
     The Prestress page owns prestressing steel layout, so its default preview
     must not show ordinary rebar.  A combined reinforcement preview remains
-    available in a collapsed expander for coordination checks only.
+    available in a collapsed expander for coordination checks only.  When
+    Prestress is enabled, the section preview is rendered directly on the page
+    even for passive/reference rows so users can immediately verify tendon
+    locations after enabling the Prestress system in Section Builder.
     """
 
     st.markdown("#### Section Preview with Prestress")
@@ -5709,8 +5712,13 @@ def _render_prestress_section_preview_panel(
     dimensions = st.session_state.get("section_dimensions", [])
     active_prestress = list(result.elements or [])
 
-    if _has_active_prestress_force(active_prestress):
-        st.caption("Default preview shows prestressing steel only. Ordinary rebar is intentionally hidden on the Prestress page.")
+    if active_prestress:
+        if _has_active_prestress_force(active_prestress):
+            st.caption("Default preview shows prestressing steel only. Ordinary rebar is intentionally hidden on the Prestress page.")
+        else:
+            st.caption(
+                "Preview shows active prestress/reference rows immediately. Reference-only rows do not add Pe to analysis until Pe_eff, fpe, or initial stress is assigned."
+            )
         fig = create_section_preview(
             geometry,
             dimensions,
@@ -5718,24 +5726,19 @@ def _render_prestress_section_preview_panel(
             [],
             active_prestress,
         )
-        fig.update_layout(height=430, margin=dict(l=10, r=10, t=36, b=10))
+        fig.update_layout(height=380, margin=dict(l=10, r=10, t=34, b=8))
         st.plotly_chart(fig, use_container_width=True, key="prestress_only_section_preview")
-    elif active_prestress:
-        with st.expander("Passive prestress/reference steel preview", expanded=False):
-            st.caption(
-                "Only passive prestress/reference rows are active. They are hidden from the default view so non-prestressed members do not look prestressed."
-            )
-            fig = create_section_preview(
-                geometry,
-                dimensions,
-                "symbol_value",
-                [],
-                active_prestress,
-            )
-            fig.update_layout(height=430, margin=dict(l=10, r=10, t=36, b=10))
-            st.plotly_chart(fig, use_container_width=True, key="prestress_passive_section_preview")
     else:
-        st.caption("No active prestressing steel rows are available to preview.")
+        st.caption("Prestress is enabled, but no active prestressing steel rows are available yet. Geometry-only preview is shown until tendon rows are activated.")
+        fig = create_section_preview(
+            geometry,
+            dimensions,
+            "symbol_value",
+            [],
+            [],
+        )
+        fig.update_layout(height=340, margin=dict(l=10, r=10, t=34, b=8))
+        st.plotly_chart(fig, use_container_width=True, key="prestress_geometry_only_section_preview")
 
     if show_combined_preview and active_prestress and ordinary_rebar_enabled(st.session_state, default=True):
         rebars = list(st.session_state.get("rebars", []) or [])
@@ -5752,7 +5755,7 @@ def _render_prestress_section_preview_panel(
                     rebars,
                     active_prestress,
                 )
-                combined_fig.update_layout(height=430, margin=dict(l=10, r=10, t=36, b=10))
+                combined_fig.update_layout(height=380, margin=dict(l=10, r=10, t=34, b=8))
                 st.plotly_chart(combined_fig, use_container_width=True, key="prestress_combined_reinforcement_preview")
 
 def _render_engineering_notes() -> None:
@@ -6006,12 +6009,12 @@ def render_prestress_page() -> None:
             _render_prestress_summary_strip(result, geometry_errors, valid_for_analysis, active_rebar_count)
 
     with side_col:
-        _render_validation(result, geometry_errors, geometry is not None, valid_for_analysis, active_rebar_count)
         if girder_prestress_layout_active:
             st.markdown("#### Girder Strand Preview")
             st.caption("Use the Cross-section layout tab in the strand/debonding workflow. Legacy PS1/PS2 section-level previews are hidden for precast girders.")
         else:
             _render_prestress_section_preview_panel(geometry, result)
+        _render_validation(result, geometry_errors, geometry is not None, valid_for_analysis, active_rebar_count)
         _render_engineering_notes()
 
     if not girder_prestress_layout_active:

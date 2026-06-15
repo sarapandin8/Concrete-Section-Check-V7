@@ -42,3 +42,10 @@ def test_prestress_force_status_distinguishes_reference_only_rows():
     assert "Reference only" in PRESTRESS_SOURCE
     assert "no active Pe assigned" in PRESTRESS_SOURCE
     assert "Active prestress rows are reference/passive only" in PRESTRESS_SOURCE
+
+
+def test_prestress_preview_is_visible_for_passive_reference_rows() -> None:
+    assert "Preview shows active prestress/reference rows immediately" in PRESTRESS_SOURCE
+    assert "Passive prestress/reference steel preview" not in PRESTRESS_SOURCE
+    assert "prestress_passive_section_preview" not in PRESTRESS_SOURCE
+    assert "prestress_geometry_only_section_preview" in PRESTRESS_SOURCE
