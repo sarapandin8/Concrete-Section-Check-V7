@@ -220,7 +220,7 @@ from concrete_pmm_pro.verification.sls_benchmarks import (
 
 ANALYSIS_SUBTABS = ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]
 ANALYSIS_COLUMN_PIER_SUBTABS = ["ULS Strength", "Report / QA"]
-COLUMN_PIER_ULS_CHECK_SUBTABS = ["Flexural (PMM)", "Shear", "Torsion", "Shear + Torsion"]
+COLUMN_PIER_ULS_CHECK_SUBTABS = ["Summary", "Flexural (PMM)", "Shear", "Torsion", "Shear + Torsion"]
 # Legacy source-test token retained while PERF.RERUN1 switches from eager st.tabs
 # to lazy subpage rendering: uls_tab, sls_tab, sls_deflection_tab, report_tab
 PMM_3D_MASTER_TOGGLE_KEY = "show_pmm_3d_interaction"
@@ -9472,6 +9472,15 @@ def _column_pier_uls_check_choice() -> str:
     return render_active_choice("ULS Strength Check", list(COLUMN_PIER_ULS_CHECK_SUBTABS), key="_column_pier_uls_check_subtab")
 
 
+def _render_column_pier_uls_summary_workspace() -> None:
+    st.markdown("#### Summary")
+    st.caption(
+        "ULS Strength overview for the selected member family. This summary collects the project code basis, scoped workflow capability, and Column/Pier decision table before the individual strength-check workspaces."
+    )
+    _render_project_design_code_guard(workflow="pmm")
+    _render_column_pier_analysis_decision_view()
+
+
 def _column_pier_guarded_strength_check_cards(check_name: str) -> list[dict[str, object]]:
     code = project_design_code_from_session(st.session_state)
     edition = project_code_edition_from_session(st.session_state)
@@ -15846,16 +15855,16 @@ def render_analysis_uls_pmm() -> None:
         _render_beam_girder_uls_workspace(mode_settings)
         return
 
-    # UI.ANALYSIS.NAV1: expose the strength-check selector immediately under
-    # the ULS Strength subpage so users choose Flexural, Shear, Torsion, or V+T
-    # before reading the decision/result panels.  Keep the decision summary in a
-    # placeholder so it still renders above the active workspace while reading
-    # fresh session_state after the selected workspace has updated it.
+    # UI.ANALYSIS.NAV2: make Summary a first-class ULS Strength tab.  Project
+    # code basis, scoped capability cards, and Column/Pier ULS decision summary
+    # belong to the whole strength workflow, not inside the Flexural PMM result
+    # view.  Individual strength-check tabs now focus on their own workspace and
+    # do not repeat the global decision summary above every check.
     active_check = _column_pier_uls_check_choice()
-    _render_project_design_code_guard(workflow="pmm")
-    decision_view_slot = st.container()
 
-    if active_check == "Flexural (PMM)":
+    if active_check == "Summary":
+        _render_column_pier_uls_summary_workspace()
+    elif active_check == "Flexural (PMM)":
         _render_column_pier_flexural_pmm_workspace()
     elif active_check == "Shear":
         _render_column_pier_shear_guarded_workspace()
@@ -15864,10 +15873,7 @@ def render_analysis_uls_pmm() -> None:
     elif active_check == "Shear + Torsion":
         _render_column_pier_combined_vt_workspace()
     else:
-        _render_column_pier_flexural_pmm_workspace()
-
-    with decision_view_slot:
-        _render_column_pier_analysis_decision_view()
+        _render_column_pier_uls_summary_workspace()
 
 
 def render_analysis_sls_stress() -> None:

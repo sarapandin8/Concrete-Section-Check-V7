@@ -121,6 +121,21 @@ def test_ui_pmm_nav3_moves_result_view_tabs_immediately_under_flexural() -> None
     assert call_index < source.index('    _render_input_summary()')
     assert 'with st.expander("Stored calculation snapshot / D/C trace", expanded=False)' in source
 
+
+
+def test_ui_analysis_nav2_promotes_uls_strength_summary_to_top_level_check_tab() -> None:
+    source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
+
+    assert 'COLUMN_PIER_ULS_CHECK_SUBTABS = ["Summary", "Flexural (PMM)", "Shear", "Torsion", "Shear + Torsion"]' in source
+    assert "def _render_column_pier_uls_summary_workspace" in source
+    assert 'if active_check == "Summary":' in source
+    assert '_render_project_design_code_guard(workflow="pmm")' in source
+    assert "_render_column_pier_analysis_decision_view()" in source
+    render_start = source.index("def render_analysis_uls_pmm() -> None:")
+    render_end = source.index("def render_analysis_sls_stress() -> None:", render_start)
+    body = source[render_start:render_end]
+    assert "decision_view_slot = st.container()" not in body
+
 def test_ui_action_buttons1_highlights_primary_actions_without_dark_fill() -> None:
     app_source = Path("app.py").read_text(encoding="utf-8")
     analysis_source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")

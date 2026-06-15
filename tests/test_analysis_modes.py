@@ -172,6 +172,8 @@ def test_column_pier_uls_has_guarded_flexural_shear_torsion_subviews() -> None:
     assert "_render_column_pier_torsion_guarded_workspace" in source
     assert "_render_column_pier_combined_vt_workspace" in source
     assert "Column/Pier ULS Decision Summary" in source
+    assert '"Summary"' in source
+    assert "_render_column_pier_uls_summary_workspace" in source
     assert "_column_pier_check_decision_rows" in source
     assert "_column_pier_shear_check_dataframe" in source
     assert "_column_pier_combined_vt_check_dataframe" in source
@@ -185,7 +187,7 @@ def test_column_pier_uls_has_guarded_flexural_shear_torsion_subviews() -> None:
     assert "Seismic spacing advisor is not selected in Sections -> Rebar -> Transverse Rebar" in source
 
 
-def test_column_pier_decision_summary_renders_after_active_workspace_for_fresh_pmm_state() -> None:
+def test_column_pier_decision_summary_is_first_class_uls_strength_summary_tab() -> None:
     from pathlib import Path
 
     repo_root = Path(__file__).resolve().parents[1]
@@ -195,8 +197,13 @@ def test_column_pier_decision_summary_renders_after_active_workspace_for_fresh_p
     end = source.index("def render_analysis_sls_stress() -> None:", start)
     body = source[start:end]
 
-    assert "decision_view_slot = st.container()" in body
-    assert "with decision_view_slot:" in body
-    assert body.index("active_check = _column_pier_uls_check_choice()") < body.index("decision_view_slot = st.container()")
-    assert body.index("_render_column_pier_flexural_pmm_workspace()") < body.rindex("_render_column_pier_analysis_decision_view()")
-    assert "fresh session_state after the selected workspace has updated it" in body
+    assert 'COLUMN_PIER_ULS_CHECK_SUBTABS = ["Summary", "Flexural (PMM)", "Shear", "Torsion", "Shear + Torsion"]' in source
+    assert "decision_view_slot = st.container()" not in body
+    assert 'if active_check == "Summary":' in body
+    assert "_render_column_pier_uls_summary_workspace()" in body
+    assert "code basis, scoped capability cards, and Column/Pier ULS decision summary" in body
+    summary_start = source.index("def _render_column_pier_uls_summary_workspace()")
+    summary_end = source.index("def _column_pier_guarded_strength_check_cards", summary_start)
+    summary_body = source[summary_start:summary_end]
+    assert '_render_project_design_code_guard(workflow="pmm")' in summary_body
+    assert "_render_column_pier_analysis_decision_view()" in summary_body

@@ -676,3 +676,5 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Render decision/summary cards inside the Summary tab rather than above the tabs.
 - Remove the local SLS tab from Flexural PMM result views; serviceability belongs in the main Analysis SLS subpage workflow.
 - No solver, D/C, load, report, or project-schema changes.
+
+- UI.ANALYSIS.NAV2: promotes Summary to the first ULS Strength Check tab and moves project/code/decision overview into that Summary tab without changing solver logic.
