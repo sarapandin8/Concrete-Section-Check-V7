@@ -12,11 +12,20 @@ def test_prestress_page_default_preview_hides_ordinary_rebar():
     assert "create_section_preview(\n            geometry,\n            dimensions,\n            \"symbol_value\",\n            [],\n            active_prestress" in PRESTRESS_SOURCE
 
 
-def test_rebar_page_default_preview_hides_prestressing_steel():
+def test_rebar_page_default_preview_hides_prestressing_steel_and_dimensions():
     assert "Section Preview with Rebar" in REBAR_SOURCE
     assert "Default preview shows ordinary rebar only" in REBAR_SOURCE
+    assert "Dimension guides are intentionally hidden here" in REBAR_SOURCE
     assert "rebar_section_preview" in REBAR_SOURCE
-    assert "create_section_preview(\n                geometry,\n                st.session_state.get(\"section_dimensions\", []),\n                \"symbol_value\",\n                st.session_state[\"rebars\"],\n                []," in REBAR_SOURCE
+    assert "create_section_preview(\n                geometry,\n                [],\n                \"symbol_value\",\n                st.session_state[\"rebars\"],\n                []," in REBAR_SOURCE
+    assert "create_section_preview(\n                geometry,\n                st.session_state.get(\"section_dimensions\", []),\n                \"symbol_value\",\n                st.session_state[\"rebars\"]," not in REBAR_SOURCE
+
+
+def test_rebar_page_disabled_ordinary_rebar_is_marked_stored_excluded():
+    assert "Analysis Participation" in REBAR_SOURCE
+    assert "Excluded" in REBAR_SOURCE
+    assert "Stored Rebar Preview — Excluded from Analysis" in REBAR_SOURCE
+    assert "stored_excluded_section_preview" in REBAR_SOURCE
 
 
 def test_combined_reinforcement_preview_is_explicit_and_collapsed():

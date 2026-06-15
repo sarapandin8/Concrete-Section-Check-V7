@@ -1836,15 +1836,47 @@ def _render_longitudinal_rebar_tab(
     if not ordinary_rebar_enabled(st.session_state, default=True):
         st.info(
             "Ordinary rebar is disabled for the current section in Section Builder. "
-            "Stored Rebar table data is preserved, but ordinary rebar and torsion Al are ignored by analysis until you enable it again."
+            "Stored Rebar table data is preserved for later use, but ordinary rebar and torsion Al are excluded from analysis until you enable it again."
         )
-        with st.expander("Stored Rebar table preview", expanded=False):
-            table = st.session_state.get("rebar_table")
-            if table is None:
+        table = st.session_state.get("rebar_table")
+        stored_df = _ensure_rebar_table_columns(pd.DataFrame(table)) if table is not None else pd.DataFrame(columns=REBAR_TABLE_COLUMNS)
+        result = rebars_from_dataframe(stored_df, rebar_db) if table is not None else RebarParseResult([], [], [], [])
+        st.session_state["rebars"] = result.rebars
+        st.session_state["rebars_valid_for_analysis"] = True
+        st.markdown(
+            _strip_html(
+                [
+                    RebarMetric("Stored Bars", f"{len(result.rebars):,}", "Preserved table rows"),
+                    RebarMetric("Stored As", f"{_total_as_mm2(result.rebars):,.1f} mm^2"),
+                    RebarMetric("Analysis Participation", "Excluded", "Disabled in Section Builder", "warning", True),
+                    RebarMetric("Material", _dominant_material_label(result.rebars, active_material_name)),
+                ]
+            ),
+            unsafe_allow_html=True,
+        )
+        with st.expander("Stored Rebar table preview", expanded=True):
+            if table is None or stored_df.empty:
                 st.caption("No stored Rebar table is available yet.")
             else:
-                st.dataframe(_ensure_rebar_table_columns(pd.DataFrame(table)), use_container_width=True, hide_index=True)
-        st.session_state["rebars_valid_for_analysis"] = True
+                st.caption("Stored rows are shown for review only. They are not included in PMM/SLS/shear/torsion assembly while ordinary rebar is disabled.")
+                st.dataframe(stored_df, use_container_width=True, hide_index=True)
+        geometry = st.session_state.get("section_geometry")
+        if geometry is not None and result.rebars:
+            st.subheader("Stored Rebar Preview — Excluded from Analysis")
+            st.caption("Preview only. Dimension guides are intentionally hidden on the Rebar page; use Section Builder for section dimensions.")
+            preview_fig = create_section_preview(
+                geometry,
+                [],
+                "symbol_value",
+                result.rebars,
+                [],
+            )
+            preview_fig.update_layout(height=430, margin=dict(l=10, r=10, t=36, b=10))
+            st.plotly_chart(
+                preview_fig,
+                use_container_width=True,
+                key="rebar_stored_excluded_section_preview",
+            )
         return
 
     if "rebar_table" not in st.session_state:
@@ -1924,10 +1956,10 @@ def _render_longitudinal_rebar_tab(
 
         if geometry is not None:
             st.subheader("Section Preview with Rebar — Longitudinal")
-            st.caption("Default preview shows ordinary rebar only. Bars are drawn at true diameter scale; prestressing steel is intentionally hidden on the Rebar page.")
+            st.caption("Default preview shows ordinary rebar only. Dimension guides are intentionally hidden here; use Section Builder for section dimensions.")
             preview_fig = create_section_preview(
                 geometry,
-                st.session_state.get("section_dimensions", []),
+                [],
                 "symbol_value",
                 st.session_state["rebars"],
                 [],
@@ -1948,7 +1980,7 @@ def _render_longitudinal_rebar_tab(
                         )
                         combined_fig = create_section_preview(
                             geometry,
-                            st.session_state.get("section_dimensions", []),
+                            [],
                             "symbol_value",
                             st.session_state["rebars"],
                             prestress_elements,

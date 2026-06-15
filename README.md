@@ -678,3 +678,8 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - No solver, D/C, load, report, or project-schema changes.
 
 - UI.ANALYSIS.NAV2: promotes Summary to the first ULS Strength Check tab and moves project/code/decision overview into that Summary tab without changing solver logic.
+### UI.REBAR.INCLUSION1 — Rebar inclusion state and clean Rebar preview
+- Rebar page now labels stored ordinary rebar as excluded when disabled in Section Builder.
+- Longitudinal/combined Rebar previews hide section dimension guides; Section Builder remains the dimension source.
+- No geometry, solver, rebar parser, or project schema changes.
+
