@@ -2322,43 +2322,82 @@ def parametric_plank_girder_exterior_dimensions(
 
 
 
+def _coalesce_float(value: object, fallback: object, name: str) -> float:
+    selected = fallback if value is None else value
+    _require_positive(name, selected)
+    return float(selected)
+
+
 def railway_u_girder(
     width_mm: float,
     depth_mm: float,
     top_wall_width_mm: float,
     bottom_side_width_mm: float,
-    inner_vertical_depth_mm: float,
-    haunch_size_mm: float,
-    floor_side_thickness_mm: float,
-    floor_center_thickness_mm: float,
+    haunch_x_mm: float | None = None,
+    haunch_y_mm: float | None = None,
+    h1_step_height_mm: float | None = None,
+    h2_bottom_opening_mm: float | None = None,
+    h3_floor_side_thickness_mm: float | None = None,
+    h4_floor_center_thickness_mm: float | None = None,
+    # Backward-compatible aliases from SECTION.RAIL.UGIRDER1 saved projects.
+    inner_vertical_depth_mm: float | None = None,
+    haunch_size_mm: float | None = None,
+    floor_side_thickness_mm: float | None = None,
+    floor_center_thickness_mm: float | None = None,
     name: str = "Railway U-Girder",
 ) -> SectionGeometry:
     """Generate a non-composite railway through U-girder section.
 
-    The preset follows the user-provided railway U-girder drawing.  Only the
-    main drawing dimensions are exposed to the Section Builder.  The outside
-    notch is derived from ``bottom_side_width_mm - top_wall_width_mm``; the six
-    25 mm chamfers are fixed drawing details so the UI does not become cluttered
-    with secondary drafting inputs.
+    The preset follows the user-provided railway U-girder drawing.  Primary
+    section dimensions are exposed in the Section Builder.  The outside notch
+    is derived from ``bottom_side_width_mm - top_wall_width_mm``; the six
+    25 mm chamfers remain fixed drawing details so the UI does not become
+    cluttered with secondary drafting inputs.
+
+    Newer presets drive the vertical geometry with ``h1`` through ``h4``:
+    ``h1`` is the outside step height from bottom, ``h2`` is the bottom opening
+    depth below the floor underside, ``h3`` is the side floor thickness, and
+    ``h4`` is the centerline floor thickness.  Older saved projects that still
+    provide ``inner_vertical_depth_mm``, ``haunch_size_mm``, and floor thickness
+    aliases are accepted and mapped to the same geometry.
     """
 
     _require_positive("width_mm", width_mm)
     _require_positive("depth_mm", depth_mm)
     _require_positive("top_wall_width_mm", top_wall_width_mm)
     _require_positive("bottom_side_width_mm", bottom_side_width_mm)
-    _require_positive("inner_vertical_depth_mm", inner_vertical_depth_mm)
-    _require_positive("haunch_size_mm", haunch_size_mm)
-    _require_positive("floor_side_thickness_mm", floor_side_thickness_mm)
-    _require_positive("floor_center_thickness_mm", floor_center_thickness_mm)
 
     width = float(width_mm)
     depth = float(depth_mm)
     top_wall_width = float(top_wall_width_mm)
     bottom_side_width = float(bottom_side_width_mm)
-    inner_vertical_depth = float(inner_vertical_depth_mm)
-    haunch_size = float(haunch_size_mm)
-    floor_side_thickness = float(floor_side_thickness_mm)
-    floor_center_thickness = float(floor_center_thickness_mm)
+
+    # Backward-compatible defaults preserve the originally accepted drawing.
+    legacy_haunch = 300.0 if haunch_size_mm is None else float(haunch_size_mm)
+    haunch_x = _coalesce_float(haunch_x_mm, legacy_haunch, "haunch_x_mm")
+    haunch_y = _coalesce_float(haunch_y_mm, legacy_haunch, "haunch_y_mm")
+    h3_side = _coalesce_float(
+        h3_floor_side_thickness_mm,
+        395.0 if floor_side_thickness_mm is None else floor_side_thickness_mm,
+        "h3_floor_side_thickness_mm",
+    )
+    h4_center = _coalesce_float(
+        h4_floor_center_thickness_mm,
+        450.0 if floor_center_thickness_mm is None else floor_center_thickness_mm,
+        "h4_floor_center_thickness_mm",
+    )
+    h2_bottom = _coalesce_float(h2_bottom_opening_mm, 305.0, "h2_bottom_opening_mm")
+
+    if h1_step_height_mm is None:
+        if inner_vertical_depth_mm is not None:
+            # Original default: inner vertical 600 + haunch 300 + 10% haunch =
+            # step y from top 930, so h1 from bottom = 670 for H=1600.
+            legacy_step_from_top = float(inner_vertical_depth_mm) + legacy_haunch + 0.10 * legacy_haunch
+            h1_step = depth - legacy_step_from_top
+        else:
+            h1_step = 670.0
+    else:
+        h1_step = _coalesce_float(h1_step_height_mm, 670.0, "h1_step_height_mm")
 
     chamfer = 25.0
     half_width = width / 2.0
@@ -2373,27 +2412,29 @@ def railway_u_girder(
     upper_outer_half_width = half_width - notch
     if min(top_wall_width, bottom_side_width, inner_half_width) <= 2.0 * chamfer:
         raise ValueError("Invalid geometry: chamfer is too large for the selected side wall dimensions.")
-    if haunch_size >= inner_half_width:
-        raise ValueError("Invalid geometry: haunch size must be smaller than the inner half width.")
+    if haunch_x >= inner_half_width:
+        raise ValueError("Invalid geometry: haunch X must be smaller than the inner half width.")
 
-    haunch_start_y = inner_vertical_depth
-    floor_side_top_y = inner_vertical_depth + haunch_size
-    floor_underside_y = floor_side_top_y + floor_side_thickness
-    floor_center_top_y = floor_underside_y - floor_center_thickness
-    if floor_center_top_y <= haunch_start_y:
-        raise ValueError("Invalid geometry: center floor thickness is too large for the selected haunch depth.")
-    if floor_underside_y >= depth:
-        raise ValueError("Invalid geometry: floor underside must remain above the bottom of the section.")
+    outside_step_y = depth - h1_step
+    floor_underside_y = depth - h2_bottom
+    floor_side_top_y = floor_underside_y - h3_side
+    floor_center_top_y = floor_underside_y - h4_center
+    haunch_start_y = floor_side_top_y - haunch_y
+
+    if outside_step_y <= chamfer or outside_step_y >= depth - chamfer:
+        raise ValueError("Invalid geometry: h1 step height places the outside notch too close to the top or bottom.")
+    if h2_bottom <= chamfer or floor_underside_y >= depth or floor_underside_y <= chamfer:
+        raise ValueError("Invalid geometry: h2 bottom opening leaves an invalid floor underside level.")
+    if floor_side_top_y <= chamfer:
+        raise ValueError("Invalid geometry: h2 and h3 place the side floor top too close to the section top.")
+    if floor_center_top_y <= chamfer:
+        raise ValueError("Invalid geometry: h2 and h4 place the center floor top too close to the section top.")
+    if haunch_start_y <= chamfer:
+        raise ValueError("Invalid geometry: haunch Y is too large for the side floor level.")
+    if floor_underside_y >= depth - chamfer:
+        raise ValueError("Invalid geometry: floor underside is too close to the bottom chamfer.")
     if upper_outer_half_width <= inner_half_width:
         raise ValueError("Invalid geometry: derived upper outside face must remain outside the inner face.")
-
-    # The drawing locates the exterior step 670 mm above the bottom, or 930 mm
-    # below the top for the default geometry.  Keep this as a derived detail by
-    # tying it to the internal floor-side level plus one-tenth of the haunch
-    # size: 600 + 300 + 30 = 930 mm for the default drawing.
-    outside_step_y = floor_side_top_y + 0.10 * haunch_size
-    if outside_step_y >= depth - chamfer:
-        raise ValueError("Invalid geometry: derived outside notch level is too close to the bottom chamfer.")
 
     # Drawing coordinates: x is from bridge centerline, y is measured downward
     # from the top of side wall.  They are converted to the app's centered
@@ -2403,9 +2444,9 @@ def railway_u_girder(
         (-inner_half_width - chamfer, 0.0),
         (-inner_half_width, chamfer),
         (-inner_half_width, haunch_start_y),
-        (-(inner_half_width - haunch_size), floor_side_top_y),
+        (-(inner_half_width - haunch_x), floor_side_top_y),
         (0.0, floor_center_top_y),
-        (inner_half_width - haunch_size, floor_side_top_y),
+        (inner_half_width - haunch_x, floor_side_top_y),
         (inner_half_width, haunch_start_y),
         (inner_half_width, chamfer),
         (inner_half_width + chamfer, 0.0),
@@ -2440,16 +2481,19 @@ def railway_u_girder(
                 "depth_mm": depth_mm,
                 "top_wall_width_mm": top_wall_width_mm,
                 "bottom_side_width_mm": bottom_side_width_mm,
-                "inner_vertical_depth_mm": inner_vertical_depth_mm,
-                "haunch_size_mm": haunch_size_mm,
-                "floor_side_thickness_mm": floor_side_thickness_mm,
-                "floor_center_thickness_mm": floor_center_thickness_mm,
+                "haunch_x_mm": haunch_x,
+                "haunch_y_mm": haunch_y,
+                "h1_step_height_mm": h1_step,
+                "h2_bottom_opening_mm": h2_bottom,
+                "h3_floor_side_thickness_mm": h3_side,
+                "h4_floor_center_thickness_mm": h4_center,
             },
             "derived_details": {
                 "outside_notch_mm": notch,
                 "outside_step_y_from_top_mm": outside_step_y,
                 "chamfer_mm": chamfer,
                 "inner_half_width_mm": inner_half_width,
+                "haunch_start_y_from_top_mm": haunch_start_y,
                 "floor_side_top_y_from_top_mm": floor_side_top_y,
                 "floor_center_top_y_from_top_mm": floor_center_top_y,
                 "floor_underside_y_from_top_mm": floor_underside_y,
@@ -2469,10 +2513,17 @@ def railway_u_girder_dimensions(
     depth_mm: float,
     top_wall_width_mm: float,
     bottom_side_width_mm: float,
-    inner_vertical_depth_mm: float,
-    haunch_size_mm: float,
-    floor_side_thickness_mm: float,
-    floor_center_thickness_mm: float,
+    haunch_x_mm: float | None = None,
+    haunch_y_mm: float | None = None,
+    h1_step_height_mm: float | None = None,
+    h2_bottom_opening_mm: float | None = None,
+    h3_floor_side_thickness_mm: float | None = None,
+    h4_floor_center_thickness_mm: float | None = None,
+    # Backward-compatible aliases from SECTION.RAIL.UGIRDER1 saved projects.
+    inner_vertical_depth_mm: float | None = None,
+    haunch_size_mm: float | None = None,
+    floor_side_thickness_mm: float | None = None,
+    floor_center_thickness_mm: float | None = None,
     **_: object,
 ) -> list[DimensionItem]:
     width = float(width_mm)
@@ -2483,11 +2534,34 @@ def railway_u_girder_dimensions(
     inner_half_width = half_width - bottom_side_width
     notch = bottom_side_width - top_wall_width
     upper_outer_half_width = half_width - notch
-    haunch_size = float(haunch_size_mm)
-    floor_side_top_y = float(inner_vertical_depth_mm) + haunch_size
-    floor_underside_y = floor_side_top_y + float(floor_side_thickness_mm)
-    floor_center_top_y = floor_underside_y - float(floor_center_thickness_mm)
-    outside_step_y = floor_side_top_y + 0.10 * haunch_size
+    legacy_haunch = 300.0 if haunch_size_mm is None else float(haunch_size_mm)
+    haunch_x = _coalesce_float(haunch_x_mm, legacy_haunch, "haunch_x_mm")
+    haunch_y = _coalesce_float(haunch_y_mm, legacy_haunch, "haunch_y_mm")
+    h3_side = _coalesce_float(
+        h3_floor_side_thickness_mm,
+        395.0 if floor_side_thickness_mm is None else floor_side_thickness_mm,
+        "h3_floor_side_thickness_mm",
+    )
+    h4_center = _coalesce_float(
+        h4_floor_center_thickness_mm,
+        450.0 if floor_center_thickness_mm is None else floor_center_thickness_mm,
+        "h4_floor_center_thickness_mm",
+    )
+    h2_bottom = _coalesce_float(h2_bottom_opening_mm, 305.0, "h2_bottom_opening_mm")
+    if h1_step_height_mm is None:
+        if inner_vertical_depth_mm is not None:
+            legacy_step_from_top = float(inner_vertical_depth_mm) + legacy_haunch + 0.10 * legacy_haunch
+            h1_step = depth - legacy_step_from_top
+        else:
+            h1_step = 670.0
+    else:
+        h1_step = _coalesce_float(h1_step_height_mm, 670.0, "h1_step_height_mm")
+
+    outside_step_y = depth - h1_step
+    floor_underside_y = depth - h2_bottom
+    floor_side_top_y = floor_underside_y - h3_side
+    floor_center_top_y = floor_underside_y - h4_center
+    haunch_start_y = floor_side_top_y - haunch_y
     offset = max(width, depth) * 0.055
 
     def y_app(y_down: float) -> float:
@@ -2500,9 +2574,12 @@ def railway_u_girder_dimensions(
         _dim("t_wall_top", _point(-upper_outer_half_width, y_app(0.0) + 0.30 * offset), _point(-inner_half_width, y_app(0.0) + 0.30 * offset), _point(-(upper_outer_half_width + inner_half_width) / 2.0, y_app(0.0) + 0.85 * offset), "horizontal", top_wall_width),
         _dim("clear_half", _point(-inner_half_width, y_app(0.0) + 0.30 * offset), _point(0.0, y_app(0.0) + 0.30 * offset), _point(-inner_half_width / 2.0, y_app(0.0) + 0.85 * offset), "horizontal", inner_half_width),
         _dim("H", _point(-half_width - 0.75 * offset, y_app(depth)), _point(-half_width - 0.75 * offset, y_app(0.0)), _point(-half_width - 1.25 * offset, 0.0), "vertical", depth),
-        _dim("y_step", _point(-half_width - 0.25 * offset, y_app(depth)), _point(-half_width - 0.25 * offset, y_app(outside_step_y)), _point(-half_width - 0.65 * offset, y_app((depth + outside_step_y) / 2.0)), "vertical", depth - outside_step_y),
-        _dim("h_side", _point(inner_half_width + 0.35 * offset, y_app(floor_side_top_y)), _point(inner_half_width + 0.35 * offset, y_app(floor_underside_y)), _point(inner_half_width + 0.85 * offset, y_app((floor_side_top_y + floor_underside_y) / 2.0)), "vertical", floor_side_thickness_mm),
-        _dim("h_center", _point(0.0, y_app(floor_center_top_y)), _point(0.0, y_app(floor_underside_y)), _point(0.35 * offset, y_app((floor_center_top_y + floor_underside_y) / 2.0)), "vertical", floor_center_thickness_mm),
+        _dim("h1", _point(-half_width - 0.25 * offset, y_app(depth)), _point(-half_width - 0.25 * offset, y_app(outside_step_y)), _point(-half_width - 0.65 * offset, y_app((depth + outside_step_y) / 2.0)), "vertical", h1_step),
+        _dim("h2", _point(inner_half_width + 0.25 * offset, y_app(depth)), _point(inner_half_width + 0.25 * offset, y_app(floor_underside_y)), _point(inner_half_width + 0.72 * offset, y_app((depth + floor_underside_y) / 2.0)), "vertical", h2_bottom),
+        _dim("h3", _point(inner_half_width + 0.35 * offset, y_app(floor_side_top_y)), _point(inner_half_width + 0.35 * offset, y_app(floor_underside_y)), _point(inner_half_width + 0.85 * offset, y_app((floor_side_top_y + floor_underside_y) / 2.0)), "vertical", h3_side),
+        _dim("h4", _point(0.0, y_app(floor_center_top_y)), _point(0.0, y_app(floor_underside_y)), _point(0.35 * offset, y_app((floor_center_top_y + floor_underside_y) / 2.0)), "vertical", h4_center),
+        _dim("hx", _point(inner_half_width - haunch_x, y_app(floor_side_top_y) + 0.18 * offset), _point(inner_half_width, y_app(floor_side_top_y) + 0.18 * offset), _point(inner_half_width - haunch_x / 2.0, y_app(floor_side_top_y) + 0.55 * offset), "horizontal", haunch_x),
+        _dim("hy", _point(inner_half_width + 0.15 * offset, y_app(floor_side_top_y)), _point(inner_half_width + 0.15 * offset, y_app(haunch_start_y)), _point(inner_half_width + 0.55 * offset, y_app((floor_side_top_y + haunch_start_y) / 2.0)), "vertical", haunch_y),
         _dim("bottom_leg", _point(-half_width, y_app(depth) - 0.30 * offset), _point(-inner_half_width, y_app(depth) - 0.30 * offset), _point(-(half_width + inner_half_width) / 2.0, y_app(depth) - 0.85 * offset), "horizontal", bottom_side_width),
         _dim("notch", _point(-half_width, y_app(outside_step_y)), _point(-upper_outer_half_width, y_app(outside_step_y)), _point(-(half_width + upper_outer_half_width) / 2.0, y_app(outside_step_y) + 0.45 * offset), "horizontal", notch),
         _dim("CL", _point(0.0, y_app(depth) - 0.75 * offset), _point(0.0, y_app(0.0) + 3.0 * offset), _point(0.0, y_app(0.0) + 3.25 * offset), "vertical", None),

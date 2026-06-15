@@ -15,10 +15,12 @@ DEFAULT_PARAMS = {
     "depth_mm": 1600,
     "top_wall_width_mm": 600,
     "bottom_side_width_mm": 650,
-    "inner_vertical_depth_mm": 600,
-    "haunch_size_mm": 300,
-    "floor_side_thickness_mm": 395,
-    "floor_center_thickness_mm": 450,
+    "haunch_x_mm": 300,
+    "haunch_y_mm": 300,
+    "h1_step_height_mm": 670,
+    "h2_bottom_opening_mm": 305,
+    "h3_floor_side_thickness_mm": 395,
+    "h4_floor_center_thickness_mm": 450,
 }
 
 
@@ -34,6 +36,26 @@ def test_railway_u_girder_preset_is_available_for_bridge_beam_girder() -> None:
     assert preset["display_name"] == "Railway U-Girder"
     assert preset["category"] == "General / Non-composite Girder"
     assert preset["generator"] == "railway_u_girder"
+    parameter_names = [parameter["name"] for parameter in preset["parameters"]]
+    parameter_labels = [parameter["label"] for parameter in preset["parameters"]]
+    assert parameter_names == [
+        "width_mm",
+        "depth_mm",
+        "top_wall_width_mm",
+        "bottom_side_width_mm",
+        "haunch_x_mm",
+        "haunch_y_mm",
+        "h1_step_height_mm",
+        "h2_bottom_opening_mm",
+        "h3_floor_side_thickness_mm",
+        "h4_floor_center_thickness_mm",
+    ]
+    assert "Haunch X (mm)" in parameter_labels
+    assert "Haunch Y (mm)" in parameter_labels
+    assert "h1 Step height (mm)" in parameter_labels
+    assert "h2 Bottom opening (mm)" in parameter_labels
+    assert "h3 Side floor thk (mm)" in parameter_labels
+    assert "h4 Center floor thk (mm)" in parameter_labels
     assert _preset_matches_member_type(preset, AnalysisModeSettings(member_type="beam_girder")) is True
 
 
@@ -50,6 +72,7 @@ def test_railway_u_girder_default_geometry_matches_user_drawing_dimensions() -> 
         "outside_step_y_from_top_mm": pytest.approx(930.0),
         "chamfer_mm": pytest.approx(25.0),
         "inner_half_width_mm": pytest.approx(2100.0),
+        "haunch_start_y_from_top_mm": pytest.approx(600.0),
         "floor_side_top_y_from_top_mm": pytest.approx(900.0),
         "floor_center_top_y_from_top_mm": pytest.approx(845.0),
         "floor_underside_y_from_top_mm": pytest.approx(1295.0),
@@ -103,12 +126,44 @@ def test_railway_u_girder_dimension_guides_show_drawing_and_derived_values() -> 
     assert values_by_symbol["t_wall_top"] == pytest.approx(600.0)
     assert values_by_symbol["clear_half"] == pytest.approx(2100.0)
     assert values_by_symbol["H"] == pytest.approx(1600.0)
-    assert values_by_symbol["y_step"] == pytest.approx(670.0)
-    assert values_by_symbol["h_side"] == pytest.approx(395.0)
-    assert values_by_symbol["h_center"] == pytest.approx(450.0)
+    assert values_by_symbol["h1"] == pytest.approx(670.0)
+    assert values_by_symbol["h2"] == pytest.approx(305.0)
+    assert values_by_symbol["h3"] == pytest.approx(395.0)
+    assert values_by_symbol["h4"] == pytest.approx(450.0)
+    assert values_by_symbol["hx"] == pytest.approx(300.0)
+    assert values_by_symbol["hy"] == pytest.approx(300.0)
     assert values_by_symbol["bottom_leg"] == pytest.approx(650.0)
     assert values_by_symbol["notch"] == pytest.approx(50.0)
     assert values_by_symbol["CL"] is None
+
+
+def test_railway_u_girder_h1_to_h4_and_haunch_xy_drive_geometry() -> None:
+    params = dict(DEFAULT_PARAMS)
+    params.update(
+        {
+            "haunch_x_mm": 360,
+            "haunch_y_mm": 260,
+            "h1_step_height_mm": 700,
+            "h2_bottom_opening_mm": 330,
+            "h3_floor_side_thickness_mm": 420,
+            "h4_floor_center_thickness_mm": 500,
+        }
+    )
+
+    geometry = default_registry.geometry("railway_u_girder")(**params)
+    depth = params["depth_mm"]
+    vertices = [(round(point.x, 6), round(depth / 2.0 - point.y, 6)) for point in geometry.outer_polygon]
+    details = geometry.metadata["derived_details"]
+
+    assert details["outside_step_y_from_top_mm"] == pytest.approx(900.0)
+    assert details["floor_underside_y_from_top_mm"] == pytest.approx(1270.0)
+    assert details["floor_side_top_y_from_top_mm"] == pytest.approx(850.0)
+    assert details["floor_center_top_y_from_top_mm"] == pytest.approx(770.0)
+    assert details["haunch_start_y_from_top_mm"] == pytest.approx(590.0)
+    assert (-1740.0, 850.0) in vertices
+    assert (1740.0, 850.0) in vertices
+    assert (-2100.0, 590.0) in vertices
+    assert (2100.0, 590.0) in vertices
 
 
 def test_railway_u_girder_rejects_invalid_notch_relationship() -> None:
