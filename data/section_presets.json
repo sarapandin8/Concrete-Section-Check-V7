@@ -390,7 +390,7 @@
     },
     {
       "key": "box_section_fillet",
-      "display_name": "Precast Box Beam – Interior",
+      "display_name": "Precast Box Beam \u2013 Interior",
       "category": "Precast Composite Girder",
       "generator": "box_section_fillet",
       "dimensions_generator": "box_section_fillet",
@@ -415,7 +415,7 @@
         },
         {
           "name": "h1_mm",
-          "label": "h1 — Top cover (mm)",
+          "label": "h1 \u2014 Top cover (mm)",
           "type": "number",
           "default": 180,
           "min": 1,
@@ -424,7 +424,7 @@
         },
         {
           "name": "h3_mm",
-          "label": "h3 — Bottom cover to inner flat (mm)",
+          "label": "h3 \u2014 Bottom cover to inner flat (mm)",
           "type": "number",
           "default": 160,
           "min": 1,
@@ -433,7 +433,7 @@
         },
         {
           "name": "h4_mm",
-          "label": "h4 — Inner chamfer height (mm)",
+          "label": "h4 \u2014 Inner chamfer height (mm)",
           "type": "number",
           "default": 80,
           "min": 1,
@@ -442,7 +442,7 @@
         },
         {
           "name": "h5_mm",
-          "label": "h5 — Inner vertical wall height (mm)",
+          "label": "h5 \u2014 Inner vertical wall height (mm)",
           "type": "number",
           "default": 200,
           "min": 1,
@@ -451,7 +451,7 @@
         },
         {
           "name": "h6_mm",
-          "label": "h6 — Top to outer side break (mm)",
+          "label": "h6 \u2014 Top to outer side break (mm)",
           "type": "number",
           "default": 300,
           "min": 1,
@@ -460,7 +460,7 @@
         },
         {
           "name": "h7_mm",
-          "label": "h7 — Bottom to outer side break (mm)",
+          "label": "h7 \u2014 Bottom to outer side break (mm)",
           "type": "number",
           "default": 400,
           "min": 1,
@@ -469,7 +469,7 @@
         },
         {
           "name": "h8_mm",
-          "label": "h8 — Vertical rise from point 1 to point 2 (mm)",
+          "label": "h8 \u2014 Vertical rise from point 1 to point 2 (mm)",
           "type": "number",
           "default": 70,
           "min": 0,
@@ -478,7 +478,7 @@
         },
         {
           "name": "b2_mm",
-          "label": "b2 — Inner chamfer run (mm)",
+          "label": "b2 \u2014 Inner chamfer run (mm)",
           "type": "number",
           "default": 100,
           "min": 1,
@@ -487,7 +487,7 @@
         },
         {
           "name": "b4_mm",
-          "label": "b4 — Horizontal run from point 1 to point 2 (mm)",
+          "label": "b4 \u2014 Horizontal run from point 1 to point 2 (mm)",
           "type": "number",
           "default": 70,
           "min": 0,
@@ -496,7 +496,7 @@
         },
         {
           "name": "b3_mm",
-          "label": "b3 — Inner flat width at center line (mm)",
+          "label": "b3 \u2014 Inner flat width at center line (mm)",
           "type": "number",
           "default": 290,
           "min": 1,
@@ -508,7 +508,7 @@
     },
     {
       "key": "precast_box_beam_exterior",
-      "display_name": "Precast Box Beam – Exterior",
+      "display_name": "Precast Box Beam \u2013 Exterior",
       "category": "Precast Composite Girder",
       "generator": "precast_box_beam_exterior",
       "dimensions_generator": "precast_box_beam_exterior",
@@ -533,7 +533,7 @@
         },
         {
           "name": "h1_mm",
-          "label": "h1 — Top cover (mm)",
+          "label": "h1 \u2014 Top cover (mm)",
           "type": "number",
           "default": 180,
           "min": 1,
@@ -542,7 +542,7 @@
         },
         {
           "name": "h3_mm",
-          "label": "h3 — Bottom cover to inner flat (mm)",
+          "label": "h3 \u2014 Bottom cover to inner flat (mm)",
           "type": "number",
           "default": 160,
           "min": 1,
@@ -551,7 +551,7 @@
         },
         {
           "name": "h4_mm",
-          "label": "h4 — Inner chamfer height (mm)",
+          "label": "h4 \u2014 Inner chamfer height (mm)",
           "type": "number",
           "default": 80,
           "min": 1,
@@ -560,7 +560,7 @@
         },
         {
           "name": "h5_mm",
-          "label": "h5 — Inner vertical wall height (mm)",
+          "label": "h5 \u2014 Inner vertical wall height (mm)",
           "type": "number",
           "default": 200,
           "min": 1,
@@ -569,7 +569,7 @@
         },
         {
           "name": "h6_mm",
-          "label": "h6 — Top to left outer break (mm)",
+          "label": "h6 \u2014 Top to left outer break (mm)",
           "type": "number",
           "default": 300,
           "min": 1,
@@ -578,7 +578,7 @@
         },
         {
           "name": "h7_mm",
-          "label": "h7 — Bottom to left outer break (mm)",
+          "label": "h7 \u2014 Bottom to left outer break (mm)",
           "type": "number",
           "default": 400,
           "min": 1,
@@ -587,7 +587,7 @@
         },
         {
           "name": "h8_mm",
-          "label": "h8 — Vertical rise from point 1 to point 2 (mm)",
+          "label": "h8 \u2014 Vertical rise from point 1 to point 2 (mm)",
           "type": "number",
           "default": 70,
           "min": 0,
@@ -596,7 +596,7 @@
         },
         {
           "name": "b2_mm",
-          "label": "b2 — Inner chamfer run (mm)",
+          "label": "b2 \u2014 Inner chamfer run (mm)",
           "type": "number",
           "default": 100,
           "min": 1,
@@ -605,7 +605,7 @@
         },
         {
           "name": "b4_mm",
-          "label": "b4 — Horizontal run from point 1 to point 2 (mm)",
+          "label": "b4 \u2014 Horizontal run from point 1 to point 2 (mm)",
           "type": "number",
           "default": 70,
           "min": 0,
@@ -614,7 +614,7 @@
         },
         {
           "name": "b3_mm",
-          "label": "b3 — Inner flat width (exterior default 360) (mm)",
+          "label": "b3 \u2014 Inner flat width (exterior default 360) (mm)",
           "type": "number",
           "default": 360,
           "min": 1,
@@ -735,7 +735,7 @@
     },
     {
       "key": "parametric_plank_girder_interior",
-      "display_name": "Precast Plank Girder — Interior",
+      "display_name": "Precast Plank Girder \u2014 Interior",
       "category": "Precast Composite Girder",
       "generator": "parametric_plank_girder_interior",
       "dimensions_generator": "parametric_plank_girder_interior",
@@ -768,7 +768,7 @@
           "min": 0,
           "max": 5000,
           "step": 5,
-          "description": "Lower side offset. Interior: B ≈ b3 + 2b2. Exterior: B ≈ b3 + b2."
+          "description": "Lower side offset. Interior: B \u2248 b3 + 2b2. Exterior: B \u2248 b3 + b2."
         },
         {
           "name": "b3_mm",
@@ -864,7 +864,7 @@
     },
     {
       "key": "parametric_plank_girder_exterior",
-      "display_name": "Precast Plank Girder — Exterior",
+      "display_name": "Precast Plank Girder \u2014 Exterior",
       "category": "Precast Composite Girder",
       "generator": "parametric_plank_girder_exterior",
       "dimensions_generator": "parametric_plank_girder_exterior",
@@ -897,7 +897,7 @@
           "min": 0,
           "max": 5000,
           "step": 5,
-          "description": "Lower side offset. Interior: B ≈ b3 + 2b2. Exterior: B ≈ b3 + b2."
+          "description": "Lower side offset. Interior: B \u2248 b3 + 2b2. Exterior: B \u2248 b3 + b2."
         },
         {
           "name": "b3_mm",
@@ -1003,7 +1003,7 @@
     },
     {
       "key": "parametric_plank_girder_voided_interior",
-      "display_name": "Precast Voided Plank Girder — Interior",
+      "display_name": "Precast Voided Plank Girder \u2014 Interior",
       "category": "Precast Composite Girder",
       "generator": "parametric_plank_girder_voided_interior",
       "dimensions_generator": "parametric_plank_girder_voided_interior",
@@ -1036,7 +1036,7 @@
           "min": 0,
           "max": 5000,
           "step": 5,
-          "description": "Lower side offset. Interior: B ≈ b3 + 2b2. Exterior: B ≈ b3 + b2."
+          "description": "Lower side offset. Interior: B \u2248 b3 + 2b2. Exterior: B \u2248 b3 + b2."
         },
         {
           "name": "b3_mm",
@@ -1182,7 +1182,7 @@
     },
     {
       "key": "parametric_plank_girder_voided_exterior",
-      "display_name": "Precast Voided Plank Girder — Exterior",
+      "display_name": "Precast Voided Plank Girder \u2014 Exterior",
       "category": "Precast Composite Girder",
       "generator": "parametric_plank_girder_voided_exterior",
       "dimensions_generator": "parametric_plank_girder_voided_exterior",
@@ -1215,7 +1215,7 @@
           "min": 0,
           "max": 5000,
           "step": 5,
-          "description": "Lower side offset. Interior: B ≈ b3 + 2b2. Exterior: B ≈ b3 + b2."
+          "description": "Lower side offset. Interior: B \u2248 b3 + 2b2. Exterior: B \u2248 b3 + b2."
         },
         {
           "name": "b3_mm",
@@ -1477,23 +1477,23 @@
         },
         {
           "name": "h1_step_height_mm",
-          "label": "h1 Step height (mm)",
+          "label": "h1 Step from bottom (mm)",
           "type": "number",
           "default": 670,
           "min": 1,
           "max": 10000,
           "step": 5,
-          "description": "Height from section bottom to the exterior side notch/step. Default follows the drawing: 670 mm."
+          "description": "Vertical distance from section bottom to the exterior side notch/step. Default follows the drawing: 670 mm."
         },
         {
           "name": "h2_bottom_opening_mm",
-          "label": "h2 Bottom opening (mm)",
+          "label": "h2 Bottom recess (mm)",
           "type": "number",
           "default": 305,
           "min": 1,
           "max": 5000,
           "step": 5,
-          "description": "Vertical depth from section bottom to the underside of the floor slab/opening. Default follows the drawing: 305 mm."
+          "description": "Vertical recess depth from section bottom to the floor-slab underside. Default follows the drawing: 305 mm."
         },
         {
           "name": "h3_floor_side_thickness_mm",

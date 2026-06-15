@@ -52,8 +52,8 @@ def test_railway_u_girder_preset_is_available_for_bridge_beam_girder() -> None:
     ]
     assert "Haunch X (mm)" in parameter_labels
     assert "Haunch Y (mm)" in parameter_labels
-    assert "h1 Step height (mm)" in parameter_labels
-    assert "h2 Bottom opening (mm)" in parameter_labels
+    assert "h1 Step from bottom (mm)" in parameter_labels
+    assert "h2 Bottom recess (mm)" in parameter_labels
     assert "h3 Side floor thk (mm)" in parameter_labels
     assert "h4 Center floor thk (mm)" in parameter_labels
     assert _preset_matches_member_type(preset, AnalysisModeSettings(member_type="beam_girder")) is True
@@ -136,6 +136,23 @@ def test_railway_u_girder_dimension_guides_show_drawing_and_derived_values() -> 
     assert values_by_symbol["notch"] == pytest.approx(50.0)
     assert values_by_symbol["CL"] is None
 
+
+
+
+def test_railway_u_girder_haunch_dimension_labels_are_separated() -> None:
+    dimensions = default_registry.dimensions("railway_u_girder")(**DEFAULT_PARAMS)
+    by_symbol = {dimension.symbol: dimension for dimension in dimensions}
+
+    hx = by_symbol["hx"]
+    hy = by_symbol["hy"]
+
+    # hx and hy are intentionally annotated on opposite haunches so the small
+    # labels do not overlap or visually truncate as "hx = 30 hy = 300 mm".
+    assert hx.text_position.x < 0.0
+    assert hy.text_position.x > 0.0
+    assert abs(hx.text_position.x - hy.text_position.x) > 3500.0
+    assert hx.display_label() == "hx = 300 mm"
+    assert hy.display_label() == "hy = 300 mm"
 
 def test_railway_u_girder_h1_to_h4_and_haunch_xy_drive_geometry() -> None:
     params = dict(DEFAULT_PARAMS)

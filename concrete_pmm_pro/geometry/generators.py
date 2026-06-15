@@ -2578,8 +2578,14 @@ def railway_u_girder_dimensions(
         _dim("h2", _point(inner_half_width + 0.25 * offset, y_app(depth)), _point(inner_half_width + 0.25 * offset, y_app(floor_underside_y)), _point(inner_half_width + 0.72 * offset, y_app((depth + floor_underside_y) / 2.0)), "vertical", h2_bottom),
         _dim("h3", _point(inner_half_width + 0.35 * offset, y_app(floor_side_top_y)), _point(inner_half_width + 0.35 * offset, y_app(floor_underside_y)), _point(inner_half_width + 0.85 * offset, y_app((floor_side_top_y + floor_underside_y) / 2.0)), "vertical", h3_side),
         _dim("h4", _point(0.0, y_app(floor_center_top_y)), _point(0.0, y_app(floor_underside_y)), _point(0.35 * offset, y_app((floor_center_top_y + floor_underside_y) / 2.0)), "vertical", h4_center),
-        _dim("hx", _point(inner_half_width - haunch_x, y_app(floor_side_top_y) + 0.18 * offset), _point(inner_half_width, y_app(floor_side_top_y) + 0.18 * offset), _point(inner_half_width - haunch_x / 2.0, y_app(floor_side_top_y) + 0.55 * offset), "horizontal", haunch_x),
-        _dim("hy", _point(inner_half_width + 0.15 * offset, y_app(floor_side_top_y)), _point(inner_half_width + 0.15 * offset, y_app(haunch_start_y)), _point(inner_half_width + 0.55 * offset, y_app((floor_side_top_y + haunch_start_y) / 2.0)), "vertical", haunch_y),
+        # Keep haunch-X and haunch-Y labels on opposite sides of the trough.
+        # When both were drawn on the right-side haunch their annotation boxes
+        # overlapped, visually truncating the 300 mm hx label as "30" in
+        # Streamlit/Plotly.  The section is symmetric, so showing hx on the
+        # left haunch and hy on the right haunch preserves the same geometry
+        # meaning while keeping the dimension text legible.
+        _dim("hx", _point(-inner_half_width, y_app(floor_side_top_y) + 0.22 * offset), _point(-(inner_half_width - haunch_x), y_app(floor_side_top_y) + 0.22 * offset), _point(-(inner_half_width - haunch_x / 2.0), y_app(floor_side_top_y) + 0.65 * offset), "horizontal", haunch_x),
+        _dim("hy", _point(inner_half_width + 0.18 * offset, y_app(floor_side_top_y)), _point(inner_half_width + 0.18 * offset, y_app(haunch_start_y)), _point(inner_half_width + 0.78 * offset, y_app((floor_side_top_y + haunch_start_y) / 2.0)), "vertical", haunch_y),
         _dim("bottom_leg", _point(-half_width, y_app(depth) - 0.30 * offset), _point(-inner_half_width, y_app(depth) - 0.30 * offset), _point(-(half_width + inner_half_width) / 2.0, y_app(depth) - 0.85 * offset), "horizontal", bottom_side_width),
         _dim("notch", _point(-half_width, y_app(outside_step_y)), _point(-upper_outer_half_width, y_app(outside_step_y)), _point(-(half_width + upper_outer_half_width) / 2.0, y_app(outside_step_y) + 0.45 * offset), "horizontal", notch),
         _dim("CL", _point(0.0, y_app(depth) - 0.75 * offset), _point(0.0, y_app(0.0) + 3.0 * offset), _point(0.0, y_app(0.0) + 3.25 * offset), "vertical", None),
