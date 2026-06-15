@@ -2202,6 +2202,71 @@ def parametric_plank_girder_voided_exterior(
 
 
 
+
+def slab_bridge(
+    width_mm: float,
+    edge_depth_mm: float,
+    center_depth_mm: float,
+    name: str = "Slab Bridge",
+) -> SectionGeometry:
+    """Generate a solid bridge slab section with a center crown.
+
+    Geometry basis from the user-provided slab-bridge cross-section:
+    - total width B = 5100 mm by default,
+    - left and right half-widths = B/2,
+    - edge depth = 400 mm by default,
+    - centerline depth = 450 mm by default,
+    - bottom soffit is flat and the top surface is linearly crowned to the
+      centerline.  No chamfer/fillet is inferred because none is dimensioned.
+    """
+
+    _require_positive("width_mm", width_mm)
+    _require_positive("edge_depth_mm", edge_depth_mm)
+    _require_positive("center_depth_mm", center_depth_mm)
+    if center_depth_mm < edge_depth_mm:
+        raise ValueError(
+            "Invalid geometry: center_depth_mm must be greater than or equal to "
+            "edge_depth_mm for a crowned slab bridge section."
+        )
+
+    half_width = float(width_mm) / 2.0
+    bottom_y = -float(center_depth_mm) / 2.0
+    top_center_y = float(center_depth_mm) / 2.0
+    top_edge_y = bottom_y + float(edge_depth_mm)
+    crown_rise = float(center_depth_mm) - float(edge_depth_mm)
+
+    points = [
+        _point(-half_width, bottom_y),
+        _point(half_width, bottom_y),
+        _point(half_width, top_edge_y),
+        _point(0.0, top_center_y),
+        _point(-half_width, top_edge_y),
+    ]
+    _ensure_valid_simple_polygon(points, "Slab Bridge")
+    return SectionGeometry(
+        name=name,
+        outer_polygon=points,
+        holes=[],
+        metadata={
+            "preset": "slab_bridge",
+            "girder_type": "Slab Bridge",
+            "units": "mm",
+            "parameters": {
+                "width_mm": width_mm,
+                "edge_depth_mm": edge_depth_mm,
+                "center_depth_mm": center_depth_mm,
+            },
+            "crown_rise_mm": crown_rise,
+            "analysis_compatibility": {
+                "uls_pmm": "supported_gross_solid_section_preview",
+                "sls_stress": "guarded_gross_section_preview",
+                "beam_girder_assignment": "supported_bridge_beam_girder_preset",
+                "shear_torsion": "guarded_preview",
+            },
+        },
+    )
+
+
 def parametric_plank_girder_interior_dimensions(
     B_mm: float,
     b1_mm: float,
@@ -2254,6 +2319,79 @@ def parametric_plank_girder_exterior_dimensions(
         _dim("b2", _point(x_left, bottom_y - 0.35 * offset), _point(x_bottom_left, bottom_y - 0.35 * offset), _point((x_left + x_bottom_left) / 2.0, bottom_y - 0.9 * offset), "horizontal", b2_mm),
     ]
 
+
+def slab_bridge_dimensions(
+    width_mm: float,
+    edge_depth_mm: float,
+    center_depth_mm: float,
+    **_: object,
+) -> list[DimensionItem]:
+    half_width = float(width_mm) / 2.0
+    bottom_y = -float(center_depth_mm) / 2.0
+    top_center_y = float(center_depth_mm) / 2.0
+    top_edge_y = bottom_y + float(edge_depth_mm)
+    offset = max(float(width_mm), float(center_depth_mm)) * 0.06
+
+    return [
+        _dim(
+            "B",
+            _point(-half_width, top_center_y + 2.0 * offset),
+            _point(half_width, top_center_y + 2.0 * offset),
+            _point(0.0, top_center_y + 2.55 * offset),
+            "horizontal",
+            width_mm,
+        ),
+        _dim(
+            "B/2 L",
+            _point(-half_width, top_center_y + 1.15 * offset),
+            _point(0.0, top_center_y + 1.15 * offset),
+            _point(-half_width / 2.0, top_center_y + 1.6 * offset),
+            "horizontal",
+            half_width,
+        ),
+        _dim(
+            "B/2 R",
+            _point(0.0, top_center_y + 1.15 * offset),
+            _point(half_width, top_center_y + 1.15 * offset),
+            _point(half_width / 2.0, top_center_y + 1.6 * offset),
+            "horizontal",
+            half_width,
+        ),
+        _dim(
+            "Hc",
+            _point(0.0, bottom_y),
+            _point(0.0, top_center_y),
+            _point(-0.23 * offset, (bottom_y + top_center_y) / 2.0),
+            "vertical",
+            center_depth_mm,
+        ),
+        _dim(
+            "He L",
+            _point(-half_width - 0.42 * offset, bottom_y),
+            _point(-half_width - 0.42 * offset, top_edge_y),
+            _point(-half_width - 0.93 * offset, (bottom_y + top_edge_y) / 2.0),
+            "vertical",
+            edge_depth_mm,
+        ),
+        _dim(
+            "He R",
+            _point(half_width + 0.42 * offset, bottom_y),
+            _point(half_width + 0.42 * offset, top_edge_y),
+            _point(half_width + 0.93 * offset, (bottom_y + top_edge_y) / 2.0),
+            "vertical",
+            edge_depth_mm,
+        ),
+        _dim(
+            "CL",
+            _point(0.0, bottom_y - 0.75 * offset),
+            _point(0.0, top_center_y + 2.95 * offset),
+            _point(0.0, top_center_y + 3.2 * offset),
+            "vertical",
+            None,
+        ),
+    ]
+
+
 def psc_i_girder_dimensions(depth_mm: float, top_flange_width_mm: float, bottom_flange_width_mm: float, web_width_mm: float, **_: object) -> list[DimensionItem]:
     d = depth_mm / 2.0
     offset = depth_mm * 0.08
@@ -2303,6 +2441,7 @@ def register_builtin_generators(registry: GeometryRegistry) -> None:
         "parametric_plank_girder_exterior": (parametric_plank_girder_exterior, parametric_plank_girder_exterior_dimensions),
         "parametric_plank_girder_voided_interior": (parametric_plank_girder_voided_interior, parametric_plank_girder_interior_dimensions),
         "parametric_plank_girder_voided_exterior": (parametric_plank_girder_voided_exterior, parametric_plank_girder_exterior_dimensions),
+        "slab_bridge": (slab_bridge, slab_bridge_dimensions),
         "u_girder": (u_girder, u_girder_dimensions),
         "single_cell_box_girder": (single_cell_box_girder, single_cell_box_girder_dimensions),
     }
