@@ -684,3 +684,7 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Longitudinal/combined Rebar previews hide section dimension guides; Section Builder remains the dimension source.
 - No geometry, solver, rebar parser, or project schema changes.
 
+### UI.REBAR.INCLUSION3
+- Align Building Beam/Girder shared prestressed girder ordinary-rebar inclusion defaults with Section Builder.
+- Stored ordinary rebar remains preserved but is excluded from analysis when the ordinary-rebar system is disabled or workflow-default excluded.
+- No solver, section property, or project schema changes.

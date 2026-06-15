@@ -164,12 +164,47 @@ def section_level_prestress_ignored_for_girder(source: Any) -> bool:
     return bridge_dedicated_girder or building_shared_prestressed_girder
 
 
+def _workflow_default_flags_from_source(source: Any, *, default_rebar: bool, default_prestress: bool) -> tuple[bool, bool]:
+    """Return workflow-aware default steel-system flags for session-like sources.
+
+    The visible Section Builder switches are the source of truth once they exist.
+    Before a page has materialized those top-level keys, downstream pages such
+    as Rebar may still need a safe default from the active member type and
+    section preset.  This prevents Bridge Beam/Girder and shared Building
+    Beam/Girder prestressed presets from presenting stored mild bars as active
+    analysis reinforcement merely because the explicit checkbox state has not
+    been loaded in the current rerun yet.
+    """
+
+    member_type = _member_type_from_source(source)
+    section_category = str(_get_value(source, "section_category", "") or "").strip()
+    section_preset_key = str(_get_value(source, "section_preset_key", "") or "").strip()
+    girder_section_family = str(_get_value(source, "girder_section_family", "") or "").strip()
+    if not (member_type or section_category or section_preset_key or girder_section_family):
+        return default_rebar, default_prestress
+    try:
+        return default_section_reinforcement_flags(
+            member_type=member_type,
+            section_category=section_category,
+            section_preset_key=section_preset_key,
+            girder_section_family=girder_section_family,
+        )
+    except Exception:
+        return default_rebar, default_prestress
+
+
 def ordinary_rebar_enabled(source: Any, *, default: bool = True) -> bool:
-    return _to_bool(_get_value(source, ORDINARY_REBAR_FLAG_KEY, None), default)
+    workflow_rebar_default, _ = _workflow_default_flags_from_source(
+        source, default_rebar=default, default_prestress=True
+    )
+    return _to_bool(_get_value(source, ORDINARY_REBAR_FLAG_KEY, None), workflow_rebar_default)
 
 
 def prestressing_steel_enabled(source: Any, *, default: bool = True) -> bool:
-    return _to_bool(_get_value(source, PRESTRESSING_STEEL_FLAG_KEY, None), default)
+    _, workflow_prestress_default = _workflow_default_flags_from_source(
+        source, default_rebar=True, default_prestress=default
+    )
+    return _to_bool(_get_value(source, PRESTRESSING_STEEL_FLAG_KEY, None), workflow_prestress_default)
 
 
 def effective_rebars_for_analysis(
