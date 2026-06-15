@@ -1,3 +1,4 @@
+- UI.REBAR.INCLUSION4: adds a focused regression gate for Column/Pier, Bridge Beam/Girder, and Building Beam/Girder ordinary-rebar inclusion visual/state behavior; stored excluded rows stay preserved but publish zero active analysis rebars unless explicitly enabled. No solver, geometry, SLS, shear/torsion, report, or schema changes.
 - UI.REBAR.INCLUSION2: Rebar page now reads section-level ordinary-rebar inclusion from top-level session state or project metadata, preserves stored rows while publishing zero active analysis rebars when disabled, and labels stored/excluded bars clearly for Beam/Girder workflows.
 - UI.PMM.NAV2: Flexural PMM result-view tabs (`Summary`, `PMM Check`, `3D Interaction`, `SLS`, `Diagnostics / QA`) are now rendered immediately under the Flexural (PMM) workspace after run/cache controls, before lower method QA and stored snapshot expanders; no solver or demand/capacity logic changed.
 - UI.ANALYSIS.NAV1: Analysis subpage label now reads `ULS Strength`, and the Column/Pier ULS Strength Check selector is shown directly under that subpage before the decision/result panels; no solver or demand/capacity logic changed.
@@ -683,6 +684,13 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Rebar page now labels stored ordinary rebar as excluded when disabled in Section Builder.
 - Longitudinal/combined Rebar previews hide section dimension guides; Section Builder remains the dimension source.
 - No geometry, solver, rebar parser, or project schema changes.
+
+
+### UI.REBAR.INCLUSION4 — Rebar Inclusion Visual Regression Check
+- Adds tests for Column/Pier, Bridge Beam/Girder, Building Beam/Girder shared prestressed girder, and Building basic RC beam inclusion defaults.
+- Confirms explicit include/exclude checkbox state remains the source of truth over workflow defaults.
+- Confirms the Rebar disabled-state UI preserves stored rows, labels them excluded, and publishes zero active analysis rebars.
+- No solver, geometry, SLS, shear/torsion, report, or project-schema changes.
 
 ### UI.REBAR.INCLUSION3
 - Align Building Beam/Girder shared prestressed girder ordinary-rebar inclusion defaults with Section Builder.
