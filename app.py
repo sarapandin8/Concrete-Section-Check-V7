@@ -19,7 +19,7 @@ WORKSPACE_NAVIGATION = {
     "Setup": ["Project", "Materials"],
     "Sections": ["Section Builder", "Rebar", "Prestress"],
     "Loads": ["Loads"],
-    "Analysis": ["ULS / PMM", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"],
+    "Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"],
     "Results": ["Results"],
 }
 

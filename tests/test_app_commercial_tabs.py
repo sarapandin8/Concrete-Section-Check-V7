@@ -11,7 +11,7 @@ def test_app_uses_visual_only_commercial_tab_styles_without_new_navigation() -> 
     assert "div[data-testid=\"stSegmentedControl\"]" in source
     assert "div[data-testid=\"stRadio\"] div[role=\"radiogroup\"]" in source
     assert "This does not add, move, or remove navigation controls" in source
-    assert source.count('"Analysis": ["ULS / PMM", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]') == 1
+    assert source.count('"Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]') == 1
 
 
 def test_app_commercial_tabs2_applies_dark_blue_bold_typography_to_existing_controls() -> None:

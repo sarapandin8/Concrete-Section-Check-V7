@@ -1,3 +1,4 @@
+- UI.ANALYSIS.NAV1: Analysis subpage label now reads `ULS Strength`, and the Column/Pier ULS Strength Check selector is shown directly under that subpage before the decision/result panels; no solver or demand/capacity logic changed.
 - UI.PMM.COMPACT1: Flexural PMM decision-first compact workspace; advanced setup, input overview, method notes, stored snapshot, and diagnostics are collapsed so the PMM visual decision review appears earlier without changing solver equations.
 - UI.ACTION.BUTTONS2: highlighted action buttons now respect enabled/disabled state; Flexural PMM runtime controls use compact status cards without changing solver logic.
 - UI.ACTIVE.TABS3: navigation density polish; deterministic tab clusters are tighter, working-screen vertical spacing is reduced, and active-tab highlight is lighter while preserving existing tab positions and options.
@@ -33,7 +34,7 @@ See `docs/design/qa_baseline1.md`, `docs/design/workflow_status1.md`, `docs/desi
 
 Professional Streamlit engineering application foundation for reinforced concrete and prestressed concrete PMM analysis.
 
-This repository is at Milestone PS.DB1.2 plus P.1.1, V.PS1.1 visualization cleanup, and R.FIG.1.1 figure-export deployment hotfix. The PMM solver and ULS demand/capacity workflow are still prototypes. The app navigation is grouped into engineering workspaces, and the Analysis workspace has real subtabs for ULS / PMM, SLS / Stress & Cracking, and Report / QA. Analysis now includes runtime controls, stable engineering-input hashes, cache status indicators, and lightweight timing diagnostics around expensive UI-triggered operations. Existing Project, Materials, Section Builder, Rebar, Prestress, Loads, PMM, SLS, cracking, report export, and report QA tools remain reachable without changing calculation logic. Bonded prestress contribution is included in the PMM prototype with refined prestressing steel stress-strain models, ordinary rebar displaced-concrete refinement, independent hand-calculation spot checks, engineering verification safeguards, benchmark-style solver checks, refined PMM slice interpolation, slice envelope robustness checks, clearer warning/reporting text, numerical cleanup, elastic SLS stress checks using either gross or uncracked transformed section properties, optional effective bonded prestress contribution, no-tension/decompression serviceability judgement, SLS stress sign benchmark checks, cracking/tension-zone classification from existing SLS stress results, custom SLS stress check points with geometry validation, SLS stress visualization on the section, context-aware engineering limitation filtering, report manifest JSON, draft Word report export, and Word report QA; unbonded prestress, full cracked-section stress redistribution, crack-width checks, Beam/Girder flexure/shear/torsion checks, PDF export, and production-grade design certification are intentionally not implemented yet.
+This repository is at Milestone PS.DB1.2 plus P.1.1, V.PS1.1 visualization cleanup, and R.FIG.1.1 figure-export deployment hotfix. The PMM solver and ULS demand/capacity workflow are still prototypes. The app navigation is grouped into engineering workspaces, and the Analysis workspace has real subtabs for ULS Strength, SLS / Stress & Cracking, and Report / QA. Analysis now includes runtime controls, stable engineering-input hashes, cache status indicators, and lightweight timing diagnostics around expensive UI-triggered operations. Existing Project, Materials, Section Builder, Rebar, Prestress, Loads, PMM, SLS, cracking, report export, and report QA tools remain reachable without changing calculation logic. Bonded prestress contribution is included in the PMM prototype with refined prestressing steel stress-strain models, ordinary rebar displaced-concrete refinement, independent hand-calculation spot checks, engineering verification safeguards, benchmark-style solver checks, refined PMM slice interpolation, slice envelope robustness checks, clearer warning/reporting text, numerical cleanup, elastic SLS stress checks using either gross or uncracked transformed section properties, optional effective bonded prestress contribution, no-tension/decompression serviceability judgement, SLS stress sign benchmark checks, cracking/tension-zone classification from existing SLS stress results, custom SLS stress check points with geometry validation, SLS stress visualization on the section, context-aware engineering limitation filtering, report manifest JSON, draft Word report export, and Word report QA; unbonded prestress, full cracked-section stress redistribution, crack-width checks, Beam/Girder flexure/shear/torsion checks, PDF export, and production-grade design certification are intentionally not implemented yet.
 
 
 
@@ -175,7 +176,7 @@ These validation packs do not hide solver warnings.  They provide the evidence n
 
 ## Milestone P.1 Scope
 
-- ULS / PMM includes an `Analysis Runtime Control` panel with Fast, Standard, and High Accuracy presets.
+- ULS Strength includes an `Analysis Runtime Control` panel with Fast, Standard, and High Accuracy presets.
 - Fast, Standard, and High Accuracy wire to existing neutral-axis angle/depth resolution controls; Standard matches the previous default resolution.
 - PMM analysis uses a stable engineering-input hash and reuses cached PMM results when the hash is unchanged.
 - Hash inputs include section geometry, holes, materials, rebar, prestress/PT bar data, bonded/unbonded flags, effective prestress values, load cases, relevant analysis settings, and the selected accuracy preset.
@@ -188,8 +189,8 @@ These validation packs do not hide solver warnings.  They provide the evidence n
 
 ## Milestone UI.1 Scope
 
-- Analysis now has real subtabs: ULS / PMM, SLS / Stress & Cracking, and Report / QA.
-- ULS / PMM contains the existing analysis mode controls, analysis settings, readiness panel, PMM run workflow, PMM plots, D/C output, PMM warnings, and PMM verification/hand checks.
+- Analysis now has real subtabs: ULS Strength, SLS / Stress & Cracking, and Report / QA.
+- ULS Strength contains the existing analysis mode controls, analysis settings, readiness panel, PMM run workflow, PMM plots, D/C output, PMM warnings, and PMM verification/hand checks.
 - SLS / Stress & Cracking contains the existing serviceability settings, transformed/gross SLS stress check, custom stress points, no-tension/decompression checks, cracking classification, SLS visualization, and SLS benchmark checks.
 - Report / QA contains the existing pre-report traceability, readiness, engineering warnings, limitations, report manifest, figure export registry, draft Word export, and Word report QA tools.
 - Results remains a future workspace placeholder only.
@@ -201,9 +202,9 @@ These validation packs do not hide solver warnings.  They provide the evidence n
 - Setup contains Project and Materials.
 - Sections contains Section Builder, Rebar, and Prestress.
 - Loads contains the existing Loads workspace.
-- Analysis contains subtabs for ULS / PMM, SLS / Stress & Cracking, and Report / QA.
-- The existing mixed Analysis workspace is preserved intact under ULS / PMM for this UI-only milestone.
-- SLS / Stress & Cracking and Report / QA subtabs currently show placeholder routing notes; existing SLS, cracking, report export, and report QA outputs remain available under ULS / PMM.
+- Analysis contains subtabs for ULS Strength, SLS / Stress & Cracking, and Report / QA.
+- The existing mixed Analysis workspace is preserved intact under ULS Strength for this UI-only milestone.
+- SLS / Stress & Cracking and Report / QA subtabs currently show placeholder routing notes; existing SLS, cracking, report export, and report QA outputs remain available under ULS Strength.
 - Results remains a future workspace placeholder only.
 - Existing PMM/SLS calculations, prestress sign convention, D/C algorithm, report QA/export logic, limitations, warnings, materials, loads, and session state data are unchanged.
 

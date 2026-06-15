@@ -23,7 +23,7 @@ def test_ui_active_tabs1_preserves_existing_navigation_option_lists() -> None:
 
     assert '"Setup": ["Project", "Materials"]' in app_source
     assert '"Sections": ["Section Builder", "Rebar", "Prestress"]' in app_source
-    assert '"Analysis": ["ULS / PMM", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]' in app_source
+    assert '"Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]' in app_source
 
 
 def test_ui_active_tabs2_keeps_navigation_cluster_compact_with_trailing_spacer() -> None:

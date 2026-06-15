@@ -151,7 +151,7 @@ def test_analysis_page_hides_beam_sls_subpages_for_column_pier_workflow() -> Non
     assert "_analysis_subtabs_for_workflow" in source
     assert "SLS / Stress & Cracking is not selected for Column/Pier/Wall/Pylon PMM workflow" in source
     assert "SLS Deflection / Camber is not selected for Column/Pier/Wall/Pylon PMM workflow" in source
-    assert "Column/Pier ACI RC shear, torsion, and combined V+T views are available under ULS / PMM" in source
+    assert "Column/Pier ACI RC shear, torsion, and combined V+T views are available under ULS Strength" in source
     assert "AASHTO, prestressed V+T, and seismic/detailing certification remain guarded review scope" in source
 
 
@@ -197,6 +197,6 @@ def test_column_pier_decision_summary_renders_after_active_workspace_for_fresh_p
 
     assert "decision_view_slot = st.container()" in body
     assert "with decision_view_slot:" in body
-    assert body.index("decision_view_slot = st.container()") < body.index("active_check = _column_pier_uls_check_choice()")
+    assert body.index("active_check = _column_pier_uls_check_choice()") < body.index("decision_view_slot = st.container()")
     assert body.index("_render_column_pier_flexural_pmm_workspace()") < body.rindex("_render_column_pier_analysis_decision_view()")
-    assert "could show NOT READY on the same rerun" in body
+    assert "fresh session_state after the selected workspace has updated it" in body

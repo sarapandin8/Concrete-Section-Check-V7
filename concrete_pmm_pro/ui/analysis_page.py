@@ -218,8 +218,8 @@ from concrete_pmm_pro.verification.sls_benchmarks import (
     sls_benchmark_summary_to_dataframe,
 )
 
-ANALYSIS_SUBTABS = ["ULS / PMM", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]
-ANALYSIS_COLUMN_PIER_SUBTABS = ["ULS / PMM", "Report / QA"]
+ANALYSIS_SUBTABS = ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]
+ANALYSIS_COLUMN_PIER_SUBTABS = ["ULS Strength", "Report / QA"]
 COLUMN_PIER_ULS_CHECK_SUBTABS = ["Flexural (PMM)", "Shear", "Torsion", "Shear + Torsion"]
 # Legacy source-test token retained while PERF.RERUN1 switches from eager st.tabs
 # to lazy subpage rendering: uls_tab, sls_tab, sls_deflection_tab, report_tab
@@ -666,7 +666,7 @@ def _render_readiness_panel() -> None:
         {
             "title": "Ready",
             "value": "Yes" if result.ready else "No",
-            "detail": "Ready for current ULS / PMM workflow" if result.ready else "Resolve errors before running analysis",
+            "detail": "Ready for current ULS Strength workflow" if result.ready else "Resolve errors before running analysis",
             "status": "ready" if result.ready else "danger",
             "strong": True,
         },
@@ -808,7 +808,7 @@ def _render_analysis_mode_section() -> AnalysisModeSettings:
         if settings.member_type == "column_pier_pmm":
             st.success("Current workflow uses Pu, Mux, and Muy with PMM interaction and ULS D/C review.")
             st.info(
-                "Column/Pier ACI RC shear, torsion, and combined V+T views are available under ULS / PMM. "
+                "Column/Pier ACI RC shear, torsion, and combined V+T views are available under ULS Strength. "
                 "AASHTO, prestressed V+T, and seismic/detailing certification remain guarded review scope."
             )
             st.info("Beam/Girder SLS stress and deflection/camber workflows are not selected for Column/Pier/Wall/Pylon analysis.")
@@ -2186,7 +2186,7 @@ def _render_input_summary() -> None:
             {
                 "title": "Active ULS",
                 "value": f"{len(load_cases):,}",
-                "detail": "Used by ULS / PMM D/C",
+                "detail": "Used by ULS Strength D/C",
                 "status": "ready" if load_cases else "warning",
             },
             {
@@ -2812,7 +2812,7 @@ def _render_executive_result_header(dc_summary: DemandCapacitySummary, load_case
     status_class = _analysis_status_style(dc_summary.overall_status)
     html = (
         '<div class="cpmm-executive-header">'
-        '<div class="cpmm-executive-eyebrow">ULS / PMM Analysis Workspace</div>'
+        '<div class="cpmm-executive-eyebrow">ULS Strength Analysis Workspace</div>'
         '<div class="cpmm-executive-title">Strength result workspace</div>'
         '<div class="cpmm-executive-subtitle">'
         f'Governing: <strong>{escape(governing)}</strong> · '
@@ -9394,7 +9394,7 @@ def _render_column_pier_uls_decision_summary() -> None:
 def _column_pier_uls_check_choice() -> str:
     """Select the active Column/Pier ULS check without executing inactive check bodies."""
 
-    return render_active_choice("ULS check", list(COLUMN_PIER_ULS_CHECK_SUBTABS), key="_column_pier_uls_check_subtab")
+    return render_active_choice("ULS Strength Check", list(COLUMN_PIER_ULS_CHECK_SUBTABS), key="_column_pier_uls_check_subtab")
 
 
 def _column_pier_guarded_strength_check_cards(check_name: str) -> list[dict[str, object]]:
@@ -15780,21 +15780,21 @@ def _render_analysis_settings_panel() -> None:
 
 
 def render_analysis_uls_pmm() -> None:
-    st.subheader("ULS / PMM")
+    st.subheader("ULS Strength")
     mode_settings = _analysis_mode_from_session()
     if is_beam_girder_future_workflow(mode_settings) or is_building_beam_girder_workflow(mode_settings):
         _render_beam_girder_uls_workspace(mode_settings)
         return
 
-    _render_project_design_code_guard(workflow="pmm")
-    # Keep the Column/Pier decision summary visually first, but fill it after the
-    # active workspace has had a chance to update session_state.  In Streamlit,
-    # rendering the summary before the Flexural (PMM) Run button meant the table
-    # could show NOT READY on the same rerun that successfully calculated PMM
-    # demand/capacity.  The placeholder preserves the clean decision-first UI
-    # while reading the latest stored PMM/shear/torsion/V+T results.
-    decision_view_slot = st.container()
+    # UI.ANALYSIS.NAV1: expose the strength-check selector immediately under
+    # the ULS Strength subpage so users choose Flexural, Shear, Torsion, or V+T
+    # before reading the decision/result panels.  Keep the decision summary in a
+    # placeholder so it still renders above the active workspace while reading
+    # fresh session_state after the selected workspace has updated it.
     active_check = _column_pier_uls_check_choice()
+    _render_project_design_code_guard(workflow="pmm")
+    decision_view_slot = st.container()
+
     if active_check == "Flexural (PMM)":
         _render_column_pier_flexural_pmm_workspace()
     elif active_check == "Shear":
@@ -15815,7 +15815,7 @@ def render_analysis_sls_stress() -> None:
     mode_settings = _analysis_mode_from_session()
     if is_pmm_primary_workflow(mode_settings):
         st.info("SLS / Stress & Cracking is not selected for Column/Pier/Wall/Pylon PMM workflow.")
-        st.warning("Use the ULS / PMM workspace for axial-biaxial strength review. Beam/Girder staged SLS checks remain hidden for this member family.")
+        st.warning("Use the ULS Strength workspace for axial-biaxial strength review. Beam/Girder staged SLS checks remain hidden for this member family.")
         return
     _render_project_design_code_guard(workflow="girder_sls")
     st.info("SLS stress convention: compression is negative and tension is positive.")
@@ -15871,7 +15871,7 @@ def _analysis_subpage_choice() -> str:
 def render_analysis_page() -> None:
     st.subheader("Analysis")
     active_subpage = _analysis_subpage_choice()
-    if active_subpage == "ULS / PMM":
+    if active_subpage == "ULS Strength":
         render_analysis_uls_pmm()
     elif active_subpage == "SLS / Stress & Cracking":
         render_analysis_sls_stress()

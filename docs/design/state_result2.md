@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`STATE.RESULT2` fixes the user-visible slowdown where returning to Analysis → ULS / PMM → Flexural (PMM) after a completed run felt like the application reran analysis even when engineering inputs had not changed.
+`STATE.RESULT2` fixes the user-visible slowdown where returning to Analysis → ULS Strength → Flexural (PMM) after a completed run felt like the application reran analysis even when engineering inputs had not changed.
 
 The PMM solver cache from `STATE.RESULT1` already protected `run_rc_pmm_solver()` behind the engineering input hash. The remaining problem was UI rendering cost: Streamlit reruns the page script during navigation, and the Flexural workspace rebuilt PMM display DataFrames, D/C presentation artifacts, dashboard tabs, plots, and raw tables on every return. Closed expanders and inactive tabs still execute their Python bodies, so the page could be slow without a real solver recalculation.
 

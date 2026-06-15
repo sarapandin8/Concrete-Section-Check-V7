@@ -321,7 +321,7 @@ This UI milestone adds a decision-oriented banner above the ULS/PMM result works
 
 ### UI.ANALYSIS4.4 — Final Analysis Workspace Polish
 
-The ULS / PMM Analysis workspace now separates result communication into two levels:
+The ULS Strength Analysis workspace now separates result communication into two levels:
 
 - a compact workspace header showing governing case, D/C, active ULS/SLS counts, fallback count, and D/C warning count; and
 - a Design Decision banner that presents Decision, Confidence, and Scope / Exclusions as separate blocks.
