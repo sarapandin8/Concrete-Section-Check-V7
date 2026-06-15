@@ -2154,7 +2154,7 @@ def _render_pmm_result_views_first_screen() -> bool:
     result = st.session_state.get("rc_pmm_result")
     if not isinstance(result, PMMSolverResult):
         st.markdown("##### PMM Result Views")
-        st.info("Run / Recalculate Analysis to create PMM result views for Summary, PMM Check, 3D Interaction, SLS, and Diagnostics / QA.")
+        st.info("Run / Recalculate Analysis to create PMM result views for Summary, PMM Check, 3D Interaction, and Diagnostics / QA.")
         return False
 
     settings = _settings_from_session()
@@ -10150,20 +10150,6 @@ def _render_pmm_slice_dashboard(
         st.info("No active ULS load cases are available for the PMM workspace.")
         return
 
-    _render_executive_result_header(dc_summary, load_cases)
-    _render_design_decision_banner(
-        dc_summary,
-        load_cases,
-        engineering_warnings or [],
-        include_prestress=include_prestress,
-        bonded_prestress_included=bonded_prestress_included,
-        unbonded_ignored_count=unbonded_ignored_count,
-    )
-    if bonded_prestress_included:
-        st.warning("Bonded prestress contribution is included using the current prototype strain compatibility model.")
-    if unbonded_ignored_count > 0:
-        st.warning("Unbonded prestress is ignored in the current solver.")
-
     options = [load_case.name for load_case in active_uls]
     default_combo = dc_summary.governing_combo if dc_summary.governing_combo in options else options[0]
     remembered_combo = st.session_state.get("pmm_dashboard_selected_combo", default_combo)
@@ -10219,11 +10205,24 @@ def _render_pmm_slice_dashboard(
         st.session_state["selected_slice_envelope"].attrs["used_convex_hull"] = True
 
     demand_df = demand_load_cases_to_display_dataframe(active_uls)
-    summary_tab, pmm_tab, three_d_tab, sls_tab, diagnostics_tab = st.tabs(
-        ["Summary", "PMM Check", "3D Interaction", "SLS", "Diagnostics / QA"]
+    summary_tab, pmm_tab, three_d_tab, diagnostics_tab = st.tabs(
+        ["Summary", "PMM Check", "3D Interaction", "Diagnostics / QA"]
     )
 
     with summary_tab:
+        _render_executive_result_header(dc_summary, load_cases)
+        _render_design_decision_banner(
+            dc_summary,
+            load_cases,
+            engineering_warnings or [],
+            include_prestress=include_prestress,
+            bonded_prestress_included=bonded_prestress_included,
+            unbonded_ignored_count=unbonded_ignored_count,
+        )
+        if bonded_prestress_included:
+            st.warning("Bonded prestress contribution is included using the current prototype strain compatibility model.")
+        if unbonded_ignored_count > 0:
+            st.warning("Unbonded prestress is ignored in the current solver.")
         st.subheader("Governing ULS Result")
         st.caption(
             "This tab gives the first-screen commercial review view: overall status, governing case, and compact D/C trace. "
@@ -10390,21 +10389,6 @@ def _render_pmm_slice_dashboard(
                 _render_pmm_3d_surface_diagnostics(_pmm_3d_surface_diagnostics_from_figure(surface_fig), show_surface)
         else:
             st.info("3D PMM interaction rendering is off by default. Enable it only when a 3D capacity view is needed.")
-
-    with sls_tab:
-        st.subheader("SLS")
-        active_sls_count = _active_load_case_usage_summary(load_cases)["active_sls"]
-        if active_sls_count:
-            st.info(
-                f"{active_sls_count:,} active SLS load case(s) are stored for the SLS / Stress & Cracking workspace. "
-                "They are not used in the ULS PMM demand/capacity ranking."
-            )
-        else:
-            st.info("No active SLS load cases are currently stored.")
-        st.caption(
-            "Open the main Analysis tab 'SLS / Stress & Cracking' for serviceability settings, stress check points, "
-            "gross/transformed section properties, and available SLS checks."
-        )
 
     with diagnostics_tab:
         st.subheader("Diagnostics / QA")

@@ -670,3 +670,9 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Keeps ordinary rebar hidden from the default Prestress preview; combined rebar + prestress remains a collapsed coordination preview.
 - Shows a geometry-only preview when Prestress is enabled but no active prestress rows are available yet.
 - No prestress calculation, PMM, SLS, shear/torsion, report, or schema changes.
+
+### UI.PMM.NAV4 — PMM Result View Tabs First + Remove SLS View Tab
+- Move PMM result-view tabs immediately under the Flexural (PMM) result-view heading.
+- Render decision/summary cards inside the Summary tab rather than above the tabs.
+- Remove the local SLS tab from Flexural PMM result views; serviceability belongs in the main Analysis SLS subpage workflow.
+- No solver, D/C, load, report, or project-schema changes.
