@@ -24,6 +24,9 @@ def test_rebar_page_default_preview_hides_prestressing_steel_and_dimensions():
 def test_rebar_page_disabled_ordinary_rebar_is_marked_stored_excluded():
     assert "Analysis Participation" in REBAR_SOURCE
     assert "Excluded" in REBAR_SOURCE
+    assert "Active Analysis Bars" in REBAR_SOURCE
+    assert "st.session_state[\"rebars_stored_excluded\"] = result.rebars" in REBAR_SOURCE
+    assert "st.session_state[\"rebars\"] = []" in REBAR_SOURCE
     assert "Stored Rebar Preview — Excluded from Analysis" in REBAR_SOURCE
     assert "stored_excluded_section_preview" in REBAR_SOURCE
 

@@ -1841,14 +1841,22 @@ def _render_longitudinal_rebar_tab(
         table = st.session_state.get("rebar_table")
         stored_df = _ensure_rebar_table_columns(pd.DataFrame(table)) if table is not None else pd.DataFrame(columns=REBAR_TABLE_COLUMNS)
         result = rebars_from_dataframe(stored_df, rebar_db) if table is not None else RebarParseResult([], [], [], [])
-        st.session_state["rebars"] = result.rebars
-        st.session_state["rebars_valid_for_analysis"] = True
+        # Keep the editable table, but publish no active analysis rebars while
+        # the section-level ordinary-rebar system is disabled.  This prevents
+        # Project/Analysis/other pages from presenting stored rows as active
+        # reinforcement if the Rebar page is visited before Section Builder is
+        # rendered on the same rerun.
+        st.session_state["rebars_stored_excluded"] = result.rebars
+        st.session_state["rebars"] = []
+        st.session_state["rebars_valid_for_analysis"] = False
         st.markdown(
             _strip_html(
                 [
                     RebarMetric("Stored Bars", f"{len(result.rebars):,}", "Preserved table rows"),
                     RebarMetric("Stored As", f"{_total_as_mm2(result.rebars):,.1f} mm^2"),
                     RebarMetric("Analysis Participation", "Excluded", "Disabled in Section Builder", "warning", True),
+                    RebarMetric("Active Analysis Bars", "0", "Ordinary rebar ignored"),
+                    RebarMetric("Active Analysis As", "0.0 mm^2"),
                     RebarMetric("Material", _dominant_material_label(result.rebars, active_material_name)),
                 ]
             ),
@@ -1863,7 +1871,7 @@ def _render_longitudinal_rebar_tab(
         geometry = st.session_state.get("section_geometry")
         if geometry is not None and result.rebars:
             st.subheader("Stored Rebar Preview — Excluded from Analysis")
-            st.caption("Preview only. Dimension guides are intentionally hidden on the Rebar page; use Section Builder for section dimensions.")
+            st.caption("Preview only — these stored bars are excluded from analysis. Dimension guides are intentionally hidden on the Rebar page; use Section Builder for section dimensions.")
             preview_fig = create_section_preview(
                 geometry,
                 [],

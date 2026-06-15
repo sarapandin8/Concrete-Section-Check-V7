@@ -36,10 +36,39 @@ GIRDER_SECTION_LEVEL_PRESTRESS_IGNORED_PRESET_KEYS = frozenset(
 )
 
 
+_MISSING = object()
+
+
 def _get_value(source: Any, key: str, default: Any = None) -> Any:
+    """Return a section/workflow flag from session-like sources.
+
+    UI pages normally read reinforcement-system flags directly from
+    ``st.session_state``.  Saved projects can restore older/newer files with
+    the flags mirrored in ``project_metadata`` before every top-level key has
+    been materialized by the active page.  Falling back to metadata keeps
+    Section Builder, Rebar, Prestress, Analysis, and Project views aligned
+    without deleting the stored input tables.
+    """
+
     if hasattr(source, "get"):
-        return source.get(key, default)
-    return getattr(source, key, default)
+        value = source.get(key, _MISSING)
+        if value is not _MISSING:
+            return value
+        metadata = source.get("project_metadata", _MISSING)
+        if isinstance(metadata, dict):
+            metadata_value = metadata.get(key, _MISSING)
+            if metadata_value is not _MISSING:
+                return metadata_value
+        return default
+
+    if hasattr(source, key):
+        return getattr(source, key)
+    metadata = getattr(source, "project_metadata", _MISSING)
+    if isinstance(metadata, dict):
+        metadata_value = metadata.get(key, _MISSING)
+        if metadata_value is not _MISSING:
+            return metadata_value
+    return default
 
 
 def _to_bool(value: Any, default: bool) -> bool:
