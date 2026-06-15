@@ -383,16 +383,16 @@ button[data-testid="stBaseButton-secondary"]:disabled span {
 @media (max-width: 900px) {
   .cpmm-runtime-compact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-/* Upload controls have a built-in Browse button; keep that button in the same
-   soft action language so project/import workflows are easy to spot. */
-div[data-testid="stFileUploader"] button,
+/* Upload controls have a built-in Browse button; keep only the dropzone
+   Browse button in the soft action language. Do not style every button under
+   stFileUploader: uploaded-file pills also contain remove (x) buttons, and
+   broad button selectors can make those native controls hard to click. */
 div[data-testid="stFileUploaderDropzone"] button {
   background: var(--cpmm-action-fill) !important;
   color: var(--cpmm-ink-blue) !important;
   border-color: var(--cpmm-action-border) !important;
   font-weight: 850 !important;
 }
-div[data-testid="stFileUploader"] button:hover,
 div[data-testid="stFileUploaderDropzone"] button:hover {
   background: var(--cpmm-action-fill-hover) !important;
   border-color: var(--cpmm-action-border-hover) !important;

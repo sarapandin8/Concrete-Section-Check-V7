@@ -146,7 +146,9 @@ def test_ui_action_buttons1_highlights_primary_actions_without_dark_fill() -> No
     assert "--cpmm-action-fill-hover: #ffe9ac" in app_source
     assert "button[kind=\"primary\"]" in app_source
     assert 'button[data-testid="stBaseButton-primary"]' in app_source
-    assert 'div[data-testid="stFileUploader"] button' in app_source
+    assert 'div[data-testid="stFileUploaderDropzone"] button' in app_source
+    assert 'div[data-testid="stFileUploader"] button,' not in app_source
+    assert "uploaded-file pills also contain remove (x) buttons" in app_source
     assert "font-weight: 850" in app_source
     assert 'type="primary"' in analysis_source and 'ui_keys1_analysis_page_button_1983' in analysis_source
     assert '"Save Project"' in project_source and 'type="primary"' in project_source
