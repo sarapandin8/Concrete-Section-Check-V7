@@ -35,7 +35,12 @@
           "max": 10000,
           "step": 10
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "column_pier_pmm",
+        "building_beam_girder"
+      ],
+      "application_domain": "general_structural"
     },
     {
       "key": "rectangular_chamfered",
@@ -80,7 +85,12 @@
           "max": 2000,
           "step": 5
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "column_pier_pmm",
+        "building_beam_girder"
+      ],
+      "application_domain": "general_structural"
     },
     {
       "key": "rectangular_filleted",
@@ -116,7 +126,12 @@
           "max": 5000,
           "step": 10
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "column_pier_pmm",
+        "building_beam_girder"
+      ],
+      "application_domain": "general_structural"
     },
     {
       "key": "circle",
@@ -134,7 +149,12 @@
           "max": 10000,
           "step": 10
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "column_pier_pmm",
+        "building_beam_girder"
+      ],
+      "application_domain": "general_structural"
     },
     {
       "key": "circular_hollow",
@@ -161,7 +181,12 @@
           "max": 19990,
           "step": 10
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "column_pier_pmm",
+        "building_beam_girder"
+      ],
+      "application_domain": "general_structural"
     },
     {
       "key": "rectangular_hollow",
@@ -224,7 +249,12 @@
           "max": 5000,
           "step": 5
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "column_pier_pmm",
+        "building_beam_girder"
+      ],
+      "application_domain": "general_structural"
     },
     {
       "key": "rectangular_hollow_filleted",
@@ -305,7 +335,12 @@
           "max": 5000,
           "step": 5
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "column_pier_pmm",
+        "building_beam_girder"
+      ],
+      "application_domain": "general_structural"
     },
     {
       "key": "rectangular_hollow_outer_filleted_inner_chamfered",
@@ -386,11 +421,16 @@
           "max": 5000,
           "step": 5
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "column_pier_pmm",
+        "building_beam_girder"
+      ],
+      "application_domain": "general_structural"
     },
     {
       "key": "box_section_fillet",
-      "display_name": "Precast Box Beam \u2013 Interior",
+      "display_name": "Precast Box Beam – Interior",
       "category": "Precast Composite Girder",
       "generator": "box_section_fillet",
       "dimensions_generator": "box_section_fillet",
@@ -415,7 +455,7 @@
         },
         {
           "name": "h1_mm",
-          "label": "h1 \u2014 Top cover (mm)",
+          "label": "h1 — Top cover (mm)",
           "type": "number",
           "default": 180,
           "min": 1,
@@ -424,7 +464,7 @@
         },
         {
           "name": "h3_mm",
-          "label": "h3 \u2014 Bottom cover to inner flat (mm)",
+          "label": "h3 — Bottom cover to inner flat (mm)",
           "type": "number",
           "default": 160,
           "min": 1,
@@ -433,7 +473,7 @@
         },
         {
           "name": "h4_mm",
-          "label": "h4 \u2014 Inner chamfer height (mm)",
+          "label": "h4 — Inner chamfer height (mm)",
           "type": "number",
           "default": 80,
           "min": 1,
@@ -442,7 +482,7 @@
         },
         {
           "name": "h5_mm",
-          "label": "h5 \u2014 Inner vertical wall height (mm)",
+          "label": "h5 — Inner vertical wall height (mm)",
           "type": "number",
           "default": 200,
           "min": 1,
@@ -451,7 +491,7 @@
         },
         {
           "name": "h6_mm",
-          "label": "h6 \u2014 Top to outer side break (mm)",
+          "label": "h6 — Top to outer side break (mm)",
           "type": "number",
           "default": 300,
           "min": 1,
@@ -460,7 +500,7 @@
         },
         {
           "name": "h7_mm",
-          "label": "h7 \u2014 Bottom to outer side break (mm)",
+          "label": "h7 — Bottom to outer side break (mm)",
           "type": "number",
           "default": 400,
           "min": 1,
@@ -469,7 +509,7 @@
         },
         {
           "name": "h8_mm",
-          "label": "h8 \u2014 Vertical rise from point 1 to point 2 (mm)",
+          "label": "h8 — Vertical rise from point 1 to point 2 (mm)",
           "type": "number",
           "default": 70,
           "min": 0,
@@ -478,7 +518,7 @@
         },
         {
           "name": "b2_mm",
-          "label": "b2 \u2014 Inner chamfer run (mm)",
+          "label": "b2 — Inner chamfer run (mm)",
           "type": "number",
           "default": 100,
           "min": 1,
@@ -487,7 +527,7 @@
         },
         {
           "name": "b4_mm",
-          "label": "b4 \u2014 Horizontal run from point 1 to point 2 (mm)",
+          "label": "b4 — Horizontal run from point 1 to point 2 (mm)",
           "type": "number",
           "default": 70,
           "min": 0,
@@ -496,7 +536,7 @@
         },
         {
           "name": "b3_mm",
-          "label": "b3 \u2014 Inner flat width at center line (mm)",
+          "label": "b3 — Inner flat width at center line (mm)",
           "type": "number",
           "default": 290,
           "min": 1,
@@ -504,11 +544,15 @@
           "step": 5
         }
       ],
-      "description": "Interior precast composite box beam using drawing variables B, H, h1, h3, h4, h5, h6, h7, h8, b2, b3, and b4. h1 is the top cover above the inner void."
+      "description": "Interior precast composite box beam using drawing variables B, H, h1, h3, h4, h5, h6, h7, h8, b2, b3, and b4. h1 is the top cover above the inner void.",
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "precast_box_beam_exterior",
-      "display_name": "Precast Box Beam \u2013 Exterior",
+      "display_name": "Precast Box Beam – Exterior",
       "category": "Precast Composite Girder",
       "generator": "precast_box_beam_exterior",
       "dimensions_generator": "precast_box_beam_exterior",
@@ -533,7 +577,7 @@
         },
         {
           "name": "h1_mm",
-          "label": "h1 \u2014 Top cover (mm)",
+          "label": "h1 — Top cover (mm)",
           "type": "number",
           "default": 180,
           "min": 1,
@@ -542,7 +586,7 @@
         },
         {
           "name": "h3_mm",
-          "label": "h3 \u2014 Bottom cover to inner flat (mm)",
+          "label": "h3 — Bottom cover to inner flat (mm)",
           "type": "number",
           "default": 160,
           "min": 1,
@@ -551,7 +595,7 @@
         },
         {
           "name": "h4_mm",
-          "label": "h4 \u2014 Inner chamfer height (mm)",
+          "label": "h4 — Inner chamfer height (mm)",
           "type": "number",
           "default": 80,
           "min": 1,
@@ -560,7 +604,7 @@
         },
         {
           "name": "h5_mm",
-          "label": "h5 \u2014 Inner vertical wall height (mm)",
+          "label": "h5 — Inner vertical wall height (mm)",
           "type": "number",
           "default": 200,
           "min": 1,
@@ -569,7 +613,7 @@
         },
         {
           "name": "h6_mm",
-          "label": "h6 \u2014 Top to left outer break (mm)",
+          "label": "h6 — Top to left outer break (mm)",
           "type": "number",
           "default": 300,
           "min": 1,
@@ -578,7 +622,7 @@
         },
         {
           "name": "h7_mm",
-          "label": "h7 \u2014 Bottom to left outer break (mm)",
+          "label": "h7 — Bottom to left outer break (mm)",
           "type": "number",
           "default": 400,
           "min": 1,
@@ -587,7 +631,7 @@
         },
         {
           "name": "h8_mm",
-          "label": "h8 \u2014 Vertical rise from point 1 to point 2 (mm)",
+          "label": "h8 — Vertical rise from point 1 to point 2 (mm)",
           "type": "number",
           "default": 70,
           "min": 0,
@@ -596,7 +640,7 @@
         },
         {
           "name": "b2_mm",
-          "label": "b2 \u2014 Inner chamfer run (mm)",
+          "label": "b2 — Inner chamfer run (mm)",
           "type": "number",
           "default": 100,
           "min": 1,
@@ -605,7 +649,7 @@
         },
         {
           "name": "b4_mm",
-          "label": "b4 \u2014 Horizontal run from point 1 to point 2 (mm)",
+          "label": "b4 — Horizontal run from point 1 to point 2 (mm)",
           "type": "number",
           "default": 70,
           "min": 0,
@@ -614,7 +658,7 @@
         },
         {
           "name": "b3_mm",
-          "label": "b3 \u2014 Inner flat width (exterior default 360) (mm)",
+          "label": "b3 — Inner flat width (exterior default 360) (mm)",
           "type": "number",
           "default": 360,
           "min": 1,
@@ -622,7 +666,11 @@
           "step": 5
         }
       ],
-      "description": "Exterior precast composite box beam using drawing variables B, H, h1, h3, h4, h5, h6, h7, h8, b2, b3, and b4. The right outer face is straight; default b3 is 360 mm and the right end of b3 sits b2 + 180 mm from the rightmost outer edge."
+      "description": "Exterior precast composite box beam using drawing variables B, H, h1, h3, h4, h5, h6, h7, h8, b2, b3, and b4. The right outer face is straight; default b3 is 360 mm and the right end of b3 sits b2 + 180 mm from the rightmost outer edge.",
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "parametric_i_girder",
@@ -731,11 +779,20 @@
           "step": 5,
           "description": "Optional outside corner chamfer. Use 0 for square corners."
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder",
+        "building_beam_girder"
+      ],
+      "application_domain": "shared_building_bridge",
+      "workflow_display_names": {
+        "beam_girder": "Precast I-Girder: Bridge · Precast Composite Girder",
+        "building_beam_girder": "Precast I-Girder: Building · Precast Composite Girder"
+      }
     },
     {
       "key": "parametric_plank_girder_interior",
-      "display_name": "Precast Plank Girder \u2014 Interior",
+      "display_name": "Precast Plank Girder — Interior",
       "category": "Precast Composite Girder",
       "generator": "parametric_plank_girder_interior",
       "dimensions_generator": "parametric_plank_girder_interior",
@@ -768,7 +825,7 @@
           "min": 0,
           "max": 5000,
           "step": 5,
-          "description": "Lower side offset. Interior: B \u2248 b3 + 2b2. Exterior: B \u2248 b3 + b2."
+          "description": "Lower side offset. Interior: B ≈ b3 + 2b2. Exterior: B ≈ b3 + b2."
         },
         {
           "name": "b3_mm",
@@ -860,11 +917,15 @@
           "step": 100,
           "description": "Girder length metadata for future bridge-girder checks."
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "parametric_plank_girder_exterior",
-      "display_name": "Precast Plank Girder \u2014 Exterior",
+      "display_name": "Precast Plank Girder — Exterior",
       "category": "Precast Composite Girder",
       "generator": "parametric_plank_girder_exterior",
       "dimensions_generator": "parametric_plank_girder_exterior",
@@ -897,7 +958,7 @@
           "min": 0,
           "max": 5000,
           "step": 5,
-          "description": "Lower side offset. Interior: B \u2248 b3 + 2b2. Exterior: B \u2248 b3 + b2."
+          "description": "Lower side offset. Interior: B ≈ b3 + 2b2. Exterior: B ≈ b3 + b2."
         },
         {
           "name": "b3_mm",
@@ -999,11 +1060,15 @@
           "step": 5,
           "description": "Exterior overhang metadata for future AASHTO effective width calculation."
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "parametric_plank_girder_voided_interior",
-      "display_name": "Precast Voided Plank Girder \u2014 Interior",
+      "display_name": "Precast Voided Plank Girder — Interior",
       "category": "Precast Composite Girder",
       "generator": "parametric_plank_girder_voided_interior",
       "dimensions_generator": "parametric_plank_girder_voided_interior",
@@ -1036,7 +1101,7 @@
           "min": 0,
           "max": 5000,
           "step": 5,
-          "description": "Lower side offset. Interior: B \u2248 b3 + 2b2. Exterior: B \u2248 b3 + b2."
+          "description": "Lower side offset. Interior: B ≈ b3 + 2b2. Exterior: B ≈ b3 + b2."
         },
         {
           "name": "b3_mm",
@@ -1178,11 +1243,15 @@
           "step": 100,
           "description": "Girder length metadata for future bridge-girder checks."
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "parametric_plank_girder_voided_exterior",
-      "display_name": "Precast Voided Plank Girder \u2014 Exterior",
+      "display_name": "Precast Voided Plank Girder — Exterior",
       "category": "Precast Composite Girder",
       "generator": "parametric_plank_girder_voided_exterior",
       "dimensions_generator": "parametric_plank_girder_voided_exterior",
@@ -1215,7 +1284,7 @@
           "min": 0,
           "max": 5000,
           "step": 5,
-          "description": "Lower side offset. Interior: B \u2248 b3 + 2b2. Exterior: B \u2248 b3 + b2."
+          "description": "Lower side offset. Interior: B ≈ b3 + 2b2. Exterior: B ≈ b3 + b2."
         },
         {
           "name": "b3_mm",
@@ -1367,7 +1436,11 @@
           "step": 5,
           "description": "Exterior overhang metadata for future AASHTO effective width calculation."
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "slab_bridge",
@@ -1406,7 +1479,11 @@
           "step": 5,
           "description": "Slab depth at the bridge centerline/crown. Default follows the provided drawing: 450 mm."
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "railway_u_girder",
@@ -1515,7 +1592,11 @@
           "step": 5,
           "description": "Floor slab thickness at bridge centerline. Default follows the drawing: 450 mm."
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "psc_i_girder",
@@ -1578,7 +1659,12 @@
           "max": 3000,
           "step": 5
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder",
+        "building_beam_girder"
+      ],
+      "application_domain": "shared_generic_girder"
     },
     {
       "key": "u_girder",
@@ -1632,7 +1718,11 @@
           "max": 3000,
           "step": 5
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder"
+      ],
+      "application_domain": "bridge_infrastructure"
     },
     {
       "key": "single_cell_box_girder",
@@ -1686,7 +1776,12 @@
           "max": 3000,
           "step": 5
         }
-      ]
+      ],
+      "allowed_workflows": [
+        "beam_girder",
+        "building_beam_girder"
+      ],
+      "application_domain": "shared_generic_girder"
     }
   ]
 }

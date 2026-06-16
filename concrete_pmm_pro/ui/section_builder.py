@@ -793,7 +793,7 @@ def _render_section_builder_status_strip(preset: dict[str, Any], material_assign
     st.markdown(
         _property_strip_html(
             [
-                SectionMetric("Section", str(preset.get("display_name", "N/A")), str(preset.get("category", "General")), "info", True),
+                SectionMetric("Section", _workflow_specific_preset_display_name(preset, settings), str(preset.get("category", "General")), "info", True),
                 SectionMetric("Workflow", analysis_mode_label(settings), _girder_section_family_label(preset), "ready", True),
                 SectionMetric("Axis", "x/y/z", "x horizontal, y vertical, z longitudinal", "neutral"),
                 SectionMetric("Rebar / Prestress", f"{rebar_status} / {prestress_status}", "stored reinforcement is previewed on its own page", "ready" if prestress_status == "Enabled" or rebar_status == "Enabled" else "neutral"),
@@ -804,12 +804,36 @@ def _render_section_builder_status_strip(preset: dict[str, Any], material_assign
     )
 
 
-def _preset_option_label(preset: dict[str, Any]) -> str:
+def _workflow_specific_preset_display_name(
+    preset: dict[str, Any], settings: AnalysisModeSettings | None = None
+) -> str:
+    """Return the preset display name for the active engineering workflow.
+
+    Preset filtering must be driven by explicit metadata, not by brittle words
+    embedded in display labels.  The display alias lets shared geometry such as
+    the Precast I-Girder read as a Building or Bridge preset without duplicating
+    geometry-generator code or changing solver routing keys.
+    """
+
+    display_names = preset.get("workflow_display_names")
+    workflow_key = getattr(settings, "member_type", None) if settings is not None else None
+    if isinstance(display_names, dict) and workflow_key:
+        value = display_names.get(str(workflow_key))
+        if value:
+            return str(value)
+    return str(preset.get("display_name", "N/A"))
+
+
+def _preset_option_label(preset: dict[str, Any], settings: AnalysisModeSettings | None = None) -> str:
     """Return the user-facing label for a section preset selector option."""
-    return f"{preset['display_name']}  ·  {preset.get('category', 'General')}"
+
+    display_name = _workflow_specific_preset_display_name(preset, settings)
+    return f"{display_name}  ·  {preset.get('category', 'General')}"
 
 
-def _preset_maps(presets: list[dict[str, Any]]) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, str]]:
+def _preset_maps(
+    presets: list[dict[str, Any]], settings: AnalysisModeSettings | None = None
+) -> tuple[list[str], dict[str, dict[str, Any]], dict[str, str]]:
     """Build stable key-based selector maps for Streamlit widgets.
 
     The Section Type / Preset selectbox must be keyed by immutable preset keys,
@@ -819,7 +843,7 @@ def _preset_maps(presets: list[dict[str, Any]]) -> tuple[list[str], dict[str, di
     """
     preset_keys = [str(preset.get("key", "")) for preset in presets]
     preset_map = {str(preset.get("key", "")): preset for preset in presets}
-    label_map = {key: _preset_option_label(preset_map[key]) for key in preset_keys}
+    label_map = {key: _preset_option_label(preset_map[key], settings) for key in preset_keys}
     return preset_keys, preset_map, label_map
 
 
@@ -1035,8 +1059,27 @@ def _section_categories_for_member_type(settings: AnalysisModeSettings) -> set[s
     return set(_COLUMN_PIER_SECTION_CATEGORIES)
 
 
+def _preset_allowed_workflows(preset: dict[str, Any]) -> set[str]:
+    """Return explicit workflow metadata for a preset, when configured."""
+
+    raw = preset.get("allowed_workflows")
+    if not isinstance(raw, list):
+        return set()
+    return {str(item).strip() for item in raw if str(item).strip()}
+
+
 def _preset_matches_member_type(preset: dict[str, Any], settings: AnalysisModeSettings) -> bool:
-    """Return whether a section preset should be shown for the active workflow."""
+    """Return whether a section preset should be shown for the active workflow.
+
+    PRESET.ROUTING1 uses explicit preset metadata where available.  Category
+    filtering remains as a compatibility fallback for legacy/custom presets that
+    do not yet declare ``allowed_workflows``.
+    """
+
+    workflow_key = str(settings.member_type)
+    allowed_workflows = _preset_allowed_workflows(preset)
+    if allowed_workflows:
+        return workflow_key in allowed_workflows
 
     category = str(preset.get("category", "General"))
     preset_key = str(preset.get("key", ""))
@@ -1072,10 +1115,9 @@ def _member_type_filter_description(settings: AnalysisModeSettings) -> str:
     """Human-readable description of the active Section Type / Preset filter."""
 
     if is_building_beam_girder_workflow(settings):
-        shared = ", ".join(sorted(_BUILDING_SHARED_PRECAST_GIRDER_PRESET_KEYS))
         return (
-            "Section Type / Preset includes ACI building beam categories plus shared precast girder geometry "
-            f"({shared}). Bridge-specific load/stage/AASHTO Be tools stay hidden."
+            "Section Type / Preset is filtered by explicit workflow metadata. "
+            "Building Beam/Girder hides bridge/railway/highway-only presets; shared precast girder geometry is shown with a Building-specific label. Bridge-specific load/stage/AASHTO Be tools stay hidden."
         )
     allowed_categories = _section_categories_for_member_type(settings)
     category_text = ", ".join(sorted(allowed_categories))
@@ -1147,12 +1189,12 @@ def _render_member_type_section_guidance(preset: dict[str, Any]) -> None:
             st.warning("Bridge Beam/Girder workflow is active, but the selected preset is not a dedicated girder preset. Use only with engineering judgment.")
         st.caption("WORKFLOW.TYPE3 routes shared geometry separately from design-code context. Bridge tools remain AASHTO LRFD / engineering-review previews until full engines are implemented.")
     elif is_building_beam_girder_workflow(settings):
-        is_shared_precast = preset_key in _BUILDING_SHARED_PRECAST_GIRDER_PRESET_KEYS
+        is_shared_precast = "building_beam_girder" in _preset_allowed_workflows(preset) and _is_parametric_i_girder(preset)
         rows.extend(
             [
                 ("Design context", "Building Beam/Girder under ACI 318"),
-                ("Geometry availability", "Building beam categories plus shared precast girder geometry"),
-                ("Shared geometry preset", "Yes — ACI building context" if is_shared_precast else "No"),
+                ("Geometry availability", "Workflow-specific metadata hides bridge/railway/highway-only presets"),
+                ("Shared geometry preset", "Yes — Building-specific Precast I-Girder label" if is_shared_precast else "No"),
                 ("Bridge-specific tools", "Hidden: bridge staged SLS, barrier/sidewalk/wearing surface, CSiBridge LL+IM"),
                 ("Current preset fit", "Good for Building Beam/Girder" if (is_shared_precast or not is_girder_preset) else "Review: bridge-only girder preset"),
             ]
@@ -1161,7 +1203,7 @@ def _render_member_type_section_guidance(preset: dict[str, Any]) -> None:
         st.markdown(_kv_panel_html(rows), unsafe_allow_html=True)
         if is_shared_precast:
             st.info(
-                "Precast I-Girder is available here as shared section geometry for ACI 318 building work. "
+                "Precast I-Girder is shown with a Building-specific label for ACI 318 building work. "
                 "Bridge load components, AASHTO effective-width helper, and staged bridge SLS tools are intentionally not active; prestressed girder layout/loss tools remain available as shared detailing workflow."
             )
         st.caption("WORKFLOW.TYPE3: same physical section geometry can be reused; design checks and load workflows remain workflow-specific.")
@@ -1777,7 +1819,7 @@ def _render_section_definition_panel(
             unsafe_allow_html=True,
         )
 
-        preset_keys, preset_map, label_map = _preset_maps(available_presets)
+        preset_keys, preset_map, label_map = _preset_maps(available_presets, analysis_mode_settings)
         if not preset_keys:
             st.error("No section presets are available.")
             return None
@@ -1810,7 +1852,7 @@ def _render_section_definition_panel(
         # This prevents the direct Section Type / Preset selector from snapping
         # back to the previous preset and requiring a second click on rerun.
         st.session_state["section_preset_key"] = str(selected_preset_key)
-        st.session_state["section_preset_name"] = str(preset.get("display_name", selected_preset_key))
+        st.session_state["section_preset_name"] = _workflow_specific_preset_display_name(preset, analysis_mode_settings)
 
         st.caption(
             f"Geometry family: {selected_category} · "
@@ -1834,7 +1876,7 @@ def _render_section_definition_panel(
             browse_category = st.selectbox("Section Category", available_categories, index=category_index)
             family_presets = [item for item in available_presets if item.get("category") == browse_category]
             if family_presets:
-                family_labels = [item["display_name"] for item in family_presets]
+                family_labels = [_workflow_specific_preset_display_name(item, analysis_mode_settings) for item in family_presets]
                 st.caption("Available in this family: " + ", ".join(family_labels))
             else:
                 st.caption("No presets are available in this family yet.")
@@ -1965,7 +2007,7 @@ def _build_geometry(
 
 def _store_valid_section_state(preset: dict[str, Any], params: dict[str, Any], geometry: Any, dimensions: list[Any]) -> None:
     st.session_state["section_preset_key"] = preset["key"]
-    st.session_state["section_preset_name"] = preset["display_name"]
+    st.session_state["section_preset_name"] = _workflow_specific_preset_display_name(preset, _analysis_mode_from_session_state())
     st.session_state["section_category"] = str(preset.get("category", ""))
     st.session_state["girder_section_family"] = _girder_section_family(preset)
     st.session_state["girder_service_default_basis"] = _recommended_service_basis_for_preset(preset)
@@ -2186,7 +2228,7 @@ def _render_section_properties_summary(
                     SectionMetric("Ix", "Not calculated"),
                     SectionMetric("Iy", "Not calculated"),
                     SectionMetric("Holes / Voids", "N/A"),
-                    SectionMetric("Active Preset", preset["display_name"], "", "info"),
+                    SectionMetric("Active Preset", _workflow_specific_preset_display_name(preset, _analysis_mode_from_session_state()), "", "info"),
                     SectionMetric("Category", str(preset.get("category", "N/A")), "", "neutral"),
                     SectionMetric("Readiness", "Not Ready", "", "danger", True),
                 ]
@@ -2233,7 +2275,7 @@ def _render_section_properties_summary(
                 SectionMetric("Z top / bottom", f"{summary.z_top_display} / {summary.z_bottom_display}", "gross section modulus"),
                 SectionMetric("Composite slab", "Excluded", composite_detail, "info"),
                 SectionMetric("Holes / Voids", f"{len(geometry.holes):,}"),
-                SectionMetric("Active Preset", preset["display_name"]),
+                SectionMetric("Active Preset", _workflow_specific_preset_display_name(preset, _analysis_mode_from_session_state())),
                 SectionMetric("Category", str(preset.get("category", "N/A"))),
                 SectionMetric("ULS PMM", "Supported", "Current section-analysis workflow", "ready"),
                 SectionMetric(
