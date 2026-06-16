@@ -7,8 +7,9 @@ Railway U-Girder construction sequence:
 
 The helper consumes the row-based strand debonding table through the existing
 station participation handoff.  It intentionally does not perform transfer-
-length force ramping, development length, locked-in stress superposition,
-AASHTO/ACI code certification, or final end-zone checks.
+length force ramping, development length, AASHTO/ACI code certification,
+or final end-zone checks.  Later milestones add guarded locked-in and
+service-load handoff previews without representing final certified design.
 """
 
 from __future__ import annotations
@@ -124,6 +125,43 @@ RAILWAY_UGIRDER_SERVICE_LOAD_LIMIT_COLUMNS = [
     "Limit stage profile",
     "Top total (MPa)",
     "Bottom total (MPa)",
+    "Top status",
+    "Bottom status",
+    "Overall status",
+    "Max utilization",
+    "Limit note",
+]
+
+RAILWAY_UGIRDER_FINAL_SERVICE_COLUMNS = [
+    "Load Case",
+    "Station x (m)",
+    "Section basis",
+    "Pu (kN)",
+    "Mux (kN-m)",
+    "Locked top (MPa)",
+    "Locked bottom (MPa)",
+    "Service load top (MPa)",
+    "Service load bottom (MPa)",
+    "Final Pe increment top (MPa)",
+    "Final Pe increment bottom (MPa)",
+    "Final top (MPa)",
+    "Final bottom (MPa)",
+    "Max compression (MPa)",
+    "Max tension (MPa)",
+    "Pe_final increment (kN)",
+    "Effective strands",
+    "Active group IDs",
+    "Preview note",
+]
+
+RAILWAY_UGIRDER_FINAL_SERVICE_LIMIT_COLUMNS = [
+    "Load Case",
+    "Station x (m)",
+    "Section basis",
+    "Concrete strength used (MPa)",
+    "Limit stage profile",
+    "Final top (MPa)",
+    "Final bottom (MPa)",
     "Top status",
     "Bottom status",
     "Overall status",
@@ -1077,6 +1115,214 @@ def railway_u_girder_locked_in_governing_rows(locked_df: pd.DataFrame) -> pd.Dat
                 "Governing tension (MPa)": tens_val,
                 "Section basis": row.get("Section basis"),
                 "Carry-over basis": row.get("Carry-over basis"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _locked_web_cumulative_at_station(
+    *,
+    geometry: SectionGeometry | None,
+    settings: Mapping[str, Any] | None,
+    strand_table: pd.DataFrame | None,
+    span_length_m: float,
+    station_m: float,
+) -> tuple[float, float, str]:
+    """Return locked-in web top/bottom stresses at a station for final preview.
+
+    The returned values are physical web extreme-fiber stresses accumulated
+    before full composite action.  They may be added to later full-U incremental
+    service actions at the same top/bottom physical fibers for a guarded Railway
+    U-Girder review preview, but this is not a creep/shrinkage redistribution or
+    code-certified staged composite solver.
+    """
+
+    locked = railway_u_girder_locked_in_stress_accumulation_dataframe(
+        geometry=geometry,
+        settings=settings,
+        strand_table=strand_table,
+        span_length_m=span_length_m,
+        stations_m=[station_m],
+    )
+    if locked.empty:
+        return 0.0, 0.0, "No locked-in web rows available"
+    stage2 = locked[locked["Accumulation step"].astype(str).str.startswith("2 Wet slab casting")]
+    source = stage2.iloc[0] if not stage2.empty else locked.iloc[-1]
+    return (
+        _float_value(source.get("Cumulative top (MPa)"), 0.0),
+        _float_value(source.get("Cumulative bottom (MPa)"), 0.0),
+        str(source.get("Carry-over basis") or "Locked into precast web"),
+    )
+
+
+def railway_u_girder_final_service_accumulation_dataframe(
+    *,
+    geometry: SectionGeometry | None,
+    settings: Mapping[str, Any] | None,
+    strand_table: pd.DataFrame | None,
+    span_length_m: float,
+    load_cases: Iterable[Any] | None,
+    station_m: float | None = None,
+) -> pd.DataFrame:
+    """Return guarded final staged service-stress accumulation rows.
+
+    SLS.RAIL.UGIRDER5 combines:
+    - locked-in web stresses from transfer + wet slab casting on the one-web
+      basis at the same physical top/bottom web fibers,
+    - final prestress loss increment ``Pe_final - Pe_construction`` on the full
+      U-section basis, and
+    - active SLS resultants from the Loads tab as *additional service increments*
+      on the full-U basis.
+
+    This is still an engineering-review preview.  It does not model time-
+    dependent redistribution, transfer-length force ramping, development length,
+    anchorage/end-zone bursting, or final code certification.
+    """
+
+    span = max(float(span_length_m), 0.001)
+    x = span / 2.0 if station_m is None else min(max(float(station_m), 0.0), span)
+    basis_set = railway_u_girder_stage_basis_set(geometry, settings)
+    basis = basis_set.full_u_basis
+    locked_top, locked_bottom, locked_note = _locked_web_cumulative_at_station(
+        geometry=geometry,
+        settings=settings,
+        strand_table=strand_table,
+        span_length_m=span,
+        station_m=x,
+    )
+    pe_final, yps_final, effective_final, active_final = _station_pe(
+        strand_table,
+        x_m=x,
+        span_length_m=span,
+        pe_source="final",
+    )
+    pe_construction_full, yps_construction_full, _eff_c_full, _active_c_full = _station_pe(
+        strand_table,
+        x_m=x,
+        span_length_m=span,
+        pe_source="construction",
+    )
+    delta_pe_final = pe_final - pe_construction_full
+    delta_yps = yps_final if yps_final is not None else yps_construction_full
+    pe_top, pe_bottom = _signed_prestress_top_bottom_MPa(
+        basis,
+        Pe_increment_kN=delta_pe_final,
+        tendon_y_from_bottom_mm=delta_yps,
+    )
+    rows: list[dict[str, Any]] = []
+    for idx, load_case in enumerate(load_cases or []):
+        if not _is_active_sls_load_case(load_case):
+            continue
+        pu_kN = _float_value(_load_case_get(load_case, "Pu_N", 0.0), 0.0) / 1000.0
+        mux_kNm = _float_value(_load_case_get(load_case, "Mux_Nmm", 0.0), 0.0) / 1_000_000.0
+        muy_kNm = _float_value(_load_case_get(load_case, "Muy_Nmm", 0.0), 0.0) / 1_000_000.0
+        service = run_basic_girder_service_stress(basis, N_kN=pu_kN, M_kNm=mux_kNm)
+        top_total = locked_top + service.top.total_stress_MPa + pe_top
+        bottom_total = locked_bottom + service.bottom.total_stress_MPa + pe_bottom
+        note = (
+            "Locked web stresses + final Pe loss increment + active SLS load increment. "
+            "Loads tab values are treated as additional service actions after composite action; "
+            "do not include auto web/wet-slab self-weight again unless intentionally checking a total-resultant case. "
+            f"Locked basis: {locked_note}."
+        )
+        if abs(muy_kNm) > 1.0e-9:
+            note += " Muy is stored but not included in this 1D top/bottom preview."
+        rows.append(
+            {
+                "Load Case": _service_load_case_name(load_case, idx),
+                "Station x (m)": round(float(x), 6),
+                "Section basis": "Locked web fibers + full Railway U-Girder incremental service",
+                "Pu (kN)": pu_kN,
+                "Mux (kN-m)": mux_kNm,
+                "Locked top (MPa)": locked_top,
+                "Locked bottom (MPa)": locked_bottom,
+                "Service load top (MPa)": service.top.total_stress_MPa,
+                "Service load bottom (MPa)": service.bottom.total_stress_MPa,
+                "Final Pe increment top (MPa)": pe_top,
+                "Final Pe increment bottom (MPa)": pe_bottom,
+                "Final top (MPa)": top_total,
+                "Final bottom (MPa)": bottom_total,
+                "Max compression (MPa)": min(top_total, bottom_total),
+                "Max tension (MPa)": max(top_total, bottom_total),
+                "Pe_final increment (kN)": delta_pe_final,
+                "Effective strands": effective_final,
+                "Active group IDs": active_final,
+                "Preview note": note,
+            }
+        )
+    return pd.DataFrame(rows, columns=RAILWAY_UGIRDER_FINAL_SERVICE_COLUMNS)
+
+
+def railway_u_girder_final_service_limit_check_dataframe(
+    final_df: pd.DataFrame,
+    *,
+    settings: Mapping[str, Any] | None,
+    code: str = "AASHTO LRFD Bridge",
+) -> pd.DataFrame:
+    """Check final staged service accumulation rows against service limits."""
+
+    if final_df is None or pd.DataFrame(final_df).empty:
+        return pd.DataFrame(columns=RAILWAY_UGIRDER_FINAL_SERVICE_LIMIT_COLUMNS)
+    settings = dict(settings or {})
+    web_fc = _positive(settings.get("web_fc_MPa"), 45.0)
+    slab_fc = _positive(settings.get("slab_fc_MPa"), 35.0)
+    fc = min(web_fc, slab_fc)
+    profile = default_girder_sls_limit_profile(code=code, stage=STAGE_FINAL_SERVICE)
+    rows: list[dict[str, Any]] = []
+    for _, source in pd.DataFrame(final_df).iterrows():
+        top = _float_value(source.get("Final top (MPa)"), 0.0)
+        bottom = _float_value(source.get("Final bottom (MPa)"), 0.0)
+        result = run_girder_service_stress_limit_check(
+            stresses=(
+                StressLimitInputRow("Top", top),
+                StressLimitInputRow("Bottom", bottom),
+            ),
+            fc_MPa=fc,
+            profile=profile,
+        )
+        point_by_fiber = {point.fiber.lower(): point for point in result.points}
+        top_point = point_by_fiber.get("top")
+        bottom_point = point_by_fiber.get("bottom")
+        rows.append(
+            {
+                "Load Case": source.get("Load Case"),
+                "Station x (m)": source.get("Station x (m)"),
+                "Section basis": source.get("Section basis"),
+                "Concrete strength used (MPa)": fc,
+                "Limit stage profile": profile.stage,
+                "Final top (MPa)": top,
+                "Final bottom (MPa)": bottom,
+                "Top status": getattr(top_point, "status", "NOT_CHECKED"),
+                "Bottom status": getattr(bottom_point, "status", "NOT_CHECKED"),
+                "Overall status": result.overall_status,
+                "Max utilization": result.max_utilization,
+                "Limit note": "Final staged service accumulation uses min(f'c web, f'c slab) as a conservative preview; review load attribution to avoid double-counted self-weight.",
+            }
+        )
+    return pd.DataFrame(rows, columns=RAILWAY_UGIRDER_FINAL_SERVICE_LIMIT_COLUMNS)
+
+
+def railway_u_girder_final_service_governing_rows(final_df: pd.DataFrame) -> pd.DataFrame:
+    """Return compact governing rows for final staged service accumulation."""
+
+    if final_df is None or pd.DataFrame(final_df).empty:
+        return pd.DataFrame()
+    df = pd.DataFrame(final_df).copy()
+    rows: list[dict[str, Any]] = []
+    for _, row in df.iterrows():
+        rows.append(
+            {
+                "Load Case": row.get("Load Case"),
+                "Station x (m)": row.get("Station x (m)"),
+                "Locked top (MPa)": row.get("Locked top (MPa)"),
+                "Locked bottom (MPa)": row.get("Locked bottom (MPa)"),
+                "Service load top (MPa)": row.get("Service load top (MPa)"),
+                "Service load bottom (MPa)": row.get("Service load bottom (MPa)"),
+                "Final top (MPa)": row.get("Final top (MPa)"),
+                "Final bottom (MPa)": row.get("Final bottom (MPa)"),
+                "Max compression (MPa)": row.get("Max compression (MPa)"),
+                "Max tension (MPa)": row.get("Max tension (MPa)"),
+                "Preview note": row.get("Preview note"),
             }
         )
     return pd.DataFrame(rows)

@@ -788,3 +788,11 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Added guarded service-load stress-limit preview using `min(f'c web, f'c slab)`.
 - Web-stage locked-in stresses are intentionally not transformed/summed into the full-U service rows; this remains a review-level handoff, not final certified SLS design.
 
+
+### SLS.RAIL.UGIRDER5 — Final Staged Service Accumulation Preview
+
+- Adds guarded final staged service-stress accumulation for Railway U-Girder.
+- Combines locked-in web stresses from transfer/wet casting with final Pe loss increment and active SLS service-load increments.
+- Keeps load attribution guarded: Loads tab rows are treated as additional post-composite service increments to avoid double-counting automatic self-weight.
+- Adds governing rows, service-limit preview, documentation, and regression tests.
+- No ULS, geometry, prestress-loss, anchorage, transfer-length, development-length, report, or project-schema calculation changes.

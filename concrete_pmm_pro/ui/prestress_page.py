@@ -65,6 +65,9 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     system_settings_from_mapping,
 )
 from concrete_pmm_pro.serviceability.railway_u_girder_stages import (
+    railway_u_girder_final_service_accumulation_dataframe,
+    railway_u_girder_final_service_governing_rows,
+    railway_u_girder_final_service_limit_check_dataframe,
     railway_u_girder_locked_in_governing_rows,
     railway_u_girder_locked_in_stress_accumulation_dataframe,
     railway_u_girder_service_load_governing_rows,
@@ -5652,7 +5655,9 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
         st.markdown("**Service load handoff from Loads tab**")
         st.caption(
             "SLS.RAIL.UGIRDER4 consumes active SLS load cases from Loads as full-U service resultants and combines them with station-based Pe_final. "
-            "This is a review handoff only: web-stage locked-in stresses are not transformed and summed into these full-U service rows yet."
+            "SLS.RAIL.UGIRDER5 then provides a guarded final accumulated service preview using locked web stresses + final Pe increment + service load increments. "
+            "Legacy SLS.RAIL.UGIRDER4 handoff note: web-stage locked-in stresses are not transformed and summed in the standalone handoff rows. "
+            "Review load attribution carefully to avoid double-counting self-weight already captured by automatic stage loads."
         )
         active_sls_count = sum(
             1
@@ -5714,7 +5719,60 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                             "Max utilization": st.column_config.NumberColumn("Max utilization", format="%.3f"),
                         },
                     )
-        with st.expander("Station-by-station staged stress, limits, locked-in, and service handoff", expanded=False):
+
+        st.markdown("**Final staged service accumulation preview**")
+        st.caption(
+            "SLS.RAIL.UGIRDER5 adds locked-in web stresses from transfer/wet casting to later full-U incremental service actions. "
+            "Loads tab SLS cases are treated as additional service increments after composite action; do not include auto-counted web/wet-slab self-weight again unless intended. "
+            "This is still a guarded engineering-review preview, not a final code-certified staged composite check."
+        )
+        try:
+            final_df = railway_u_girder_final_service_accumulation_dataframe(
+                geometry=geometry,
+                settings=settings,
+                strand_table=strand_table,
+                span_length_m=float(span_length_m),
+                load_cases=st.session_state.get("load_cases", []) or [],
+                station_m=float(service_station),
+            )
+        except Exception as exc:
+            st.warning(f"Final Railway U-Girder staged service accumulation preview is not available: {exc}")
+            final_df = pd.DataFrame()
+        if final_df.empty:
+            st.info("Final accumulated service preview will appear after active SLS load cases are available in Loads tab.")
+            final_limit_df = pd.DataFrame()
+        else:
+            final_governing = railway_u_girder_final_service_governing_rows(final_df)
+            st.dataframe(
+                final_governing,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Locked top (MPa)": st.column_config.NumberColumn("Locked top (MPa)", format="%.3f"),
+                    "Locked bottom (MPa)": st.column_config.NumberColumn("Locked bottom (MPa)", format="%.3f"),
+                    "Service load top (MPa)": st.column_config.NumberColumn("Service load top (MPa)", format="%.3f"),
+                    "Service load bottom (MPa)": st.column_config.NumberColumn("Service load bottom (MPa)", format="%.3f"),
+                    "Final top (MPa)": st.column_config.NumberColumn("Final top (MPa)", format="%.3f"),
+                    "Final bottom (MPa)": st.column_config.NumberColumn("Final bottom (MPa)", format="%.3f"),
+                    "Max compression (MPa)": st.column_config.NumberColumn("Max compression (MPa)", format="%.3f"),
+                    "Max tension (MPa)": st.column_config.NumberColumn("Max tension (MPa)", format="%.3f"),
+                },
+            )
+            final_limit_df = railway_u_girder_final_service_limit_check_dataframe(final_df, settings=settings)
+            if not final_limit_df.empty:
+                with st.expander("Final staged service stress-limit preview", expanded=False):
+                    st.dataframe(
+                        final_limit_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Concrete strength used (MPa)": st.column_config.NumberColumn("Concrete strength used (MPa)", format="%.2f"),
+                            "Final top (MPa)": st.column_config.NumberColumn("Final top (MPa)", format="%.3f"),
+                            "Final bottom (MPa)": st.column_config.NumberColumn("Final bottom (MPa)", format="%.3f"),
+                            "Max utilization": st.column_config.NumberColumn("Max utilization", format="%.3f"),
+                        },
+                    )
+        with st.expander("Station-by-station staged stress, limits, locked-in, service handoff, and final service accumulation", expanded=False):
             st.dataframe(
                 stress_df,
                 use_container_width=True,
@@ -5771,14 +5829,33 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                         "Bottom total (MPa)": st.column_config.NumberColumn("Bottom total (MPa)", format="%.3f"),
                     },
                 )
+            if 'final_df' in locals() and not final_df.empty:
+                st.dataframe(
+                    final_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Pu (kN)": st.column_config.NumberColumn("Pu (kN)", format="%.3f"),
+                        "Mux (kN-m)": st.column_config.NumberColumn("Mux (kN-m)", format="%.3f"),
+                        "Locked top (MPa)": st.column_config.NumberColumn("Locked top (MPa)", format="%.3f"),
+                        "Locked bottom (MPa)": st.column_config.NumberColumn("Locked bottom (MPa)", format="%.3f"),
+                        "Service load top (MPa)": st.column_config.NumberColumn("Service load top (MPa)", format="%.3f"),
+                        "Service load bottom (MPa)": st.column_config.NumberColumn("Service load bottom (MPa)", format="%.3f"),
+                        "Final Pe increment top (MPa)": st.column_config.NumberColumn("Final Pe increment top (MPa)", format="%.3f"),
+                        "Final Pe increment bottom (MPa)": st.column_config.NumberColumn("Final Pe increment bottom (MPa)", format="%.3f"),
+                        "Final top (MPa)": st.column_config.NumberColumn("Final top (MPa)", format="%.3f"),
+                        "Final bottom (MPa)": st.column_config.NumberColumn("Final bottom (MPa)", format="%.3f"),
+                    },
+                )
     else:
         st.info("Staged stress preview will appear after a valid strand layout / force-state table is available.")
 
     with st.expander("Guardrails for staged stress calculation", expanded=False):
         st.write("- Transfer, lifting, and wet slab casting must not use the full U-section inertia.")
         st.write("- Wet slab self-weight and formwork load are applied to the two precast webs before composite action for Case B.")
-        st.write("- Service preview still keeps service loads in Loads/Analysis; the full-U Pe handoff is intentionally separated from web-stage locked-in stress.")
+        st.write("- Service preview treats Loads tab SLS rows as additional full-U service increments; avoid double-counting self-weight already captured by automatic stage loads.")
         st.write("- Stage stress-limit rows are editable preview checks, not final code certification.")
+        st.write("- Final staged service accumulation is also an editable preview check, not final code certification.")
         st.write("- Debonded strands are consumed through station-based participation as a step-function preview; transfer-length force ramping is not modeled yet.")
 
 
