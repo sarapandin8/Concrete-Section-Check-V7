@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
+from math import sqrt
 from pathlib import Path
 from typing import Any
 import re
@@ -369,6 +370,21 @@ GIRDER_PRESTRESS_SYSTEM_DEFAULTS = {
     "span_length_m": 30.0,
     "station_convention": "x = 0 at left support, x = L at right support",
     "debond_model": "Left/right independent",
+}
+
+RAILWAY_U_GIRDER_DEFAULT_SPAN_LENGTH_M = 10.0
+RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY = "railway_u_girder_stage_settings"
+RAILWAY_U_GIRDER_STAGE_DEFAULTS: dict[str, Any] = {
+    "web_fc_MPa": 45.0,
+    "web_fci_MPa": 36.0,
+    "slab_fc_MPa": 35.0,
+    "concrete_unit_weight_kN_m3": 24.0,
+    "support_condition": "Simply supported",
+    "construction_method": "Case B - wet slab carried by precast webs",
+    "wet_slab_distribution_each_web": 0.50,
+    "formwork_construction_load_kN_m2": 2.5,
+    "lifting_point_ratio": 0.20,
+    "lifting_impact_factor": 1.10,
 }
 
 GIRDER_STRAND_SIZE_OPTIONS = [
@@ -3211,17 +3227,261 @@ def _girder_prestress_system_settings_from_session() -> dict[str, Any]:
 
     GIRDER.PS3A intentionally defines the longitudinal convention and span
     metadata needed by debonding preview only. It does not compute losses or
-    alter Analysis stress equations.
+    alter Analysis stress equations. Railway U-Girder uses a shorter practical
+    default span because the user-defined through U-girder family is normally
+    used around 10--15 m; existing project/session values are preserved.
     """
 
     current = st.session_state.get("girder_prestress_system_settings", {}) or {}
-    settings = dict(GIRDER_PRESTRESS_SYSTEM_DEFAULTS)
-    settings.update({key: current.get(key, default) for key, default in GIRDER_PRESTRESS_SYSTEM_DEFAULTS.items()})
+    defaults = dict(GIRDER_PRESTRESS_SYSTEM_DEFAULTS)
+    if _current_section_preset_key() == RAILWAY_U_GIRDER_PRESET_KEY and _is_blank(current.get("span_length_m")):
+        defaults["span_length_m"] = RAILWAY_U_GIRDER_DEFAULT_SPAN_LENGTH_M
+    settings = dict(defaults)
+    settings.update({key: current.get(key, default) for key, default in defaults.items()})
     span = _to_float(settings.get("span_length_m"))
-    settings["span_length_m"] = 30.0 if span is None or span <= 0.0 else span
+    settings["span_length_m"] = float(defaults["span_length_m"]) if span is None or span <= 0.0 else span
     if settings.get("debond_model") not in GIRDER_DEBOND_MODE_OPTIONS:
         settings["debond_model"] = "Left/right independent"
     return settings
+
+
+def _aci_concrete_ec_mpa(fc_mpa: Any) -> float:
+    """Return ACI normal-weight concrete Ec = 4700 sqrt(f'c) in MPa."""
+
+    fc = _to_float(fc_mpa)
+    if fc is None or fc <= 0.0:
+        fc = 1.0
+    return 4700.0 * sqrt(float(fc))
+
+
+def _railway_u_girder_stage_settings_from_session() -> dict[str, Any]:
+    """Return editable Railway U-Girder staged-construction defaults.
+
+    STAGE.RAIL.UGIRDER1 is metadata/UI only.  The values describe the staged
+    construction basis to be consumed by a later guarded stress-preview
+    milestone; they do not alter Pe, loss, SLS, or PMM solvers.
+    """
+
+    current = st.session_state.get(RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY, {}) or {}
+    settings = dict(RAILWAY_U_GIRDER_STAGE_DEFAULTS)
+    settings.update({key: current.get(key, default) for key, default in RAILWAY_U_GIRDER_STAGE_DEFAULTS.items()})
+    for key in (
+        "web_fc_MPa",
+        "web_fci_MPa",
+        "slab_fc_MPa",
+        "concrete_unit_weight_kN_m3",
+        "wet_slab_distribution_each_web",
+        "formwork_construction_load_kN_m2",
+        "lifting_point_ratio",
+        "lifting_impact_factor",
+    ):
+        value = _to_float(settings.get(key))
+        default = float(RAILWAY_U_GIRDER_STAGE_DEFAULTS[key])
+        if value is None or (key != "formwork_construction_load_kN_m2" and value <= 0.0) or (key == "formwork_construction_load_kN_m2" and value < 0.0):
+            value = default
+        settings[key] = float(value)
+    settings["wet_slab_distribution_each_web"] = min(max(float(settings["wet_slab_distribution_each_web"]), 0.0), 1.0)
+    settings["lifting_point_ratio"] = min(max(float(settings["lifting_point_ratio"]), 0.05), 0.45)
+    settings["support_condition"] = "Simply supported"
+    settings["construction_method"] = "Case B - wet slab carried by precast webs"
+    return settings
+
+
+def _railway_u_girder_parameter_snapshot(geometry: SectionGeometry | None) -> dict[str, float]:
+    """Return Railway U-Girder drawing parameters from current geometry metadata."""
+
+    metadata = getattr(geometry, "metadata", {}) or {}
+    params = dict(metadata.get("parameters", {}) or {})
+    derived = dict(metadata.get("derived_details", {}) or {})
+    width = _to_float(params.get("width_mm")) or _section_width_from_geometry(geometry, fallback_mm=5500.0)
+    depth = _to_float(params.get("depth_mm")) or _section_depth_from_geometry(geometry, fallback_mm=1600.0)
+    top_wall = _to_float(params.get("top_wall_width_mm")) or 600.0
+    bottom_side = _to_float(params.get("bottom_side_width_mm")) or 650.0
+    h1 = _to_float(params.get("h1_step_height_mm")) or 670.0
+    h2 = _to_float(params.get("h2_bottom_opening_mm")) or 305.0
+    h3 = _to_float(params.get("h3_floor_side_thickness_mm")) or 395.0
+    h4 = _to_float(params.get("h4_floor_center_thickness_mm")) or 450.0
+    haunch_x = _to_float(params.get("haunch_x_mm")) or 300.0
+    haunch_y = _to_float(params.get("haunch_y_mm")) or 300.0
+    inner_half = _to_float(derived.get("inner_half_width_mm")) or max(float(width) / 2.0 - float(bottom_side), 0.0)
+    return {
+        "width_mm": float(width),
+        "depth_mm": float(depth),
+        "top_wall_width_mm": float(top_wall),
+        "bottom_side_width_mm": float(bottom_side),
+        "h1_step_height_mm": float(h1),
+        "h2_bottom_opening_mm": float(h2),
+        "h3_floor_side_thickness_mm": float(h3),
+        "h4_floor_center_thickness_mm": float(h4),
+        "haunch_x_mm": float(haunch_x),
+        "haunch_y_mm": float(haunch_y),
+        "inner_half_width_mm": float(inner_half),
+    }
+
+
+def _railway_u_girder_stage_quantities_dataframe(
+    geometry: SectionGeometry | None,
+    settings: dict[str, Any],
+    *,
+    span_length_m: float,
+) -> pd.DataFrame:
+    """Return non-solver stage quantities for Railway U-Girder construction review."""
+
+    p = _railway_u_girder_parameter_snapshot(geometry)
+    depth = p["depth_mm"]
+    half_width = p["width_mm"] / 2.0
+    bottom_side = p["bottom_side_width_mm"]
+    top_wall = p["top_wall_width_mm"]
+    notch = max(bottom_side - top_wall, 0.0)
+    upper_outer_half = half_width - notch
+    inner_half = p["inner_half_width_mm"]
+    chamfer = 25.0
+    h1 = p["h1_step_height_mm"]
+    web_right_points = [
+        (inner_half + chamfer, 0.0),
+        (upper_outer_half - chamfer, 0.0),
+        (upper_outer_half, chamfer),
+        (upper_outer_half, depth - h1),
+        (half_width, depth - h1),
+        (half_width, depth - chamfer),
+        (half_width - chamfer, depth),
+        (inner_half, depth),
+        (inner_half, chamfer),
+    ]
+    try:
+        web_area_mm2 = float(Polygon(web_right_points).area)
+    except Exception:
+        web_area_mm2 = max(float(top_wall) * float(depth), 0.0)
+
+    full_area_mm2 = 0.0
+    try:
+        if geometry is not None:
+            full_area_mm2 = float(compute_gross_section_properties(geometry).area_mm2)
+    except Exception:
+        full_area_mm2 = 0.0
+    if full_area_mm2 <= 0.0:
+        full_area_mm2 = 2.0 * web_area_mm2
+
+    floor_underside_y = p["depth_mm"] - p["h2_bottom_opening_mm"]
+    floor_side_top_y = floor_underside_y - p["h3_floor_side_thickness_mm"]
+    floor_center_top_y = floor_underside_y - p["h4_floor_center_thickness_mm"]
+    haunch_start_y = floor_side_top_y - p["haunch_y_mm"]
+    slab_points = [
+        (-inner_half, haunch_start_y),
+        (-(inner_half - p["haunch_x_mm"]), floor_side_top_y),
+        (0.0, floor_center_top_y),
+        (inner_half - p["haunch_x_mm"], floor_side_top_y),
+        (inner_half, haunch_start_y),
+        (inner_half, floor_underside_y),
+        (-inner_half, floor_underside_y),
+    ]
+    try:
+        slab_area_mm2 = max(float(Polygon(slab_points).area), 0.0)
+    except Exception:
+        slab_area_mm2 = max(full_area_mm2 - 2.0 * web_area_mm2, 0.0)
+    if slab_area_mm2 <= 0.0 and full_area_mm2 > 2.0 * web_area_mm2:
+        slab_area_mm2 = max(full_area_mm2 - 2.0 * web_area_mm2, 0.0)
+
+    gamma = float(settings.get("concrete_unit_weight_kN_m3", 24.0) or 24.0)
+    formwork_q = float(settings.get("formwork_construction_load_kN_m2", 2.5) or 0.0)
+    distribution = float(settings.get("wet_slab_distribution_each_web", 0.5) or 0.5)
+    lifting_factor = float(settings.get("lifting_impact_factor", 1.10) or 1.10)
+    lifting_ratio = float(settings.get("lifting_point_ratio", 0.20) or 0.20)
+    projected_slab_width_m = 2.0 * inner_half / 1000.0
+    web_sw = web_area_mm2 / 1_000_000.0 * gamma
+    slab_wet_total = slab_area_mm2 / 1_000_000.0 * gamma
+    formwork_total = projected_slab_width_m * formwork_q
+    full_sw = full_area_mm2 / 1_000_000.0 * gamma
+    return pd.DataFrame(
+        [
+            {
+                "Quantity": "Precast web area (one side)",
+                "Value": web_area_mm2 / 1_000_000.0,
+                "Unit": "m²",
+                "Stage use": "Transfer / lifting / wet slab casting",
+            },
+            {
+                "Quantity": "CIP slab area",
+                "Value": slab_area_mm2 / 1_000_000.0,
+                "Unit": "m²",
+                "Stage use": "Wet slab casting then full U composite",
+            },
+            {
+                "Quantity": "Web self-weight (one side)",
+                "Value": web_sw,
+                "Unit": "kN/m",
+                "Stage use": "Web-only stages",
+            },
+            {
+                "Quantity": "Lifting web load with impact",
+                "Value": web_sw * lifting_factor,
+                "Unit": "kN/m",
+                "Stage use": f"Two-point lifting, a={lifting_ratio * span_length_m:.3f} m from each end",
+            },
+            {
+                "Quantity": "Wet slab self-weight to each web",
+                "Value": slab_wet_total * distribution,
+                "Unit": "kN/m",
+                "Stage use": "Case B before composite action",
+            },
+            {
+                "Quantity": "Formwork/construction load to each web",
+                "Value": formwork_total * distribution,
+                "Unit": "kN/m",
+                "Stage use": "Case B before composite action",
+            },
+            {
+                "Quantity": "Full U self-weight",
+                "Value": full_sw,
+                "Unit": "kN/m",
+                "Stage use": "Composite / service reference",
+            },
+        ]
+    )
+
+
+def _railway_u_girder_stage_summary_dataframe(settings: dict[str, Any]) -> pd.DataFrame:
+    """Return the guarded staged-construction section-basis map for Railway U-Girder."""
+
+    return pd.DataFrame(
+        [
+            {
+                "Stage": "Transfer",
+                "Section basis": "One precast web only",
+                "Automatic loads": "web self-weight + Pe_transfer",
+                "Concrete basis": "web f'ci",
+                "Status": "Defined for future stress preview",
+            },
+            {
+                "Stage": "Lifting",
+                "Section basis": "One precast web only",
+                "Automatic loads": "web self-weight × lifting impact + Pe_lifting",
+                "Concrete basis": "web f'ci / engineer review",
+                "Status": "Defined for future stress preview",
+            },
+            {
+                "Stage": "Wet slab casting",
+                "Section basis": "One precast web only",
+                "Automatic loads": "web self-weight + 50% wet slab + 50% formwork/construction + Pe_construction",
+                "Concrete basis": "web f'c after transfer",
+                "Status": "Case B metadata only",
+            },
+            {
+                "Stage": "Composite construction",
+                "Section basis": "Full Railway U-Girder",
+                "Automatic loads": "locked-in prior loads; no service loads yet",
+                "Concrete basis": "web f'c + slab f'c",
+                "Status": "Defined for future stress preview",
+            },
+            {
+                "Stage": "Service",
+                "Section basis": "Full Railway U-Girder",
+                "Automatic loads": "Loads tab service components + Pe_eff_final",
+                "Concrete basis": "web f'c + slab f'c",
+                "Status": "Defined for future stress preview",
+            },
+        ]
+    )
 
 
 def _strand_size_properties(strand_size: str | None) -> dict[str, float]:
@@ -4899,6 +5159,128 @@ def _plot_girder_longitudinal_debonding_layout(table: pd.DataFrame, span_length_
 
 
 
+def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *, span_length_m: float) -> None:
+    """Render STAGE.RAIL.UGIRDER1 staged-construction metadata controls.
+
+    This panel intentionally stops at stage definitions, editable defaults, and
+    auto-load attribution.  It does not calculate concrete stresses and does
+    not change any prestress loss, SLS, PMM, or report result.
+    """
+
+    st.markdown("##### Railway U-Girder Staged Construction Model")
+    st.caption(
+        "STAGE.RAIL.UGIRDER1 defines the construction-stage basis for the through U-girder. "
+        "Transfer, lifting, and wet-slab casting use one precast web only; composite construction "
+        "and service use the full Railway U-Girder. This is metadata/UI for the next staged-stress preview, not a solver change."
+    )
+    settings = _railway_u_girder_stage_settings_from_session()
+
+    material_cols = st.columns(3)
+    with material_cols[0]:
+        settings["web_fc_MPa"] = st.number_input(
+            "Web f'c (MPa)",
+            min_value=10.0,
+            value=float(settings["web_fc_MPa"]),
+            step=1.0,
+            format="%.1f",
+            key="rail_ugirder_stage_web_fc_mpa",
+        )
+        st.caption(f"Ec(web) = {_aci_concrete_ec_mpa(settings['web_fc_MPa']):,.0f} MPa")
+    with material_cols[1]:
+        settings["web_fci_MPa"] = st.number_input(
+            "Web f'ci (MPa)",
+            min_value=10.0,
+            value=float(settings["web_fci_MPa"]),
+            step=1.0,
+            format="%.1f",
+            key="rail_ugirder_stage_web_fci_mpa",
+        )
+        st.caption(f"Eci(web) = {_aci_concrete_ec_mpa(settings['web_fci_MPa']):,.0f} MPa")
+    with material_cols[2]:
+        settings["slab_fc_MPa"] = st.number_input(
+            "Slab f'c (MPa)",
+            min_value=10.0,
+            value=float(settings["slab_fc_MPa"]),
+            step=1.0,
+            format="%.1f",
+            key="rail_ugirder_stage_slab_fc_mpa",
+        )
+        st.caption(f"Ec(slab) = {_aci_concrete_ec_mpa(settings['slab_fc_MPa']):,.0f} MPa")
+
+    stage_cols = st.columns(4)
+    with stage_cols[0]:
+        st.text_input("Support condition", value="Simply supported", disabled=True, key="rail_ugirder_stage_support_condition")
+    with stage_cols[1]:
+        settings["concrete_unit_weight_kN_m3"] = st.number_input(
+            "Concrete unit weight (kN/m³)",
+            min_value=1.0,
+            value=float(settings["concrete_unit_weight_kN_m3"]),
+            step=0.5,
+            format="%.2f",
+            key="rail_ugirder_stage_concrete_unit_weight",
+        )
+    with stage_cols[2]:
+        settings["formwork_construction_load_kN_m2"] = st.number_input(
+            "Formwork load (kN/m²)",
+            min_value=0.0,
+            value=float(settings["formwork_construction_load_kN_m2"]),
+            step=0.5,
+            format="%.2f",
+            key="rail_ugirder_stage_formwork_load",
+        )
+    with stage_cols[3]:
+        st.text_input("Wet slab case", value="Case B: 50/50 to webs", disabled=True, key="rail_ugirder_stage_wet_slab_case")
+
+    lift_cols = st.columns(4)
+    with lift_cols[0]:
+        st.metric("Span L", f"{float(span_length_m):.3f} m", "controlled by strand/debonding span above")
+    with lift_cols[1]:
+        settings["lifting_point_ratio"] = st.number_input(
+            "Lifting a/L",
+            min_value=0.05,
+            max_value=0.45,
+            value=float(settings["lifting_point_ratio"]),
+            step=0.01,
+            format="%.3f",
+            key="rail_ugirder_stage_lifting_ratio",
+        )
+    with lift_cols[2]:
+        st.metric("Lifting a", f"{float(settings['lifting_point_ratio']) * float(span_length_m):.3f} m", "from each end")
+    with lift_cols[3]:
+        settings["lifting_impact_factor"] = st.number_input(
+            "Lifting impact factor",
+            min_value=1.0,
+            value=float(settings["lifting_impact_factor"]),
+            step=0.05,
+            format="%.2f",
+            key="rail_ugirder_stage_lifting_impact",
+        )
+
+    settings = _railway_u_girder_stage_settings_from_session() | settings
+    st.session_state[RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY] = dict(settings)
+
+    metric_cols = [
+        PrestressMetric("Stage model", "Ready", "metadata only", "ready", strong=True),
+        PrestressMetric("Transfer basis", "Web only", "precast self-weight + Pe_transfer", "info"),
+        PrestressMetric("Wet slab", "Case B", "50/50 to left/right web", "review"),
+        PrestressMetric("Service basis", "Full U", "service loads remain in Loads tab", "info"),
+    ]
+    st.markdown(_metric_strip_html(metric_cols), unsafe_allow_html=True)
+
+    st.markdown("**Stage basis summary**")
+    st.dataframe(_railway_u_girder_stage_summary_dataframe(settings), use_container_width=True, hide_index=True)
+
+    quantities = _railway_u_girder_stage_quantities_dataframe(geometry, settings, span_length_m=float(span_length_m))
+    st.markdown("**Auto-load attribution preview**")
+    st.dataframe(quantities, use_container_width=True, hide_index=True, column_config={"Value": st.column_config.NumberColumn("Value", format="%.3f")})
+
+    with st.expander("Guardrails for future staged stress calculation", expanded=False):
+        st.write("- Transfer, lifting, and wet slab casting must not use the full U-section inertia.")
+        st.write("- Wet slab self-weight and formwork load are applied to the two precast webs before composite action for Case B.")
+        st.write("- Composite construction and service stages use the full Railway U-Girder after the slab has hardened.")
+        st.write("- Debonding symbols remain drawing metadata until a station-based stress milestone explicitly consumes them.")
+
+
 def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | None) -> None:
     """Render GIRDER.PS3A strand layout/debonding workflow.
 
@@ -5032,7 +5414,20 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
             for message in warnings:
                 st.warning(message)
 
-    tab_layout, tab_debond, tab_rules, tab_losses, tab_advisory, tab_effective = st.tabs(["Cross-section layout", "Debonding along span", "Debonding QA", "Force States / Losses", "Advisory recommendation", "Effective prestress preview"])
+    is_railway_stage_model = _current_or_geometry_section_preset_key(geometry) == RAILWAY_U_GIRDER_PRESET_KEY
+    tab_labels = ["Cross-section layout"]
+    if is_railway_stage_model:
+        tab_labels.append("Rail U-Girder stages")
+    tab_labels.extend(["Debonding along span", "Debonding QA", "Force States / Losses", "Advisory recommendation", "Effective prestress preview"])
+    tabs = st.tabs(tab_labels)
+    tab_layout = tabs[0]
+    offset = 1
+    if is_railway_stage_model:
+        tab_stage = tabs[1]
+        offset = 2
+    else:
+        tab_stage = None
+    tab_debond, tab_rules, tab_losses, tab_advisory, tab_effective = tabs[offset : offset + 5]
     with tab_layout:
         st.plotly_chart(_plot_girder_strand_cross_section_layout(normalized, geometry), use_container_width=True)
         with st.expander("Plot assumptions", expanded=False):
@@ -5041,6 +5436,9 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
                 "Railway U-Girder drawing debond symbols (0/1000/2000/3000/4000/5000 mm) are preview metadata only until a station-based pattern milestone. "
                 "PS6A supports optional individual bonded/unbonded strand selection within a row. Blank debonded strand numbers keep the previous row-based all-strands debonding fallback."
             )
+    if tab_stage is not None:
+        with tab_stage:
+            _render_railway_u_girder_stage_model_ui(geometry, span_length_m=float(span))
     with tab_debond:
         st.plotly_chart(_plot_girder_longitudinal_debonding_layout(normalized, float(span)), use_container_width=True)
         schedule = _girder_debonding_schedule_dataframe(normalized, float(span))

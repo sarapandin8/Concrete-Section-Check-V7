@@ -99,6 +99,7 @@ def _clean_table_value(value: Any) -> Any:
 
 
 SHEAR_REINFORCEMENT_TABLE_KEY = "beam_girder_shear_reinforcement_table"
+RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY = "railway_u_girder_stage_settings"
 LONGITUDINAL_REBAR_TABLE_METADATA_KEY = "longitudinal_rebar_table"
 PRESTRESS_TABLE_METADATA_KEY = "prestress_table_metadata"
 REBAR_TABLE_COLUMNS = [
@@ -433,6 +434,27 @@ def _girder_prestress_system_settings_metadata_from_session(session_state: Any) 
     return {key: _clean_table_value(value) for key, value in settings.items() if key in allowed and not _is_blank(value)}
 
 
+def _railway_u_girder_stage_settings_metadata_from_session(session_state: Any) -> dict[str, Any]:
+    """Serialize STAGE.RAIL.UGIRDER1 staged-construction settings."""
+
+    settings = _get_session_value(session_state, RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY, None)
+    if not isinstance(settings, dict):
+        return {}
+    allowed = {
+        "web_fc_MPa",
+        "web_fci_MPa",
+        "slab_fc_MPa",
+        "concrete_unit_weight_kN_m3",
+        "support_condition",
+        "construction_method",
+        "wet_slab_distribution_each_web",
+        "formwork_construction_load_kN_m2",
+        "lifting_point_ratio",
+        "lifting_impact_factor",
+    }
+    return {key: _clean_table_value(value) for key, value in settings.items() if key in allowed and not _is_blank(value)}
+
+
 
 def _girder_prestress_code_loss_settings_metadata_from_session(session_state: Any) -> dict[str, Any]:
     """Serialize selected prestress-loss settings such as local code basis."""
@@ -534,6 +556,9 @@ def project_from_session_state(session_state: Any) -> ProjectModel:
     girder_prestress_system_settings = _girder_prestress_system_settings_metadata_from_session(session_state)
     if girder_prestress_system_settings:
         metadata["girder_prestress_system_settings"] = girder_prestress_system_settings
+    railway_u_girder_stage_settings = _railway_u_girder_stage_settings_metadata_from_session(session_state)
+    if railway_u_girder_stage_settings:
+        metadata[RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY] = railway_u_girder_stage_settings
     girder_prestress_code_loss_settings = _girder_prestress_code_loss_settings_metadata_from_session(session_state)
     if girder_prestress_code_loss_settings:
         metadata["girder_prestress_code_loss_settings"] = girder_prestress_code_loss_settings
@@ -965,6 +990,9 @@ def apply_project_to_session_state(project: ProjectModel, session_state: Mutable
     girder_prestress_system_settings = project.metadata.get("girder_prestress_system_settings")
     if isinstance(girder_prestress_system_settings, dict):
         session_state["girder_prestress_system_settings"] = dict(girder_prestress_system_settings)
+    railway_u_girder_stage_settings = project.metadata.get(RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY)
+    if isinstance(railway_u_girder_stage_settings, dict):
+        session_state[RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY] = dict(railway_u_girder_stage_settings)
     girder_prestress_code_loss_settings = project.metadata.get("girder_prestress_code_loss_settings")
     if isinstance(girder_prestress_code_loss_settings, dict):
         session_state["girder_prestress_code_loss_settings"] = dict(girder_prestress_code_loss_settings)

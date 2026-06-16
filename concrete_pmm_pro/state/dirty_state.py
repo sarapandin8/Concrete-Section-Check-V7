@@ -70,6 +70,7 @@ INPUT_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "prestress_valid_for_analysis",
         "girder_strand_layout_table",
         "girder_prestress_system_settings",
+        "railway_u_girder_stage_settings",
         "girder_prestress_force_states_table",
         "girder_prestress_code_loss_settings",
         "prestress_loss_settings",
