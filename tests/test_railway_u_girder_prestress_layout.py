@@ -71,8 +71,8 @@ def test_railway_u_girder_default_strand_layout_matches_drawing(monkeypatch) -> 
     assert all(table["Debond pattern mm"].fillna("") == "")
     assert "-2620,-2565,-2510,-2455,-2400,-2345,-2290,-2235,-2180" == table.loc[0, "Strand x positions mm"]
     assert "2620,2565,2510,2455,2400,2345,2290,2235,2180" == table.loc[5, "Strand x positions mm"]
-    assert table.loc[4, "Strand x positions mm"] == "-2510,-2455,-2400,-2345"
-    assert table.loc[9, "Strand x positions mm"] == "2510,2455,2400,2345"
+    assert table.loc[4, "Strand x positions mm"] == "-2510,-2455,-2345,-2290"
+    assert table.loc[9, "Strand x positions mm"] == "2510,2455,2345,2290"
 
     errors, warnings = _validate_girder_strand_layout(table, span_length_m=30.0, geometry=geometry)
     assert errors == []

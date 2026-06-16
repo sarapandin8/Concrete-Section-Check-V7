@@ -426,7 +426,7 @@ RAILWAY_U_GIRDER_ROW_INDEX_SETS = (
     tuple(range(9)),
     tuple(range(1, 8)),
     tuple(range(1, 8)),
-    tuple(range(2, 6)),
+    (2, 3, 5, 6),  # drawing Row 5 uses columns 3, 4, 6, and 7
 )
 RAILWAY_U_GIRDER_DEBOND_SYMBOLS_MM = {
     0: ("Bonded", "circle-open"),
@@ -3472,7 +3472,8 @@ def _railway_u_girder_default_strand_layout_table(geometry: SectionGeometry | No
     36 strands per side, 12.7 mm ASTM A416 Grade 270 low-relaxation strand,
     five rows at 95/150/205/260/315 mm from the bottom fiber, and a 9-column
     strand grid using 130 mm outside edge distance, 8 @ 55 mm spacing, and
-    80 mm inside edge distance.  Debond pattern symbols are preview metadata
+    80 mm inside edge distance.  Row 5 follows the drawing columns 3, 4,
+    6, and 7 rather than a continuous four-strand block.  Debond pattern symbols are preview metadata
     only and are left bonded/blank until the project-specific debonding pattern
     is entered.
     """
