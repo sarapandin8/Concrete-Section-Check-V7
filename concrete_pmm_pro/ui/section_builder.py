@@ -1049,7 +1049,7 @@ def _render_section_builder_status_strip(preset: dict[str, Any], material_assign
                 SectionMetric("Workflow", analysis_mode_label(settings), _girder_section_family_label(preset), "ready", True),
                 SectionMetric("Axis", "x/y/z", "x horizontal, y vertical, z longitudinal", "neutral"),
                 SectionMetric("Rebar / Prestress", f"{rebar_status} / {prestress_status}", "stored reinforcement is previewed on its own page", "ready" if prestress_status == "Enabled" or rebar_status == "Enabled" else "neutral"),
-                SectionMetric("Concrete", material_detail, "material controls are in the details expander", "info"),
+                SectionMetric("Concrete", material_detail, "visible in material assignment panel", "info"),
             ]
         ),
         unsafe_allow_html=True,
@@ -2123,30 +2123,10 @@ def _render_section_definition_panel(
         with st.container(border=True):
             _render_reinforcement_prestress_system_panel(preset)
 
-        with st.expander("Project / workflow / axis details", expanded=False):
-            _render_member_type_section_guidance(preset)
-            _render_axis_convention_card()
-
-        with st.expander("Browse by geometry family", expanded=False):
-            st.caption(
-                "Optional helper for reviewing the section families available under the active member workflow. "
-                "The direct selector above is the primary control."
-            )
-            loaded_category = preset.get("category")
-            category_index = available_categories.index(loaded_category) if loaded_category in available_categories else 0
-            browse_category = st.selectbox("Section Category", available_categories, index=category_index)
-            family_presets = [item for item in available_presets if item.get("category") == browse_category]
-            if family_presets:
-                family_labels = [_workflow_specific_preset_display_name(item, analysis_mode_settings) for item in family_presets]
-                st.caption("Available in this family: " + ", ".join(family_labels))
-            else:
-                st.caption("No presets are available in this family yet.")
-
-        with st.expander("Concrete Material Assignment", expanded=False):
+        with st.container(border=True):
             material_assignment = _render_concrete_material_assignment(preset)
 
-        with st.expander("Section / Member Assembly", expanded=False):
-            _render_section_assembly_panel(preset)
+        _render_section_assembly_panel(preset)
 
         _render_section_builder_status_strip(preset, material_assignment)
 
@@ -2166,7 +2146,7 @@ def _render_geometry_parameters_workspace(
         )
         st.markdown(
             '<div class="cpmm-section-note">Primary section dimensions are kept at the same level as the live preview. '
-            'Workflow, axis, reinforcement, and material details remain collapsed above.</div>',
+            'Reinforcement and section-specific material/assembly controls are shown in the definition panel above.</div>',
             unsafe_allow_html=True,
         )
 

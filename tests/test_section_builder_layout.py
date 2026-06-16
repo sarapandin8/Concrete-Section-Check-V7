@@ -559,11 +559,15 @@ def test_section_builder_definition_workspace_layout_source() -> None:
 
     assert "Section Workspace Status" in source
     assert "Section Steel Systems" in source
-    assert "Project / workflow / axis details" in source
+    assert "Project / workflow / axis details" not in source
+    assert "Browse by geometry family" not in source
     assert "Include ordinary rebar / longitudinal Al" in source
     assert "Primary section dimensions are kept at the same level as the live preview" in source
     assert "Dimension labels" in source
-    assert "material controls are in the details expander" in source
+    assert "visible in material assignment panel" in source
+    assert "with st.container(border=True):" in source
+    assert "material_assignment = _render_concrete_material_assignment(preset)" in source
+    assert "_render_section_assembly_panel(preset)" in source
 
 
 def test_section_builder_status_strip_helper_includes_workflow_and_material(monkeypatch) -> None:
@@ -686,3 +690,15 @@ def test_ui_section_compact1_moves_properties_into_left_working_column_and_compa
     assert "cpmm-section-preview-status-compact" in source
     assert "Preview validation details" in source
     assert "repeat(auto-fit, minmax(145px, 1fr))" in source
+
+
+def test_section_builder_focuses_material_and_assembly_panels_source() -> None:
+    source = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "section_builder.py").read_text(encoding="utf-8")
+
+    assert "with st.expander(\"Project / workflow / axis details\"" not in source
+    assert "with st.expander(\"Browse by geometry family\"" not in source
+    assert "with st.expander(\"Concrete Material Assignment\"" not in source
+    assert "with st.expander(\"Section / Member Assembly\"" not in source
+    assert "material_assignment = _render_concrete_material_assignment(preset)" in source
+    assert "_render_section_assembly_panel(preset)" in source
+    assert "Reinforcement and section-specific material/assembly controls are shown" in source
