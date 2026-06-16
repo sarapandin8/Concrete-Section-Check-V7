@@ -781,3 +781,10 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Consumes the station-based debonded-strand participation handoff so active strands, Aps, Pe, and yps vary by station inside sleeve zones.
 - Adds a two-point lifting UDL moment model with lifting point `a/L` and lifting impact factor from the stage settings.
 - Does not perform locked-in staged stress superposition, transfer-length force ramping, development length, end-zone checks, final code certification, or ULS solver changes.
+
+### SLS.RAIL.UGIRDER4 — Service Load Handoff Preview
+- Added Railway U-Girder service-load handoff rows in `Prestress → Rail U-Girder stages`.
+- Active SLS load cases from the Loads tab are evaluated on the full Railway U-Girder gross basis with station-based `Pe_final(x)` from debonding participation.
+- Added guarded service-load stress-limit preview using `min(f'c web, f'c slab)`.
+- Web-stage locked-in stresses are intentionally not transformed/summed into the full-U service rows; this remains a review-level handoff, not final certified SLS design.
+

@@ -95,6 +95,43 @@ RAILWAY_UGIRDER_SLS_LIMIT_COLUMNS = [
 ]
 
 
+RAILWAY_UGIRDER_SERVICE_LOAD_COLUMNS = [
+    "Load Case",
+    "Station x (m)",
+    "Section basis",
+    "Pu (kN)",
+    "Mux (kN-m)",
+    "Pe_final (kN)",
+    "yps eff (mm from bottom)",
+    "Effective strands",
+    "Load top (MPa)",
+    "Load bottom (MPa)",
+    "Pe top (MPa)",
+    "Pe bottom (MPa)",
+    "Top total (MPa)",
+    "Bottom total (MPa)",
+    "Max compression (MPa)",
+    "Max tension (MPa)",
+    "Active group IDs",
+    "Preview note",
+]
+
+RAILWAY_UGIRDER_SERVICE_LOAD_LIMIT_COLUMNS = [
+    "Load Case",
+    "Station x (m)",
+    "Section basis",
+    "Concrete strength used (MPa)",
+    "Limit stage profile",
+    "Top total (MPa)",
+    "Bottom total (MPa)",
+    "Top status",
+    "Bottom status",
+    "Overall status",
+    "Max utilization",
+    "Limit note",
+]
+
+
 @dataclass(frozen=True)
 class RailwayUGirderStageQuantities:
     web_area_mm2: float
@@ -676,6 +713,173 @@ def _load_top_bottom_increment_MPa(
         mx = lifting_udl_moment_kNm(w_kN_m, x_m, span_length_m, lifting_point_ratio)
     result = run_basic_girder_service_stress(basis, N_kN=0.0, M_kNm=mx)
     return float(mx), float(result.top.total_stress_MPa), float(result.bottom.total_stress_MPa)
+
+
+
+def _load_case_get(load_case: Any, key: str, default: Any = None) -> Any:
+    if isinstance(load_case, Mapping):
+        return load_case.get(key, default)
+    return getattr(load_case, key, default)
+
+
+def _is_active_sls_load_case(load_case: Any) -> bool:
+    active = _load_case_get(load_case, "active", True)
+    load_type = str(_load_case_get(load_case, "load_type", "") or "").strip().upper()
+    return bool(active) and load_type == "SLS"
+
+
+def _service_load_case_name(load_case: Any, index: int) -> str:
+    name = _load_case_get(load_case, "name", None)
+    if name is None and isinstance(load_case, Mapping):
+        name = load_case.get("Case Name") or load_case.get("Name")
+    text = str(name or "").strip()
+    return text or f"SLS-{index + 1}"
+
+
+def railway_u_girder_service_load_handoff_dataframe(
+    *,
+    geometry: SectionGeometry | None,
+    settings: Mapping[str, Any] | None,
+    strand_table: pd.DataFrame | None,
+    span_length_m: float,
+    load_cases: Iterable[Any] | None,
+    station_m: float | None = None,
+) -> pd.DataFrame:
+    """Return full-U service-load stress rows from active SLS load cases.
+
+    SLS.RAIL.UGIRDER4 consumes service resultants from the Loads tab as a
+    guarded full-U handoff.  The load cases are assumed to be service-level
+    resultants at the review section; the selected station is used only for the
+    station-based Pe_final/debond participation.  Web-stage locked-in stresses
+    from transfer/casting are intentionally not algebraically transformed and
+    summed in this helper.
+    """
+
+    span = max(float(span_length_m), 0.001)
+    x = span / 2.0 if station_m is None else min(max(float(station_m), 0.0), span)
+    basis_set = railway_u_girder_stage_basis_set(geometry, settings)
+    basis = basis_set.full_u_basis
+    pe_final, yps_final, effective_final, active_final = _station_pe(
+        strand_table,
+        x_m=x,
+        span_length_m=span,
+        pe_source="final",
+    )
+    pe_top, pe_bottom = _signed_prestress_top_bottom_MPa(
+        basis,
+        Pe_increment_kN=pe_final,
+        tendon_y_from_bottom_mm=yps_final,
+    )
+    rows: list[dict[str, Any]] = []
+    for idx, load_case in enumerate(load_cases or []):
+        if not _is_active_sls_load_case(load_case):
+            continue
+        pu_kN = _float_value(_load_case_get(load_case, "Pu_N", 0.0), 0.0) / 1000.0
+        mux_kNm = _float_value(_load_case_get(load_case, "Mux_Nmm", 0.0), 0.0) / 1_000_000.0
+        muy_kNm = _float_value(_load_case_get(load_case, "Muy_Nmm", 0.0), 0.0) / 1_000_000.0
+        service = run_basic_girder_service_stress(basis, N_kN=pu_kN, M_kNm=mux_kNm)
+        top_total = service.top.total_stress_MPa + pe_top
+        bottom_total = service.bottom.total_stress_MPa + pe_bottom
+        note = "Active SLS load from Loads tab + Pe_final at station; full-U gross preview only."
+        if abs(muy_kNm) > 1.0e-9:
+            note += " Muy is stored but not included in this 1D U-Girder top/bottom preview."
+        rows.append(
+            {
+                "Load Case": _service_load_case_name(load_case, idx),
+                "Station x (m)": round(float(x), 6),
+                "Section basis": "Full Railway U-Girder gross reference",
+                "Pu (kN)": pu_kN,
+                "Mux (kN-m)": mux_kNm,
+                "Pe_final (kN)": pe_final,
+                "yps eff (mm from bottom)": yps_final,
+                "Effective strands": effective_final,
+                "Load top (MPa)": service.top.total_stress_MPa,
+                "Load bottom (MPa)": service.bottom.total_stress_MPa,
+                "Pe top (MPa)": pe_top,
+                "Pe bottom (MPa)": pe_bottom,
+                "Top total (MPa)": top_total,
+                "Bottom total (MPa)": bottom_total,
+                "Max compression (MPa)": min(top_total, bottom_total),
+                "Max tension (MPa)": max(top_total, bottom_total),
+                "Active group IDs": active_final,
+                "Preview note": note,
+            }
+        )
+    return pd.DataFrame(rows, columns=RAILWAY_UGIRDER_SERVICE_LOAD_COLUMNS)
+
+
+def railway_u_girder_service_load_limit_check_dataframe(
+    service_df: pd.DataFrame,
+    *,
+    settings: Mapping[str, Any] | None,
+    code: str = "AASHTO LRFD Bridge",
+) -> pd.DataFrame:
+    """Check Railway U-Girder service load handoff rows against service limits."""
+
+    if service_df is None or pd.DataFrame(service_df).empty:
+        return pd.DataFrame(columns=RAILWAY_UGIRDER_SERVICE_LOAD_LIMIT_COLUMNS)
+    settings = dict(settings or {})
+    web_fc = _positive(settings.get("web_fc_MPa"), 45.0)
+    slab_fc = _positive(settings.get("slab_fc_MPa"), 35.0)
+    fc = min(web_fc, slab_fc)
+    profile = default_girder_sls_limit_profile(code=code, stage=STAGE_FINAL_SERVICE)
+    rows: list[dict[str, Any]] = []
+    for _, source in pd.DataFrame(service_df).iterrows():
+        top = _float_value(source.get("Top total (MPa)"), 0.0)
+        bottom = _float_value(source.get("Bottom total (MPa)"), 0.0)
+        result = run_girder_service_stress_limit_check(
+            stresses=(
+                StressLimitInputRow("Top", top),
+                StressLimitInputRow("Bottom", bottom),
+            ),
+            fc_MPa=fc,
+            profile=profile,
+        )
+        point_by_fiber = {point.fiber.lower(): point for point in result.points}
+        top_point = point_by_fiber.get("top")
+        bottom_point = point_by_fiber.get("bottom")
+        rows.append(
+            {
+                "Load Case": source.get("Load Case"),
+                "Station x (m)": source.get("Station x (m)"),
+                "Section basis": source.get("Section basis"),
+                "Concrete strength used (MPa)": fc,
+                "Limit stage profile": profile.stage,
+                "Top total (MPa)": top,
+                "Bottom total (MPa)": bottom,
+                "Top status": getattr(top_point, "status", "NOT_CHECKED"),
+                "Bottom status": getattr(bottom_point, "status", "NOT_CHECKED"),
+                "Overall status": result.overall_status,
+                "Max utilization": result.max_utilization,
+                "Limit note": "Service load handoff uses min(f'c web, f'c slab) and full-U gross preview; not final certified staged SLS.",
+            }
+        )
+    return pd.DataFrame(rows, columns=RAILWAY_UGIRDER_SERVICE_LOAD_LIMIT_COLUMNS)
+
+
+def railway_u_girder_service_load_governing_rows(service_df: pd.DataFrame) -> pd.DataFrame:
+    """Return compact governing service load rows for quick review."""
+
+    if service_df is None or pd.DataFrame(service_df).empty:
+        return pd.DataFrame()
+    df = pd.DataFrame(service_df).copy()
+    rows: list[dict[str, Any]] = []
+    for _, row in df.iterrows():
+        rows.append(
+            {
+                "Load Case": row.get("Load Case"),
+                "Station x (m)": row.get("Station x (m)"),
+                "Pu (kN)": row.get("Pu (kN)"),
+                "Mux (kN-m)": row.get("Mux (kN-m)"),
+                "Pe_final (kN)": row.get("Pe_final (kN)"),
+                "Top total (MPa)": row.get("Top total (MPa)"),
+                "Bottom total (MPa)": row.get("Bottom total (MPa)"),
+                "Max compression (MPa)": row.get("Max compression (MPa)"),
+                "Max tension (MPa)": row.get("Max tension (MPa)"),
+                "Preview note": row.get("Preview note"),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def railway_u_girder_locked_in_stress_accumulation_dataframe(

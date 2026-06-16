@@ -67,6 +67,9 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
 from concrete_pmm_pro.serviceability.railway_u_girder_stages import (
     railway_u_girder_locked_in_governing_rows,
     railway_u_girder_locked_in_stress_accumulation_dataframe,
+    railway_u_girder_service_load_governing_rows,
+    railway_u_girder_service_load_handoff_dataframe,
+    railway_u_girder_service_load_limit_check_dataframe,
     railway_u_girder_stage_governing_rows,
     railway_u_girder_stage_limit_governing_rows,
     railway_u_girder_staged_stress_limit_check_dataframe,
@@ -5645,7 +5648,73 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                     "Governing tension (MPa)": st.column_config.NumberColumn("Governing tension (MPa)", format="%.3f"),
                 },
             )
-        with st.expander("Station-by-station staged stress, limits, and locked-in handoff", expanded=False):
+
+        st.markdown("**Service load handoff from Loads tab**")
+        st.caption(
+            "SLS.RAIL.UGIRDER4 consumes active SLS load cases from Loads as full-U service resultants and combines them with station-based Pe_final. "
+            "This is a review handoff only: web-stage locked-in stresses are not transformed and summed into these full-U service rows yet."
+        )
+        active_sls_count = sum(
+            1
+            for load_case in st.session_state.get("load_cases", []) or []
+            if bool(getattr(load_case, "active", False)) and str(getattr(load_case, "load_type", "")).upper() == "SLS"
+        )
+        service_station = st.number_input(
+            "Service Pe station x for debond participation (m)",
+            min_value=0.0,
+            max_value=float(span_length_m),
+            value=float(span_length_m) / 2.0,
+            step=max(float(span_length_m) / 20.0, 0.1),
+            format="%.3f",
+            key="rail_ugirder_service_load_station_m",
+            help="The SLS load cases already contain service resultants. This station is used to evaluate debonded-strand participation for Pe_final only.",
+        )
+        try:
+            service_df = railway_u_girder_service_load_handoff_dataframe(
+                geometry=geometry,
+                settings=settings,
+                strand_table=strand_table,
+                span_length_m=float(span_length_m),
+                load_cases=st.session_state.get("load_cases", []) or [],
+                station_m=float(service_station),
+            )
+        except Exception as exc:
+            st.warning(f"Railway U-Girder service load handoff preview is not available: {exc}")
+            service_df = pd.DataFrame()
+        if service_df.empty:
+            st.info(f"No active SLS load case is available in Loads tab for service handoff. Active SLS rows = {active_sls_count}.")
+            service_limit_df = pd.DataFrame()
+        else:
+            service_governing = railway_u_girder_service_load_governing_rows(service_df)
+            st.dataframe(
+                service_governing,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Pu (kN)": st.column_config.NumberColumn("Pu (kN)", format="%.3f"),
+                    "Mux (kN-m)": st.column_config.NumberColumn("Mux (kN-m)", format="%.3f"),
+                    "Pe_final (kN)": st.column_config.NumberColumn("Pe_final (kN)", format="%.1f"),
+                    "Top total (MPa)": st.column_config.NumberColumn("Top total (MPa)", format="%.3f"),
+                    "Bottom total (MPa)": st.column_config.NumberColumn("Bottom total (MPa)", format="%.3f"),
+                    "Max compression (MPa)": st.column_config.NumberColumn("Max compression (MPa)", format="%.3f"),
+                    "Max tension (MPa)": st.column_config.NumberColumn("Max tension (MPa)", format="%.3f"),
+                },
+            )
+            service_limit_df = railway_u_girder_service_load_limit_check_dataframe(service_df, settings=settings)
+            if not service_limit_df.empty:
+                with st.expander("Service load stress-limit preview", expanded=False):
+                    st.dataframe(
+                        service_limit_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        column_config={
+                            "Concrete strength used (MPa)": st.column_config.NumberColumn("Concrete strength used (MPa)", format="%.2f"),
+                            "Top total (MPa)": st.column_config.NumberColumn("Top total (MPa)", format="%.3f"),
+                            "Bottom total (MPa)": st.column_config.NumberColumn("Bottom total (MPa)", format="%.3f"),
+                            "Max utilization": st.column_config.NumberColumn("Max utilization", format="%.3f"),
+                        },
+                    )
+        with st.expander("Station-by-station staged stress, limits, locked-in, and service handoff", expanded=False):
             st.dataframe(
                 stress_df,
                 use_container_width=True,
@@ -5683,6 +5752,23 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                         "Bottom increment (MPa)": st.column_config.NumberColumn("Bottom increment (MPa)", format="%.3f"),
                         "Cumulative top (MPa)": st.column_config.NumberColumn("Cumulative top (MPa)", format="%.3f"),
                         "Cumulative bottom (MPa)": st.column_config.NumberColumn("Cumulative bottom (MPa)", format="%.3f"),
+                    },
+                )
+            if 'service_df' in locals() and not service_df.empty:
+                st.dataframe(
+                    service_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Pu (kN)": st.column_config.NumberColumn("Pu (kN)", format="%.3f"),
+                        "Mux (kN-m)": st.column_config.NumberColumn("Mux (kN-m)", format="%.3f"),
+                        "Pe_final (kN)": st.column_config.NumberColumn("Pe_final (kN)", format="%.1f"),
+                        "Load top (MPa)": st.column_config.NumberColumn("Load top (MPa)", format="%.3f"),
+                        "Load bottom (MPa)": st.column_config.NumberColumn("Load bottom (MPa)", format="%.3f"),
+                        "Pe top (MPa)": st.column_config.NumberColumn("Pe top (MPa)", format="%.3f"),
+                        "Pe bottom (MPa)": st.column_config.NumberColumn("Pe bottom (MPa)", format="%.3f"),
+                        "Top total (MPa)": st.column_config.NumberColumn("Top total (MPa)", format="%.3f"),
+                        "Bottom total (MPa)": st.column_config.NumberColumn("Bottom total (MPa)", format="%.3f"),
                     },
                 )
     else:
