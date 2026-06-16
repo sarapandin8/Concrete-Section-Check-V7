@@ -64,6 +64,10 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     simple_span_udl_moment_kNm,
     system_settings_from_mapping,
 )
+from concrete_pmm_pro.serviceability.railway_u_girder_stages import (
+    railway_u_girder_stage_governing_rows,
+    railway_u_girder_staged_stress_preview_dataframe,
+)
 from concrete_pmm_pro.serviceability.girder_prestress_station import (
     debonded_strand_count_for_row,
     debonded_strand_numbers_for_row,
@@ -5565,11 +5569,55 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
     st.markdown("**Auto-load attribution preview**")
     st.dataframe(quantities, use_container_width=True, hide_index=True, column_config={"Value": st.column_config.NumberColumn("Value", format="%.3f")})
 
-    with st.expander("Guardrails for future staged stress calculation", expanded=False):
+    st.markdown("**Railway U-Girder staged SLS stress preview**")
+    st.caption(
+        "SLS.RAIL.UGIRDER1 consumes station-based debonded strand participation for a guarded staged stress preview. "
+        "Transfer, lifting, and wet slab casting use one precast web only; the service row is a full-U Pe reference. "
+        "Locked-in staged stress superposition, transfer-length ramping, development length, and final code-certified checks remain future scope."
+    )
+    strand_table = st.session_state.get("girder_strand_layout_table")
+    try:
+        stress_df = railway_u_girder_staged_stress_preview_dataframe(
+            geometry=geometry,
+            settings=settings,
+            strand_table=strand_table,
+            span_length_m=float(span_length_m),
+        )
+    except Exception as exc:
+        st.warning(f"Railway U-Girder staged stress preview is not available: {exc}")
+        stress_df = pd.DataFrame()
+    if not stress_df.empty:
+        governing = railway_u_girder_stage_governing_rows(stress_df)
+        st.dataframe(
+            governing,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Max compression (MPa)": st.column_config.NumberColumn("Max compression (MPa)", format="%.3f"),
+                "Max tension (MPa)": st.column_config.NumberColumn("Max tension (MPa)", format="%.3f"),
+            },
+        )
+        with st.expander("Station-by-station staged stress preview", expanded=False):
+            st.dataframe(
+                stress_df,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Auto load w (kN/m)": st.column_config.NumberColumn("Auto load w (kN/m)", format="%.3f"),
+                    "Auto Mx (kN-m)": st.column_config.NumberColumn("Auto Mx (kN-m)", format="%.3f"),
+                    "Pe stage (kN)": st.column_config.NumberColumn("Pe stage (kN)", format="%.1f"),
+                    "Top total (MPa)": st.column_config.NumberColumn("Top total (MPa)", format="%.3f"),
+                    "Bottom total (MPa)": st.column_config.NumberColumn("Bottom total (MPa)", format="%.3f"),
+                },
+            )
+    else:
+        st.info("Staged stress preview will appear after a valid strand layout / force-state table is available.")
+
+    with st.expander("Guardrails for staged stress calculation", expanded=False):
         st.write("- Transfer, lifting, and wet slab casting must not use the full U-section inertia.")
         st.write("- Wet slab self-weight and formwork load are applied to the two precast webs before composite action for Case B.")
-        st.write("- Composite construction and service stages use the full Railway U-Girder after the slab has hardened.")
-        st.write("- Debonding symbols remain drawing metadata until a station-based stress milestone explicitly consumes them.")
+        st.write("- Service preview currently reports full-U Pe reference only; service loads remain in Loads/Analysis.")
+        st.write("- Debonded strands are consumed through station-based participation as a step-function preview; transfer-length force ramping is not modeled yet.")
 
 
 def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | None) -> None:

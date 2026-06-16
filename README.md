@@ -755,3 +755,11 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Surfaces a row-level station participation audit table in Prestress → Effective prestress preview.
 - Does not change SLS/ULS equations, transfer-length ramping, development length, anchorage, or final code-certified debonding checks.
 
+
+### SLS.RAIL.UGIRDER1 — Railway U-Girder Staged Stress Preview
+
+- Adds a guarded Railway U-Girder staged SLS stress preview in Prestress → Rail U-Girder stages.
+- Transfer, lifting, and wet slab casting use a one-precast-web section basis; the service row is a full-U Pe reference.
+- Consumes the station-based debonded-strand participation handoff so active strands, Aps, Pe, and yps vary by station inside sleeve zones.
+- Adds a two-point lifting UDL moment model with lifting point `a/L` and lifting impact factor from the stage settings.
+- Does not perform locked-in staged stress superposition, transfer-length force ramping, development length, end-zone checks, final code certification, or ULS solver changes.

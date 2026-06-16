@@ -1,0 +1,467 @@
+"""Railway U-Girder staged SLS stress preview helpers.
+
+SLS.RAIL.UGIRDER1 provides a guarded, station-based preview for the user-defined
+Railway U-Girder construction sequence:
+- Transfer / Lifting / Wet slab casting use one precast web only.
+- Service reference uses the full Railway U-Girder basis.
+
+The helper consumes the row-based strand debonding table through the existing
+station participation handoff.  It intentionally does not perform transfer-
+length force ramping, development length, locked-in stress superposition,
+AASHTO/ACI code certification, or final end-zone checks.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Iterable, Mapping
+
+import pandas as pd
+from shapely.geometry import Polygon
+
+from concrete_pmm_pro.core.models import Point2D, SectionGeometry
+from concrete_pmm_pro.geometry.summary import summarize_geometry
+from concrete_pmm_pro.serviceability.girder_prestress import run_girder_prestress_stress_effect
+from concrete_pmm_pro.serviceability.girder_prestress_station import (
+    evaluate_girder_prestress_station,
+    station_candidates_from_debonding,
+)
+from concrete_pmm_pro.serviceability.girder_sls_load_components import (
+    default_sls_station_grid,
+    simple_span_udl_moment_kNm,
+)
+from concrete_pmm_pro.serviceability.girder_stress import (
+    GirderSectionBasis,
+    make_girder_basis_from_gross_summary,
+    run_basic_girder_service_stress,
+)
+
+DEFAULT_RAILWAY_UGIRDER_STAGE_STATIONS = (0.0, 0.2, 0.5, 0.8, 1.0)
+RAILWAY_UGIRDER_SLS_PREVIEW_COLUMNS = [
+    "Stage",
+    "Station x (m)",
+    "Section basis",
+    "Auto load w (kN/m)",
+    "Auto Mx (kN-m)",
+    "Pe stage (kN)",
+    "yps eff (mm from bottom)",
+    "Top total (MPa)",
+    "Bottom total (MPa)",
+    "Max compression (MPa)",
+    "Max tension (MPa)",
+    "Effective strands",
+    "Active group IDs",
+    "Preview note",
+]
+
+
+@dataclass(frozen=True)
+class RailwayUGirderStageQuantities:
+    web_area_mm2: float
+    slab_area_mm2: float
+    full_area_mm2: float
+    web_self_weight_kN_m: float
+    wet_slab_to_each_web_kN_m: float
+    formwork_to_each_web_kN_m: float
+    full_u_self_weight_kN_m: float
+    projected_slab_width_m: float
+
+
+@dataclass(frozen=True)
+class RailwayUGirderStageBasisSet:
+    web_basis: GirderSectionBasis
+    full_u_basis: GirderSectionBasis
+    quantities: RailwayUGirderStageQuantities
+
+
+def _float_value(value: Any, default: float) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    return numeric if pd.notna(numeric) else float(default)
+
+
+def _positive(value: Any, default: float) -> float:
+    numeric = _float_value(value, default)
+    return numeric if numeric > 0.0 else float(default)
+
+
+def _point(x: float, y: float) -> Point2D:
+    return Point2D(x=float(x), y=float(y))
+
+
+def railway_u_girder_default_parameter_snapshot() -> dict[str, float]:
+    return {
+        "width_mm": 5500.0,
+        "depth_mm": 1600.0,
+        "top_wall_width_mm": 600.0,
+        "bottom_side_width_mm": 650.0,
+        "h1_step_height_mm": 670.0,
+        "h2_bottom_opening_mm": 305.0,
+        "h3_floor_side_thickness_mm": 395.0,
+        "h4_floor_center_thickness_mm": 450.0,
+        "haunch_x_mm": 300.0,
+        "haunch_y_mm": 300.0,
+        "inner_half_width_mm": 2100.0,
+    }
+
+
+def railway_u_girder_parameter_snapshot_from_geometry(geometry: SectionGeometry | None) -> dict[str, float]:
+    """Return Railway U-Girder parameters from geometry metadata with safe defaults."""
+
+    defaults = railway_u_girder_default_parameter_snapshot()
+    metadata = getattr(geometry, "metadata", {}) or {}
+    params = dict(metadata.get("parameters", {}) or {})
+    derived = dict(metadata.get("derived_details", {}) or {})
+    if geometry is not None:
+        try:
+            summary = summarize_geometry(geometry)
+            if summary.width_mm:
+                defaults["width_mm"] = float(summary.width_mm)
+            if summary.depth_mm:
+                defaults["depth_mm"] = float(summary.depth_mm)
+        except Exception:
+            pass
+    result = dict(defaults)
+    key_map = {
+        "width_mm": "width_mm",
+        "depth_mm": "depth_mm",
+        "top_wall_width_mm": "top_wall_width_mm",
+        "bottom_side_width_mm": "bottom_side_width_mm",
+        "h1_step_height_mm": "h1_step_height_mm",
+        "h2_bottom_opening_mm": "h2_bottom_opening_mm",
+        "h3_floor_side_thickness_mm": "h3_floor_side_thickness_mm",
+        "h4_floor_center_thickness_mm": "h4_floor_center_thickness_mm",
+        "haunch_x_mm": "haunch_x_mm",
+        "haunch_y_mm": "haunch_y_mm",
+    }
+    for out_key, in_key in key_map.items():
+        result[out_key] = _positive(params.get(in_key), result[out_key])
+    result["inner_half_width_mm"] = _positive(
+        derived.get("inner_half_width_mm"),
+        max(result["width_mm"] / 2.0 - result["bottom_side_width_mm"], 0.0),
+    )
+    return result
+
+
+def _railway_web_right_points_down(params: Mapping[str, float]) -> list[tuple[float, float]]:
+    """Return one precast right web polygon in drawing coordinates (y down from top)."""
+
+    depth = float(params["depth_mm"])
+    half_width = float(params["width_mm"]) / 2.0
+    bottom_side = float(params["bottom_side_width_mm"])
+    top_wall = float(params["top_wall_width_mm"])
+    h1 = float(params["h1_step_height_mm"])
+    inner_half = float(params["inner_half_width_mm"])
+    notch = max(bottom_side - top_wall, 0.0)
+    upper_outer_half = half_width - notch
+    chamfer = 25.0
+    return [
+        (inner_half + chamfer, 0.0),
+        (upper_outer_half - chamfer, 0.0),
+        (upper_outer_half, chamfer),
+        (upper_outer_half, depth - h1),
+        (half_width, depth - h1),
+        (half_width, depth - chamfer),
+        (half_width - chamfer, depth),
+        (inner_half, depth),
+        (inner_half, chamfer),
+    ]
+
+
+def railway_u_girder_web_geometry(geometry: SectionGeometry | None = None) -> SectionGeometry:
+    """Build the one-web precast section used at transfer/lifting/wet casting.
+
+    The drawing coordinates are converted to the app's section-coordinate
+    convention with y measured upward from the bottom fiber.  Only one web is
+    returned because transfer, lifting, and wet slab casting are checked per
+    precast web.
+    """
+
+    params = railway_u_girder_parameter_snapshot_from_geometry(geometry)
+    depth = float(params["depth_mm"])
+    points = [_point(x, depth - y_down) for x, y_down in _railway_web_right_points_down(params)]
+    return SectionGeometry(
+        name="Railway U-Girder precast web only",
+        outer_polygon=points,
+        holes=[],
+        metadata={"source": "railway_u_girder_stage_web", "parameters": params},
+    )
+
+
+def railway_u_girder_slab_area_mm2(geometry: SectionGeometry | None = None) -> float:
+    params = railway_u_girder_parameter_snapshot_from_geometry(geometry)
+    inner_half = params["inner_half_width_mm"]
+    floor_underside_y = params["depth_mm"] - params["h2_bottom_opening_mm"]
+    floor_side_top_y = floor_underside_y - params["h3_floor_side_thickness_mm"]
+    floor_center_top_y = floor_underside_y - params["h4_floor_center_thickness_mm"]
+    haunch_start_y = floor_side_top_y - params["haunch_y_mm"]
+    slab_points = [
+        (-inner_half, haunch_start_y),
+        (-(inner_half - params["haunch_x_mm"]), floor_side_top_y),
+        (0.0, floor_center_top_y),
+        (inner_half - params["haunch_x_mm"], floor_side_top_y),
+        (inner_half, haunch_start_y),
+        (inner_half, floor_underside_y),
+        (-inner_half, floor_underside_y),
+    ]
+    try:
+        return max(float(Polygon(slab_points).area), 0.0)
+    except Exception:
+        return 0.0
+
+
+def railway_u_girder_stage_basis_set(
+    geometry: SectionGeometry | None,
+    settings: Mapping[str, Any] | None,
+) -> RailwayUGirderStageBasisSet:
+    settings = dict(settings or {})
+    gamma = _positive(settings.get("concrete_unit_weight_kN_m3"), 24.0)
+    distribution = min(max(_float_value(settings.get("wet_slab_distribution_each_web"), 0.5), 0.0), 1.0)
+    formwork_q = max(_float_value(settings.get("formwork_construction_load_kN_m2"), 2.5), 0.0)
+    params = railway_u_girder_parameter_snapshot_from_geometry(geometry)
+    web_geometry = railway_u_girder_web_geometry(geometry)
+    web_summary = summarize_geometry(web_geometry)
+    web_basis = make_girder_basis_from_gross_summary(web_summary)
+
+    if geometry is None:
+        full_u_basis = web_basis
+        full_area_mm2 = 2.0 * web_summary.area_mm2
+    else:
+        full_summary = summarize_geometry(geometry)
+        full_area_mm2 = float(full_summary.area_mm2)
+        full_u_basis = GirderSectionBasis(
+            basis_name="composite_transformed",
+            area_mm2=float(full_summary.area_mm2),
+            centroid_y_from_bottom_mm=float(full_summary.centroid_y_mm - (full_summary.y_min_mm or 0.0)),
+            ix_mm4=float(full_summary.ix_nmm4 or web_basis.ix_mm4),
+            top_fiber_y_from_bottom_mm=float((full_summary.y_max_mm or 0.0) - (full_summary.y_min_mm or 0.0)),
+            bottom_fiber_y_from_bottom_mm=0.0,
+            warnings=("Full Railway U-Girder gross basis used as staged-service preview; transformed locked-in behavior is future scope.",),
+        )
+
+    slab_area = railway_u_girder_slab_area_mm2(geometry)
+    if slab_area <= 0.0 and full_area_mm2 > 2.0 * web_summary.area_mm2:
+        slab_area = max(full_area_mm2 - 2.0 * web_summary.area_mm2, 0.0)
+    projected_slab_width_m = max(2.0 * float(params["inner_half_width_mm"]) / 1000.0, 0.0)
+    quantities = RailwayUGirderStageQuantities(
+        web_area_mm2=float(web_summary.area_mm2),
+        slab_area_mm2=float(slab_area),
+        full_area_mm2=float(full_area_mm2),
+        web_self_weight_kN_m=float(web_summary.area_mm2) / 1_000_000.0 * gamma,
+        wet_slab_to_each_web_kN_m=float(slab_area) / 1_000_000.0 * gamma * distribution,
+        formwork_to_each_web_kN_m=projected_slab_width_m * formwork_q * distribution,
+        full_u_self_weight_kN_m=float(full_area_mm2) / 1_000_000.0 * gamma,
+        projected_slab_width_m=projected_slab_width_m,
+    )
+    return RailwayUGirderStageBasisSet(web_basis=web_basis, full_u_basis=full_u_basis, quantities=quantities)
+
+
+def lifting_udl_moment_kNm(w_kN_m: float, x_m: float, span_length_m: float, lifting_point_ratio: float = 0.20) -> float:
+    """Return preview bending moment for a two-point-lift beam under full-length UDL.
+
+    Sagging is positive. Overhang regions are negative. Supports are at a and
+    L-a where a = lifting_point_ratio * L.
+    """
+
+    L = max(float(span_length_m), 0.001)
+    x = min(max(float(x_m), 0.0), L)
+    a = min(max(float(lifting_point_ratio), 0.0), 0.49) * L
+    w = max(float(w_kN_m), 0.0)
+    reaction = w * L / 2.0
+    m = -w * x * x / 2.0
+    if x >= a:
+        m += reaction * (x - a)
+    if x >= L - a:
+        m += reaction * (x - (L - a))
+    return float(m)
+
+
+def railway_u_girder_stage_station_grid(
+    span_length_m: float,
+    strand_table: pd.DataFrame | None = None,
+    lifting_point_ratio: float = 0.20,
+) -> list[float]:
+    L = max(float(span_length_m), 0.001)
+    a = min(max(float(lifting_point_ratio), 0.0), 0.49) * L
+    extra = {0.0, a, L / 2.0, L - a, L}
+    try:
+        extra.update(station_candidates_from_debonding(strand_table, L))
+    except Exception:
+        pass
+    return default_sls_station_grid(L, extra_stations_m=extra, divisions=20)
+
+
+def _one_web_strand_table(strand_table: pd.DataFrame | None) -> pd.DataFrame | None:
+    if strand_table is None:
+        return None
+    df = pd.DataFrame(strand_table).copy()
+    if df.empty or "Group ID" not in df.columns:
+        return df
+    mask = df["Group ID"].astype(str).str.strip().str.upper().str.startswith("L ")
+    if mask.any():
+        return df.loc[mask].reset_index(drop=True)
+    return df
+
+
+def _station_pe(
+    strand_table: pd.DataFrame | None,
+    *,
+    x_m: float,
+    span_length_m: float,
+    pe_source: str,
+) -> tuple[float, float | None, int, str]:
+    if strand_table is None or pd.DataFrame(strand_table).empty:
+        return 0.0, None, 0, "No strand layout table"
+    station = evaluate_girder_prestress_station(strand_table, x_m=float(x_m), span_length_m=float(span_length_m))
+    if pe_source == "transfer":
+        pe = float(getattr(station, "pe_transfer_eff_kN", 0.0) or 0.0)
+    elif pe_source == "construction":
+        pe = float(getattr(station, "pe_construction_eff_kN", 0.0) or 0.0)
+    else:
+        pe = float(getattr(station, "pe_eff_final_eff_kN", 0.0) or 0.0)
+    yps = getattr(station, "yps_eff_mm_from_bottom", None)
+    effective_strands = int(getattr(station, "effective_strands", 0) or 0)
+    active_groups = str(getattr(station, "active_group_ids", "") or "")
+    return pe, (None if yps is None else float(yps)), effective_strands, active_groups
+
+
+def railway_u_girder_staged_stress_preview_dataframe(
+    *,
+    geometry: SectionGeometry | None,
+    settings: Mapping[str, Any] | None,
+    strand_table: pd.DataFrame | None,
+    span_length_m: float,
+    stations_m: Iterable[float] | None = None,
+) -> pd.DataFrame:
+    """Return guarded station-based stress preview rows for Railway U-Girder.
+
+    The preview is intentionally stage-local: it reports the elastic stress for
+    each stage load and stage Pe on the correct section basis.  It does not
+    superimpose locked-in stresses between non-composite and composite bases.
+    """
+
+    settings = dict(settings or {})
+    span = max(float(span_length_m), 0.001)
+    lifting_ratio = min(max(_float_value(settings.get("lifting_point_ratio"), 0.20), 0.05), 0.45)
+    lifting_factor = max(_float_value(settings.get("lifting_impact_factor"), 1.10), 1.0)
+    basis_set = railway_u_girder_stage_basis_set(geometry, settings)
+    q = basis_set.quantities
+    station_grid = list(stations_m or railway_u_girder_stage_station_grid(span, strand_table, lifting_ratio))
+    web_strands = _one_web_strand_table(strand_table)
+    stage_specs = [
+        {
+            "Stage": "Transfer",
+            "Section basis": "One precast web only",
+            "basis": basis_set.web_basis,
+            "w": q.web_self_weight_kN_m,
+            "pe_source": "transfer",
+            "strand_table": web_strands,
+            "moment": "simple",
+            "note": "web self-weight + Pe_transfer; web-only stage",
+        },
+        {
+            "Stage": "Lifting",
+            "Section basis": "One precast web only",
+            "basis": basis_set.web_basis,
+            "w": q.web_self_weight_kN_m * lifting_factor,
+            "pe_source": "transfer",
+            "strand_table": web_strands,
+            "moment": "lifting",
+            "note": f"two-point lifting at a/L={lifting_ratio:.3f}; impact factor {lifting_factor:.2f}",
+        },
+        {
+            "Stage": "Wet slab casting",
+            "Section basis": "One precast web only",
+            "basis": basis_set.web_basis,
+            "w": q.web_self_weight_kN_m + q.wet_slab_to_each_web_kN_m + q.formwork_to_each_web_kN_m,
+            "pe_source": "construction",
+            "strand_table": web_strands,
+            "moment": "simple",
+            "note": "Case B: web self-weight + 50% wet slab + 50% formwork + Pe_construction",
+        },
+        {
+            "Stage": "Service Pe reference",
+            "Section basis": "Full Railway U-Girder gross reference",
+            "basis": basis_set.full_u_basis,
+            "w": 0.0,
+            "pe_source": "final",
+            "strand_table": strand_table,
+            "moment": "simple",
+            "note": "Pe_final on full U-section only; service loads remain in Loads/Analysis workflow",
+        },
+    ]
+    rows: list[dict[str, Any]] = []
+    for spec in stage_specs:
+        basis = spec["basis"]
+        w = float(spec["w"])
+        for x in station_grid:
+            if spec["moment"] == "lifting":
+                auto_m = lifting_udl_moment_kNm(w, x, span, lifting_ratio)
+            else:
+                auto_m = simple_span_udl_moment_kNm(w, x, span)
+            service = run_basic_girder_service_stress(basis, N_kN=0.0, M_kNm=auto_m)
+            pe, yps, effective_strands, active_groups = _station_pe(
+                spec["strand_table"],
+                x_m=x,
+                span_length_m=span,
+                pe_source=str(spec["pe_source"]),
+            )
+            ps_top = 0.0
+            ps_bottom = 0.0
+            if pe > 0.0 and yps is not None:
+                prestress = run_girder_prestress_stress_effect(basis, Pe_eff_kN=pe, tendon_y_from_bottom_mm=yps)
+                ps_top = prestress.top.total_stress_MPa
+                ps_bottom = prestress.bottom.total_stress_MPa
+            top_total = service.top.total_stress_MPa + ps_top
+            bottom_total = service.bottom.total_stress_MPa + ps_bottom
+            rows.append(
+                {
+                    "Stage": spec["Stage"],
+                    "Station x (m)": round(float(x), 6),
+                    "Section basis": spec["Section basis"],
+                    "Auto load w (kN/m)": w,
+                    "Auto Mx (kN-m)": auto_m,
+                    "Pe stage (kN)": pe,
+                    "yps eff (mm from bottom)": yps,
+                    "Top service+Pe (MPa)": top_total,
+                    "Bottom service+Pe (MPa)": bottom_total,
+                    "Top total (MPa)": top_total,
+                    "Bottom total (MPa)": bottom_total,
+                    "Max compression (MPa)": min(top_total, bottom_total),
+                    "Max tension (MPa)": max(top_total, bottom_total),
+                    "Effective strands": effective_strands,
+                    "Active group IDs": active_groups,
+                    "Preview note": spec["note"],
+                }
+            )
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=RAILWAY_UGIRDER_SLS_PREVIEW_COLUMNS)
+    return df
+
+
+def railway_u_girder_stage_governing_rows(df: pd.DataFrame) -> pd.DataFrame:
+    """Return one governing compression/tension row per stage for quick review."""
+
+    if df.empty:
+        return pd.DataFrame()
+    rows: list[dict[str, Any]] = []
+    for stage, group in df.groupby("Stage", sort=False):
+        comp_idx = group["Max compression (MPa)"].idxmin()
+        tens_idx = group["Max tension (MPa)"].idxmax()
+        comp = df.loc[comp_idx]
+        tens = df.loc[tens_idx]
+        rows.append(
+            {
+                "Stage": stage,
+                "Governing compression x (m)": comp["Station x (m)"],
+                "Max compression (MPa)": comp["Max compression (MPa)"],
+                "Governing tension x (m)": tens["Station x (m)"],
+                "Max tension (MPa)": tens["Max tension (MPa)"],
+                "Section basis": str(comp.get("Section basis") or ""),
+                "Preview note": str(comp.get("Preview note") or ""),
+            }
+        )
+    return pd.DataFrame(rows)
