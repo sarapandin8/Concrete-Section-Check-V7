@@ -452,6 +452,7 @@ RAILWAY_U_GIRDER_DEBOND_SYMBOLS_MM = {
     4000: ("Debonded at 4000 mm", "triangle-down-open"),
     5000: ("Debonded at 5000 mm", "triangle-up-open"),
 }
+RAILWAY_U_GIRDER_DEBOND_ROW_STEP_M = 0.5
 
 GIRDER_PRESTRESS_UI_PRESET_KEYS = frozenset(
     {
@@ -3678,6 +3679,39 @@ def _format_debond_pattern_mm(values: list[int | float]) -> str:
     return ",".join(cleaned)
 
 
+def _strand_row_number_from_group_id(group_id: Any) -> int | None:
+    """Return 1-based strand row number parsed from labels such as ``L Row 3``."""
+
+    text = str(group_id or "").strip()
+    match = re.search(r"\brow\s*(\d+)\b", text, flags=re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        number = int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def _railway_u_girder_default_debond_length_for_row_m(row_number: int | None, span_length_m: float) -> float:
+    """Return the user-approved Railway U-Girder default debond length for a row.
+
+    Row 1 is the bottom strand row and gets the longest default length L/5.
+    Each higher row is reduced by 0.5 m.  The value is a detailing/default
+    helper only; it is applied to a row only after the engineer selects
+    debonded strand numbers for that row.
+    """
+
+    if row_number is None or row_number <= 0:
+        return 0.0
+    span = max(float(span_length_m), 0.0)
+    return max(0.0, span / 5.0 - RAILWAY_U_GIRDER_DEBOND_ROW_STEP_M * float(row_number - 1))
+
+
+def _is_railway_u_girder_geometry(geometry: SectionGeometry | None = None) -> bool:
+    return _current_or_geometry_section_preset_key(geometry) == RAILWAY_U_GIRDER_PRESET_KEY
+
+
 def _parse_debond_pattern_mm(value: Any, expected_count: int) -> list[int]:
     """Parse optional per-strand drawing debond lengths in millimetres.
 
@@ -3774,7 +3808,7 @@ def _railway_u_girder_default_strand_layout_table(geometry: SectionGeometry | No
                     "Right debond m": 0.0,
                     "Debonded strand nos": "",
                     "Debond pattern mm": "",
-                    "Note": "Railway U-Girder drawing default: 12.7 mm ASTM A416 Gr.270 LR strand; debond symbol pattern pending project data.",
+                    "Note": "Railway U-Girder drawing default: 12.7 mm ASTM A416 Gr.270 LR strand; if debonded strands are selected, row default length = max(0, L/5 - 0.5 m per row above Row 1).",
                 }
             )
     return pd.DataFrame(rows, columns=GIRDER_STRAND_LAYOUT_COLUMNS)
@@ -4061,6 +4095,7 @@ def _normalize_girder_strand_layout_table(
         left_debond = _to_float(current.get("Left debond m"))
         right_debond = _to_float(current.get("Right debond m"))
         left_debond = 0.0 if left_debond is None or left_debond < 0.0 else min(float(left_debond), span_length_m)
+        explicit_debond_selection = str(current.get("Debonded strand nos") or "").strip()
         if debond_model == "No debonding":
             left_debond = 0.0
             right_debond = 0.0
@@ -4068,6 +4103,17 @@ def _normalize_girder_strand_layout_table(
             right_debond = left_debond
         else:
             right_debond = 0.0 if right_debond is None or right_debond < 0.0 else min(float(right_debond), span_length_m)
+        if (
+            _is_railway_u_girder_geometry(geometry)
+            and explicit_debond_selection
+            and debond_model != "No debonding"
+            and left_debond <= 1e-9
+            and right_debond <= 1e-9
+        ):
+            row_number = _strand_row_number_from_group_id(group_id)
+            default_debond = _railway_u_girder_default_debond_length_for_row_m(row_number, span_length_m)
+            left_debond = min(default_debond, float(span_length_m))
+            right_debond = left_debond if debond_model == "Symmetric left/right" else min(default_debond, float(span_length_m))
         y_from_bottom = _to_float(current.get("y_mm_from_bottom"))
         x_mm = _to_float(current.get("Row center x_mm"))
         if x_mm is None:
@@ -4111,7 +4157,7 @@ def _normalize_girder_strand_layout_table(
                 "Pe_eff_final/strand_kN": pe_final if pe_final is not None and pe_final >= 0.0 else _default_pe_final_per_strand_kn(strand_size),
                 "Left debond m": left_debond,
                 "Right debond m": right_debond,
-                "Debonded strand nos": str(current.get("Debonded strand nos") or "").strip(),
+                "Debonded strand nos": explicit_debond_selection,
                 "Debond pattern mm": normalized_debond_pattern,
                 "Note": str(current.get("Note") or "").strip(),
             }
@@ -4609,6 +4655,14 @@ def _girder_debonding_schedule_dataframe(table: pd.DataFrame, span_length_m: flo
         explicit_numbers = explicit_debonded_strand_numbers(row_dict)
         debonded_count = len(debonded_numbers)
         bonded_count = max(0, count - debonded_count)
+        row_number = _strand_row_number_from_group_id(group)
+        default_row_debond = _railway_u_girder_default_debond_length_for_row_m(row_number, span_length_m) if row_number is not None else None
+        pattern = "—"
+        if debonded_count > 0:
+            if abs(left - right) <= 1e-9:
+                pattern = f"{debonded_count} @ {left:.3f} m"
+            else:
+                pattern = f"{debonded_count} @ L={left:.3f} m / R={right:.3f} m"
         rows.append(
             {
                 "Group ID": group,
@@ -4618,6 +4672,8 @@ def _girder_debonding_schedule_dataframe(table: pd.DataFrame, span_length_m: flo
                 "Debonded strand nos": ", ".join(str(value) for value in debonded_numbers) if debonded_numbers else "—",
                 "Selection mode": "Individual" if explicit_numbers else ("Row-based all" if debonded_count else "None"),
                 "Debond status": status,
+                "Debond pattern": pattern,
+                "Default row debond m": "—" if default_row_debond is None else f"{default_row_debond:.3f}",
                 "Left debond m": left,
                 "Right debond m": right,
                 "Bonded zone m": f"{bonded_start:.3f} → {bonded_end:.3f}",
@@ -5058,105 +5114,260 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
 
 
 
-def _plot_girder_longitudinal_debonding_layout(table: pd.DataFrame, span_length_m: float) -> go.Figure:
+def _debond_lengths_for_display(row: pd.Series | dict[str, Any], span_length_m: float) -> tuple[float, float]:
+    """Return clamped left/right debond lengths for plotting and tables."""
+
+    span = max(float(span_length_m), 0.0)
+    left = min(max(float(_to_float(row.get("Left debond m")) or 0.0), 0.0), span)
+    right = min(max(float(_to_float(row.get("Right debond m")) or 0.0), 0.0), span)
+    return left, right
+
+
+def _representative_rows_for_debonding_elevation(table: pd.DataFrame, *, one_side_schematic: bool) -> list[pd.Series]:
+    """Return strand rows for the longitudinal debonding schematic.
+
+    Generic sections keep the existing row/group listing.  Railway U-Girder can
+    be displayed as one web only because the current drawing default is
+    left/right symmetric; the summary table still reports the active data rows.
+    """
+
+    active = _active_girder_strand_layout_rows(table)
+    if active.empty or not one_side_schematic:
+        return [row for _, row in active.iterrows()]
+
+    grouped: dict[int, list[pd.Series]] = {}
+    ungrouped: list[pd.Series] = []
+    for _, row in active.iterrows():
+        row_number = _strand_row_number_from_group_id(row.get("Group ID"))
+        if row_number is None:
+            ungrouped.append(row)
+            continue
+        grouped.setdefault(row_number, []).append(row)
+
+    rows: list[pd.Series] = []
+    for row_number in sorted(grouped):
+        candidates = grouped[row_number]
+        representative = next((row for row in candidates if str(row.get("Group ID") or "").strip().upper().startswith("L ")), candidates[0])
+        row_copy = representative.copy()
+        row_copy["Group ID"] = f"Row {row_number}"
+        row_copy["Layer"] = f"Railway U-Girder representative Row {row_number} (one web; left/right symmetric)"
+        rows.append(row_copy)
+    rows.extend(ungrouped)
+    return rows
+
+
+def _plot_girder_longitudinal_debonding_layout(
+    table: pd.DataFrame,
+    span_length_m: float,
+    *,
+    one_side_schematic: bool = False,
+) -> go.Figure:
+    """Return an elevation-style debonding schematic for girder strands.
+
+    PRESTRESS.DEBOND.VIEW1 deliberately changes this from a generic line chart
+    into an engineering schematic: solid blue means bonded/effective, red dashed
+    end segments mean debonded sleeve length from the beam end, and row labels
+    state how many strands in that row are debonded.  It remains a detailing
+    preview and does not change any solver/effective-prestress calculation.
+    """
+
     fig = go.Figure()
     active = _active_girder_strand_layout_rows(table)
-    y_tick_values: list[int] = []
+    rows = _representative_rows_for_debonding_elevation(active, one_side_schematic=one_side_schematic)
+    span = max(float(span_length_m), 1e-6)
+    if not rows:
+        fig.update_layout(height=320, margin={"l": 20, "r": 20, "t": 40, "b": 36}, plot_bgcolor="white")
+        return fig
+
+    bonded_color = "#1f77b4"
+    bonded_through_color = "rgba(37, 99, 235, 0.34)"
+    debonded_color = "#dc2626"
+    outline_color = "rgba(15, 23, 42, 0.28)"
+    dimension_color = "rgba(180, 83, 9, 0.95)"
+    y_tick_values: list[float] = []
     y_tick_labels: list[str] = []
     legend_seen: set[str] = set()
-    bonded_color = "#1f77b4"
-    debonded_color = "#dc2626"
-    transition_color = "rgba(100, 116, 139, 0.90)"
-    for i, (_, row) in enumerate(active.iterrows(), start=1):
-        group = str(row.get("Group ID") or f"Row {i}")
-        count = int(_to_float(row.get("No. Strands")) or 0)
-        left = float(_to_float(row.get("Left debond m")) or 0.0)
-        right = float(_to_float(row.get("Right debond m")) or 0.0)
-        status, _ = _debond_status_from_row(row)
-        y = i  # Row 1 at the bottom, then increasing upward to match the cross-section view.
-        y_tick_values.append(y)
-        y_tick_labels.append(f"{group}<br>{count} strands")
-        fig.add_trace(
-            go.Scatter(
-                x=[0.0, span_length_m],
-                y=[y, y],
-                mode="lines",
-                name="Girder span reference",
-                line={"color": "rgba(75, 85, 99, 0.22)", "dash": "dot", "width": 1},
-                opacity=0.9,
-                showlegend=False,
-                hoverinfo="skip",
-            )
-        )
+    row_gap = 0.34
+    row_base = 0.60
+    row_y_values = [row_base + i * row_gap for i in range(len(rows))]
+    outline_bottom = 0.28
+    outline_top = row_base + row_gap * (len(rows) + 1.35)
 
-        zones = girder_debonding_zones_for_row(row.to_dict(), span_length_m)
-        for zone in zones:
-            is_debonded = not zone.is_effective
-            legend_name = "Debonded" if is_debonded else "Bonded"
-            line_style = {"color": debonded_color if is_debonded else bonded_color, "width": 8, "dash": "solid"}
+    # Simplified girder elevation envelope, not a stress/stiffness section.
+    fig.add_trace(
+        go.Scatter(
+            x=[0.0, span, span, 0.0, 0.0],
+            y=[outline_bottom, outline_bottom, outline_top, outline_top, outline_bottom],
+            mode="lines",
+            line={"color": outline_color, "width": 1.3},
+            fill="toself",
+            fillcolor="rgba(148, 163, 184, 0.07)",
+            name="Girder elevation outline",
+            showlegend=False,
+            hoverinfo="skip",
+        )
+    )
+    fig.add_shape(type="line", x0=span / 2.0, x1=span / 2.0, y0=outline_bottom - 0.12, y1=outline_top + 0.32, line={"color": "rgba(75,85,99,0.65)", "width": 1})
+    fig.add_annotation(x=span / 2.0, y=outline_top + 0.36, text="CL", showarrow=False, font={"size": 10, "color": "#475569"})
+
+    unique_left_dims: set[float] = set()
+    unique_right_dims: set[float] = set()
+    for display_index, (row, y) in enumerate(zip(rows, row_y_values, strict=True), start=1):
+        group = str(row.get("Group ID") or f"Row {display_index}")
+        count = int(_to_float(row.get("No. Strands")) or 0)
+        debonded_numbers = debonded_strand_numbers_for_row(row.to_dict() if hasattr(row, "to_dict") else row)
+        debonded_count = len(debonded_numbers)
+        bonded_count = max(0, count - debonded_count)
+        left, right = _debond_lengths_for_display(row, span)
+        if debonded_count <= 0:
+            left = 0.0
+            right = 0.0
+        bonded_start = min(max(left, 0.0), span)
+        bonded_end = max(bonded_start, span - min(max(right, 0.0), span))
+        status, _ = _debond_status_from_row(row)
+        if debonded_count == 0:
+            status = "Fully bonded"
+
+        y_tick_values.append(y)
+        per_web_suffix = "<br>one web" if one_side_schematic else ""
+        y_tick_labels.append(f"{escape(group)}<br>{count} total · {debonded_count} debonded{per_web_suffix}")
+
+        if bonded_count > 0 and debonded_count > 0:
+            name = "Bonded throughout"
             fig.add_trace(
                 go.Scatter(
-                    x=[zone.x_start_m, zone.x_end_m],
-                    y=[y, y],
+                    x=[0.0, span],
+                    y=[y - 0.045, y - 0.045],
                     mode="lines",
-                    name=legend_name,
-                    line=line_style,
-                    showlegend=legend_name not in legend_seen,
+                    line={"color": bonded_through_color, "width": 4},
+                    name=name,
+                    showlegend=name not in legend_seen,
                     hovertemplate=(
-                        f"{escape(group)}<br>"
-                        f"Status = {escape(status)}<br>"
-                        f"Zone = {escape(zone.zone_type)}<br>"
-                        f"x = {zone.x_start_m:.3f} m to {zone.x_end_m:.3f} m<br>"
-                        f"Length = {zone.length_m:.3f} m<br>"
-                        f"L debond = {left:.3f} m<br>"
-                        f"R debond = {right:.3f} m<extra></extra>"
+                        f"{escape(group)}<br>Bonded throughout strands = {bonded_count}<br>"
+                        f"Total strands = {count}<extra></extra>"
                     ),
                 )
             )
-            legend_seen.add(legend_name)
-            if is_debonded and zone.length_m > 1e-9:
-                side_label = "L" if zone.zone_type.lower().startswith("left") else "R"
-                fig.add_annotation(
-                    x=(zone.x_start_m + zone.x_end_m) / 2.0,
-                    y=y + 0.16,
-                    text=f"{side_label}={zone.length_m:.2f} m",
-                    showarrow=False,
-                    font={"size": 10, "color": "#7f1d1d"},
-                    bgcolor="rgba(255, 255, 255, 0.78)",
-                    bordercolor="rgba(220, 38, 38, 0.18)",
-                    borderpad=2,
-                )
+            legend_seen.add(name)
 
-        transition_points: list[tuple[float, str]] = []
-        if left > 1e-9:
-            transition_points.append((min(max(left, 0.0), span_length_m), f"left transition, L={left:.3f} m"))
-        if right > 1e-9:
-            transition_points.append((max(min(span_length_m - right, span_length_m), 0.0), f"right transition, R={right:.3f} m"))
-        if transition_points:
+        if debonded_count > 0 and (left > 1e-9 or right > 1e-9):
+            if left > 1e-9:
+                name = "Debonded sleeve"
+                fig.add_trace(
+                    go.Scatter(
+                        x=[0.0, left],
+                        y=[y, y],
+                        mode="lines",
+                        line={"color": debonded_color, "width": 6, "dash": "dash"},
+                        name=name,
+                        showlegend=name not in legend_seen,
+                        hovertemplate=(
+                            f"{escape(group)}<br>Debonded strands = {debonded_count}/{count}<br>"
+                            f"Left sleeve = {left:.3f} m<extra></extra>"
+                        ),
+                    )
+                )
+                legend_seen.add(name)
+                unique_left_dims.add(round(left, 6))
+            if bonded_end > bonded_start + 1e-9:
+                name = "Bonded after sleeve"
+                fig.add_trace(
+                    go.Scatter(
+                        x=[bonded_start, bonded_end],
+                        y=[y, y],
+                        mode="lines",
+                        line={"color": bonded_color, "width": 6},
+                        name=name,
+                        showlegend=name not in legend_seen,
+                        hovertemplate=(
+                            f"{escape(group)}<br>Debonded strands = {debonded_count}/{count}<br>"
+                            f"Bonded zone = {bonded_start:.3f} → {bonded_end:.3f} m<extra></extra>"
+                        ),
+                    )
+                )
+                legend_seen.add(name)
+            if right > 1e-9:
+                name = "Debonded sleeve"
+                fig.add_trace(
+                    go.Scatter(
+                        x=[span - right, span],
+                        y=[y, y],
+                        mode="lines",
+                        line={"color": debonded_color, "width": 6, "dash": "dash"},
+                        name=name,
+                        showlegend=name not in legend_seen,
+                        hovertemplate=(
+                            f"{escape(group)}<br>Debonded strands = {debonded_count}/{count}<br>"
+                            f"Right sleeve = {right:.3f} m<extra></extra>"
+                        ),
+                    )
+                )
+                legend_seen.add(name)
+                unique_right_dims.add(round(right, 6))
+            if left > 1e-9:
+                fig.add_annotation(x=left / 2.0, y=y + 0.12, text=f"{left * 1000:.0f} mm", showarrow=False, font={"size": 10, "color": "#7f1d1d"})
+            if right > 1e-9:
+                fig.add_annotation(x=span - right / 2.0, y=y + 0.12, text=f"{right * 1000:.0f} mm", showarrow=False, font={"size": 10, "color": "#7f1d1d"})
+        else:
+            name = "Bonded"
             fig.add_trace(
                 go.Scatter(
-                    x=[point[0] for point in transition_points],
-                    y=[y for _ in transition_points],
-                    mode="markers",
-                    marker={"size": 9, "symbol": "diamond-open", "color": transition_color, "line": {"width": 1.5}},
-                    showlegend=False,
-                    customdata=[point[1] for point in transition_points],
-                    hovertemplate=f"{escape(group)}<br>%{{customdata}}<br>x = %{{x:.3f}} m<extra></extra>",
+                    x=[0.0, span],
+                    y=[y, y],
+                    mode="lines",
+                    line={"color": bonded_color, "width": 6},
+                    name=name,
+                    showlegend=name not in legend_seen,
+                    hovertemplate=f"{escape(group)}<br>Bonded strands = {count}/{count}<extra></extra>",
                 )
             )
+            legend_seen.add(name)
+
+        # Row-end count label, kept compact to avoid CAD-style clutter.
+        debond_text = "bonded only" if debonded_count == 0 else f"{debonded_count} of {count} debonded"
+        fig.add_annotation(
+            x=span + 0.012 * span,
+            y=y,
+            text=f"{escape(group)}: {debond_text}",
+            showarrow=False,
+            xanchor="left",
+            yanchor="middle",
+            font={"size": 10, "color": "#334155"},
+        )
+
+    # Compact dimension ticks from each end for the unique sleeve lengths in view.
+    dim_y0 = outline_bottom - 0.08
+    dim_drop = 0.12
+    for level, length in enumerate(sorted(value for value in unique_left_dims if value > 1e-9), start=1):
+        y_dim = dim_y0 - dim_drop * level
+        fig.add_shape(type="line", x0=0.0, x1=length, y0=y_dim, y1=y_dim, line={"color": dimension_color, "width": 1})
+        fig.add_shape(type="line", x0=0.0, x1=0.0, y0=y_dim - 0.035, y1=y_dim + 0.035, line={"color": dimension_color, "width": 1})
+        fig.add_shape(type="line", x0=length, x1=length, y0=y_dim - 0.035, y1=y_dim + 0.035, line={"color": dimension_color, "width": 1})
+        fig.add_annotation(x=length / 2.0, y=y_dim - 0.045, text=f"{length * 1000:.0f}", showarrow=False, font={"size": 10, "color": "#92400e"})
+    for level, length in enumerate(sorted(value for value in unique_right_dims if value > 1e-9), start=1):
+        y_dim = dim_y0 - dim_drop * level
+        fig.add_shape(type="line", x0=span - length, x1=span, y0=y_dim, y1=y_dim, line={"color": dimension_color, "width": 1})
+        fig.add_shape(type="line", x0=span - length, x1=span - length, y0=y_dim - 0.035, y1=y_dim + 0.035, line={"color": dimension_color, "width": 1})
+        fig.add_shape(type="line", x0=span, x1=span, y0=y_dim - 0.035, y1=y_dim + 0.035, line={"color": dimension_color, "width": 1})
+        fig.add_annotation(x=span - length / 2.0, y=y_dim - 0.045, text=f"{length * 1000:.0f}", showarrow=False, font={"size": 10, "color": "#92400e"})
+
+    title_text = "Debonding elevation schematic"
+    if one_side_schematic:
+        title_text += " — one web shown, mirrored to the opposite web"
     fig.update_layout(
-        height=max(320, 96 + 72 * max(len(active), 1)),
-        margin={"l": 20, "r": 20, "t": 48, "b": 36},
+        height=max(440, 190 + 54 * max(len(rows), 1)),
+        margin={"l": 118, "r": 168, "t": 64, "b": 72},
         xaxis_title="station x from left support (m)",
-        yaxis={"tickmode": "array", "tickvals": y_tick_values, "ticktext": y_tick_labels, "title": "strand group"},
-        legend={"orientation": "h", "yanchor": "bottom", "y": 1.04, "xanchor": "left", "x": 0.0},
+        yaxis={"tickmode": "array", "tickvals": y_tick_values, "ticktext": y_tick_labels, "title": "strand row"},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.03, "xanchor": "left", "x": 0.0},
         showlegend=True,
+        title={"text": title_text, "font": {"size": 14}},
         plot_bgcolor="white",
     )
-    fig.update_xaxes(range=[-0.02 * span_length_m, 1.02 * span_length_m], gridcolor="rgba(0,0,0,0.08)", zeroline=False)
-    fig.update_yaxes(gridcolor="rgba(0,0,0,0.08)")
+    fig.update_xaxes(range=[-0.04 * span, 1.18 * span], gridcolor="rgba(0,0,0,0.08)", zeroline=False)
+    y_min = dim_y0 - dim_drop * (max(len(unique_left_dims), len(unique_right_dims), 1) + 0.55)
+    fig.update_yaxes(range=[y_min, outline_top + 0.62], gridcolor="rgba(0,0,0,0.08)")
     return fig
-
 
 
 def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *, span_length_m: float) -> None:
@@ -5440,14 +5651,19 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
         with tab_stage:
             _render_railway_u_girder_stage_model_ui(geometry, span_length_m=float(span))
     with tab_debond:
-        st.plotly_chart(_plot_girder_longitudinal_debonding_layout(normalized, float(span)), use_container_width=True)
+        if is_railway_stage_model:
+            st.caption(
+                "Railway U-Girder debonding is shown as a one-web elevation schematic because the default layout is symmetric left/right. "
+                "When debonded strand numbers are entered for a row and the debond length is left at zero, the row default is max(0, L/5 - 0.5 m × (row - 1))."
+            )
+        st.plotly_chart(_plot_girder_longitudinal_debonding_layout(normalized, float(span), one_side_schematic=is_railway_stage_model), use_container_width=True)
         schedule = _girder_debonding_schedule_dataframe(normalized, float(span))
         if not schedule.empty:
             st.dataframe(schedule, use_container_width=True, hide_index=True)
         with st.expander("Plot assumptions", expanded=False):
             st.caption(
-                "Blue segments are bonded/effective; red segments are debonded sleeves. "
-                "Transition markers are shown without text to keep the plot clean. Transfer-length force build-up after each transition remains a future milestone."
+                "Solid blue segments are bonded/effective; red dashed end segments are debonded sleeves. "
+                "The schematic is a detailing/preview view only. Transfer-length force build-up after each sleeve transition remains a future milestone."
             )
     with tab_rules:
         _render_girder_debonding_rule_dashboard(normalized, float(span))

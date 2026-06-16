@@ -33,15 +33,15 @@ def test_prestress_page_contains_strand_layout_debonding_workflow() -> None:
     assert "_auto_strand_x_positions_text" in PRESTRESS_SOURCE
     assert "Option 2 spaced symmetric pairs" in PRESTRESS_SOURCE
     assert 'line={"color": section_line_color, "width": 2.0, "dash": "solid"}' in PRESTRESS_SOURCE
-    assert 'name="Bonded"' in PRESTRESS_SOURCE
-    assert 'name="Debonded"' in PRESTRESS_SOURCE
-    assert "diamond-open" in PRESTRESS_SOURCE
+    assert "Debonding elevation schematic" in PRESTRESS_SOURCE
+    assert "Debonded sleeve" in PRESTRESS_SOURCE
+    assert "Bonded after sleeve" in PRESTRESS_SOURCE
     assert 'xanchor="left"' in PRESTRESS_SOURCE
     assert "row labels expand the data range" in PRESTRESS_SOURCE
     assert 'xref="paper"' in PRESTRESS_SOURCE
     assert "height=560" in PRESTRESS_SOURCE
     assert "on_change=_sync_girder_strand_layout_editor_to_table" in PRESTRESS_SOURCE
-    assert "Row 1 at the bottom" in PRESTRESS_SOURCE
+    assert "Row 1 is the bottom strand row" in PRESTRESS_SOURCE
     assert "_girder_debonding_schedule_dataframe" in PRESTRESS_SOURCE
     assert "Advisory recommendation" in PRESTRESS_SOURCE
     assert "Apply advisory layout to strand table" in PRESTRESS_SOURCE
@@ -314,12 +314,11 @@ def test_longitudinal_debonding_plot_shows_sleeve_symbols_with_streamlit_stub(mo
     trace_names = [trace.name for trace in fig.data]
     marker_symbols = [getattr(getattr(trace, "marker", None), "symbol", None) for trace in fig.data]
 
-    assert "Debonded" in trace_names
-    assert "Bonded" in trace_names
-    assert "diamond-open" in marker_symbols
-    assert any(annotation.text == "L=1.00 m" for annotation in fig.layout.annotations)
-    assert any(annotation.text == "R=2.00 m" for annotation in fig.layout.annotations)
-    bonded_traces = [trace for trace in fig.data if trace.name == "Bonded"]
+    assert "Debonded sleeve" in trace_names
+    assert "Bonded after sleeve" in trace_names
+    assert any(annotation.text == "1000 mm" for annotation in fig.layout.annotations)
+    assert any(annotation.text == "2000 mm" for annotation in fig.layout.annotations)
+    bonded_traces = [trace for trace in fig.data if trace.name == "Bonded after sleeve"]
     assert bonded_traces
     assert all(trace.line.color == "#1f77b4" for trace in bonded_traces)
 
@@ -582,7 +581,8 @@ def test_longitudinal_plot_orders_row_1_at_bottom_and_hides_termination_text(mon
     )
     table = _normalize_girder_strand_layout_table(raw, span_length_m=10.0)
     fig = _plot_girder_longitudinal_debonding_layout(table, span_length_m=10.0)
-    assert list(fig.layout.yaxis.tickvals) == [1, 2]
+    assert len(list(fig.layout.yaxis.tickvals)) == 2
+    assert list(fig.layout.yaxis.tickvals)[0] < list(fig.layout.yaxis.tickvals)[1]
     assert fig.layout.yaxis.ticktext[0].startswith("Row 1")
     assert all("termination" not in str(getattr(trace, "text", "")).lower() for trace in fig.data)
 
@@ -1796,3 +1796,123 @@ def test_refined_auto_coefficients_tolerate_display_rows_without_strand_size(mon
     assert round(total_aps, 3) == 197.4
     assert yps == 50.0
     assert ep == DEFAULT_STRAND_EP_MPA
+
+
+def test_railway_u_girder_debond_selection_applies_row_default_lengths(monkeypatch) -> None:
+    import sys
+    import types
+
+    st = types.ModuleType("streamlit")
+    st.session_state = {"section_preset_key": "railway_u_girder"}
+    st.column_config = types.SimpleNamespace(
+        CheckboxColumn=lambda *args, **kwargs: None,
+        TextColumn=lambda *args, **kwargs: None,
+        NumberColumn=lambda *args, **kwargs: None,
+        SelectboxColumn=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.core.models import Point2D, SectionGeometry  # noqa: PLC0415
+    from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
+        _normalize_girder_strand_layout_table,
+        _railway_u_girder_default_debond_length_for_row_m,
+    )
+
+    raw = pd.DataFrame(
+        [
+            {
+                "Active": True,
+                "Group ID": "L Row 1",
+                "Strand Size": "12.7 mm low-relaxation strand",
+                "No. Strands": 9,
+                "y_mm_from_bottom": 95.0,
+                "Debonded strand nos": "1,9",
+            },
+            {
+                "Active": True,
+                "Group ID": "L Row 4",
+                "Strand Size": "12.7 mm low-relaxation strand",
+                "No. Strands": 7,
+                "y_mm_from_bottom": 260.0,
+                "Debonded strand nos": "1,7",
+            },
+            {
+                "Active": True,
+                "Group ID": "L Row 5",
+                "Strand Size": "12.7 mm low-relaxation strand",
+                "No. Strands": 4,
+                "y_mm_from_bottom": 315.0,
+                "Debonded strand nos": "1,4",
+            },
+        ]
+    )
+    geometry = SectionGeometry(
+        outer_polygon=[Point2D(x=-1, y=-1), Point2D(x=1, y=-1), Point2D(x=1, y=1), Point2D(x=-1, y=1)],
+        metadata={"preset": "railway_u_girder"},
+    )
+    table = _normalize_girder_strand_layout_table(raw, span_length_m=10.0, geometry=geometry)
+    assert _railway_u_girder_default_debond_length_for_row_m(1, 10.0) == 2.0
+    assert table.loc[0, "Left debond m"] == 2.0
+    assert table.loc[0, "Right debond m"] == 2.0
+    assert table.loc[1, "Left debond m"] == 0.5
+    assert table.loc[1, "Right debond m"] == 0.5
+    assert table.loc[2, "Left debond m"] == 0.0
+    assert table.loc[2, "Right debond m"] == 0.0
+
+
+def test_debonding_elevation_one_web_schematic_summarizes_row_counts(monkeypatch) -> None:
+    import sys
+    import types
+
+    st = types.ModuleType("streamlit")
+    st.session_state = {}
+    st.column_config = types.SimpleNamespace(
+        CheckboxColumn=lambda *args, **kwargs: None,
+        TextColumn=lambda *args, **kwargs: None,
+        NumberColumn=lambda *args, **kwargs: None,
+        SelectboxColumn=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
+        _girder_debonding_schedule_dataframe,
+        _normalize_girder_strand_layout_table,
+        _plot_girder_longitudinal_debonding_layout,
+    )
+
+    raw = pd.DataFrame(
+        [
+            {
+                "Active": True,
+                "Group ID": "L Row 1",
+                "Strand Size": "12.7 mm low-relaxation strand",
+                "No. Strands": 9,
+                "y_mm_from_bottom": 95.0,
+                "Left debond m": 2.0,
+                "Right debond m": 2.0,
+                "Debonded strand nos": "1,9",
+            },
+            {
+                "Active": True,
+                "Group ID": "R Row 1",
+                "Strand Size": "12.7 mm low-relaxation strand",
+                "No. Strands": 9,
+                "y_mm_from_bottom": 95.0,
+                "Left debond m": 2.0,
+                "Right debond m": 2.0,
+                "Debonded strand nos": "1,9",
+            },
+        ]
+    )
+    table = _normalize_girder_strand_layout_table(raw, span_length_m=10.0)
+    fig = _plot_girder_longitudinal_debonding_layout(table, span_length_m=10.0, one_side_schematic=True)
+    tick_text = list(fig.layout.yaxis.ticktext)
+    assert len(tick_text) == 1
+    assert "Row 1" in tick_text[0]
+    assert "2 debonded" in tick_text[0]
+    assert "one web" in tick_text[0]
+    assert any(annotation.text == "2000 mm" for annotation in fig.layout.annotations)
+    schedule = _girder_debonding_schedule_dataframe(table, span_length_m=10.0)
+    assert schedule.loc[0, "Debonded strands"] == 2
+    assert schedule.loc[0, "Debond pattern"] == "2 @ 2.000 m"
+    assert schedule.loc[0, "Default row debond m"] == "2.000"
