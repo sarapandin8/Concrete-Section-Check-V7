@@ -1,3 +1,4 @@
+- PRESTRESS.DEBOND.ANALYSIS1: adds an explicit station-based debonded-strand participation handoff for girder strand layouts. The new row-level station table derives effective strand count, Aps, transfer/construction/final Pe, and yps from Left/Right debond length plus Debonded strand nos, and is surfaced under Prestress → Effective prestress preview. This is a guarded step-function participation model only; no transfer-length ramp, development/anchorage check, final code-certified debonding check, or SLS/ULS stress-equation change is included.
 - PRESTRESS.DEBOND.VIEW3: cleans up Railway U-Girder debonding UI by auto-mirroring L-row debond metadata to matching R rows in symmetric left/right mode and by simplifying the Debonding along span left-side row labels into single-line, non-overlapping text. The editable source remains Left/Right debond length plus Debonded strand nos; no solver, Pe/loss, station-effective prestress, SLS/ULS, geometry, section-property, report, or project-schema equation changes.
 - PRESTRESS.DEBOND.VIEW1: replaces the Debonding along span line chart with an elevation-style debonding schematic and row summary. Railway U-Girder shows one representative web by default for symmetric left/right layouts, labels debonded strand counts per row, and uses the approved default debond length rule `max(0, L/5 - 0.5 m × (row - 1))` when debonded strand numbers are selected with zero entered length. This remains detailing/preview metadata only; no solver, Pe/loss, effective prestress, PMM, SLS, geometry, report, or project-schema equation changes.
 - SECTION.BUILDER.FOCUS1: declutters the Section Builder definition panel by removing the collapsed `Project / workflow / axis details` and `Browse by geometry family` helpers, and by showing `Concrete Material Assignment` plus `Section / Member Assembly` as visible section-specific decision panels. No solver, geometry generator, section-property, rebar, prestress, load, SLS/ULS, report, or project-schema calculation logic changes.
@@ -745,3 +746,12 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Uses default span `L = 10.0 m`, Case B wet slab support, 50/50 wet slab distribution to webs, editable formwork load, lifting a/L, and lifting impact factor.
 - Hides generic repeated-girder fields such as overall system width and tributary load-take-down width for Railway U-Girder.
 - Keeps legacy `beam_girder_system_settings` synchronized for downstream span/unit-weight consumers without changing solver equations.
+
+### PRESTRESS.DEBOND.ANALYSIS1 — Station-Based Debonded Strand Participation
+
+- Adds `girder_station_participation_dataframe()` as the explicit solver-adjacent handoff from debonding metadata to station-based analysis previews.
+- Uses the current source of truth: `Left debond (m)`, `Right debond (m)`, `Debonded strand nos`, row strand count/area/y, and stage Pe force columns.
+- Inside active sleeve zones, only selected debonded strands are removed from effective Aps/Pe; blank selections keep legacy whole-row debonding semantics.
+- Surfaces a row-level station participation audit table in Prestress → Effective prestress preview.
+- Does not change SLS/ULS equations, transfer-length ramping, development length, anchorage, or final code-certified debonding checks.
+

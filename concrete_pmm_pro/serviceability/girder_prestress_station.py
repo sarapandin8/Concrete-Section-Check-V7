@@ -1,9 +1,10 @@
 """Station-based active prestress helpers for simple-supported precast girders.
 
-GIRDER.PS5A intentionally evaluates only the *active strand-group metadata*
-from the girder strand layout/debonding table.  It does not calculate
-prestress losses, transfer-length force build-up, SLS stress, PMM capacity, or
-code-certified debonding design recommendations.
+GIRDER.PS5A intentionally evaluates station-based strand participation
+from the girder strand layout/debonding table. It supplies effective strand
+count, Aps, yps, and Pe-by-stage metadata to guarded SLS/ULS previews. It does
+not calculate prestress losses, transfer-length force build-up, development
+length, or code-certified debonding design recommendations.
 """
 
 from __future__ import annotations
@@ -36,6 +37,25 @@ STATION_PREVIEW_COLUMNS = [
     "Pe_eff_final_eff_kN",
     "yps_eff_mm_from_bottom",
     "Active group IDs",
+]
+
+GIRDER_STATION_PARTICIPATION_COLUMNS = [
+    "x_m",
+    "Group ID",
+    "Total strands",
+    "Debonded strands",
+    "Effective strands",
+    "Ineffective strands",
+    "Left sleeve active",
+    "Right sleeve active",
+    "Left debond m",
+    "Right debond m",
+    "Aps_eff_mm2",
+    "Pe_transfer_eff_kN",
+    "Pe_construction_eff_kN",
+    "Pe_eff_final_eff_kN",
+    "yps_eff_mm_from_bottom",
+    "Participation note",
 ]
 
 
@@ -1026,6 +1046,83 @@ def _active_group_from_row(row: Mapping[str, Any], *, effective_no_strands: int 
         left_debond_m=max(0.0, float(_to_float(row.get(_LEFT_DEBOND_COLUMN)) or 0.0)),
         right_debond_m=max(0.0, float(_to_float(row.get(_RIGHT_DEBOND_COLUMN)) or 0.0)),
     )
+
+
+def _station_sleeve_flags(row: Mapping[str, Any], *, x_m: float, span_length_m: float) -> tuple[bool, bool]:
+    """Return whether station x is inside the left/right debonded sleeve.
+
+    The model is intentionally a step-function station participation model:
+    inside a sleeve, selected debonded strands are not counted as effective;
+    outside the sleeve, all row strands are counted. Transfer/development
+    length force build-up remains outside this helper.
+    """
+
+    span = _clamp_span_length(span_length_m)
+    x = _to_float(x_m)
+    if x is None:
+        return False, False
+    left = min(max(float(_to_float(row.get(_LEFT_DEBOND_COLUMN)) or 0.0), 0.0), span)
+    right = min(max(float(_to_float(row.get(_RIGHT_DEBOND_COLUMN)) or 0.0), 0.0), span)
+    x_value = min(max(float(x), 0.0), span)
+    left_active = left > 1e-9 and x_value < left - 1e-9
+    right_active = right > 1e-9 and x_value > span - right + 1e-9
+    return left_active, right_active
+
+
+def girder_station_participation_dataframe(
+    table: pd.DataFrame | Iterable[Mapping[str, Any]] | None,
+    *,
+    span_length_m: float,
+    stations_m: Iterable[float] | None = None,
+) -> pd.DataFrame:
+    """Return row-level station participation for debonded strand analysis.
+
+    This dataframe is the explicit data contract between the Prestress
+    debonding/detailing table and solver-adjacent SLS/ULS station workflows.
+    It honors row activity, selected debonded strand numbers, and left/right
+    sleeve lengths. It does **not** model transfer-length/development-length
+    force build-up after sleeve termination.
+    """
+
+    span = _clamp_span_length(span_length_m)
+    station_values = list(stations_m) if stations_m is not None else station_candidates_from_debonding(table, span)
+    unique_stations = sorted({round(min(max(float(x), 0.0), span), 6) for x in station_values})
+    rows: list[dict[str, Any]] = []
+    for x_value in unique_stations:
+        for row in active_girder_strand_rows(table):
+            total_count = int(max(0, round(_to_float(row.get(_COUNT_COLUMN)) or 0.0)))
+            effective_count = effective_strand_count_in_row_at_station(row, x_value, span)
+            debonded_count = debonded_strand_count_for_row(row)
+            ineffective_count = max(0, total_count - effective_count)
+            left_active, right_active = _station_sleeve_flags(row, x_m=x_value, span_length_m=span)
+            group = _active_group_from_row(row, effective_no_strands=effective_count)
+            if effective_count <= 0:
+                note = "No effective strands at this station"
+            elif ineffective_count > 0:
+                note = "Partial row effective; selected debonded strands excluded in active sleeve"
+            else:
+                note = "Full row effective"
+            rows.append(
+                {
+                    "x_m": round(float(x_value), 6),
+                    "Group ID": group.group_id,
+                    "Total strands": total_count,
+                    "Debonded strands": debonded_count,
+                    "Effective strands": effective_count,
+                    "Ineffective strands": ineffective_count,
+                    "Left sleeve active": bool(left_active),
+                    "Right sleeve active": bool(right_active),
+                    "Left debond m": group.left_debond_m,
+                    "Right debond m": group.right_debond_m,
+                    "Aps_eff_mm2": group.total_aps_mm2,
+                    "Pe_transfer_eff_kN": group.pe_transfer_total_kN,
+                    "Pe_construction_eff_kN": group.pe_construction_total_kN,
+                    "Pe_eff_final_eff_kN": group.pe_eff_final_total_kN,
+                    "yps_eff_mm_from_bottom": group.y_mm_from_bottom if effective_count > 0 else None,
+                    "Participation note": note,
+                }
+            )
+    return pd.DataFrame(rows, columns=GIRDER_STATION_PARTICIPATION_COLUMNS)
 
 
 def active_strand_groups_at_station(

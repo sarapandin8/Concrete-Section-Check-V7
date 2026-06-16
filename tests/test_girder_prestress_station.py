@@ -18,6 +18,7 @@ from concrete_pmm_pro.serviceability.girder_prestress_station import (
     girder_prestress_station_dataframe,
     girder_stage_pe_mapping_dataframe,
     girder_stage_pe_mapping_status,
+    girder_station_participation_dataframe,
     station_candidates_from_debonding,
     strand_group_effective_at_station,
 )
@@ -226,6 +227,53 @@ def test_individual_debonded_strand_selection_partially_reduces_support_effectiv
     assert support.effective_strands == 6
     assert support.aps_eff_mm2 == 600.0
     assert support.pe_transfer_eff_kN == 900.0
+
+
+
+def test_station_participation_dataframe_reports_partial_debonded_rows() -> None:
+    layout = pd.DataFrame(
+        [
+            {
+                "Active": True,
+                "Group ID": "Row 1",
+                "No. Strands": 9,
+                "Area/Strand_mm2": 98.7,
+                "Total Aps_mm2": 888.3,
+                "y_mm_from_bottom": 95.0,
+                "Pe_transfer/strand_kN": 120.0,
+                "Pe_construction/strand_kN": 110.0,
+                "Pe_eff_final/strand_kN": 100.0,
+                "Left debond m": 2.0,
+                "Right debond m": 2.0,
+                "Debonded strand nos": "1,9",
+            }
+        ]
+    )
+
+    participation = girder_station_participation_dataframe(layout, span_length_m=10.0, stations_m=[0.0, 2.0, 5.0, 8.5])
+    support = participation.loc[participation["x_m"] == 0.0].iloc[0]
+    midspan = participation.loc[participation["x_m"] == 5.0].iloc[0]
+    right_sleeve = participation.loc[participation["x_m"] == 8.5].iloc[0]
+
+    assert support["Total strands"] == 9
+    assert support["Debonded strands"] == 2
+    assert support["Effective strands"] == 7
+    assert support["Ineffective strands"] == 2
+    assert bool(support["Left sleeve active"]) is True
+    assert bool(support["Right sleeve active"]) is False
+    assert support["Aps_eff_mm2"] == 7 * 98.7
+    assert support["Pe_transfer_eff_kN"] == 7 * 120.0
+    assert "Partial row effective" in support["Participation note"]
+
+    assert midspan["Effective strands"] == 9
+    assert midspan["Ineffective strands"] == 0
+    assert midspan["Aps_eff_mm2"] == 9 * 98.7
+    assert bool(midspan["Left sleeve active"]) is False
+    assert bool(midspan["Right sleeve active"]) is False
+
+    assert right_sleeve["Effective strands"] == 7
+    assert bool(right_sleeve["Left sleeve active"]) is False
+    assert bool(right_sleeve["Right sleeve active"]) is True
 
 
 def test_debonding_rule_audit_reports_row_based_preview_and_review_items() -> None:

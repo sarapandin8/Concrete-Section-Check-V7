@@ -75,6 +75,7 @@ from concrete_pmm_pro.serviceability.girder_prestress_station import (
     girder_debonding_zones_for_row,
     girder_prestress_station_dataframe,
     girder_stage_pe_mapping_dataframe,
+    girder_station_participation_dataframe,
     girder_stage_pe_mapping_status,
     station_candidates_from_debonding,
     strand_group_effective_at_station,
@@ -5754,12 +5755,20 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
         )
     with tab_effective:
         st.caption(
-            "Simplified preview: a strand group is effective only outside its debonded lengths. Transfer/development length transition is not modeled yet. Stage Pe values come from the Force States / Losses workflow."
+            "Station-based participation preview: debonded strand selections reduce effective Aps and Pe(x) only inside the left/right sleeve zones. "
+            "Transfer/development length transition is not modeled yet. Stage Pe values come from the Force States / Losses workflow."
         )
         st.markdown(_metric_strip_html(_stage_pe_mapping_metrics_from_table(normalized)), unsafe_allow_html=True)
         _render_stage_pe_mapping_audit(normalized, expanded=False)
         preview = _girder_effective_prestress_preview_dataframe(normalized, float(span))
         st.dataframe(preview, use_container_width=True, hide_index=True)
+        with st.expander("Row-level station participation / analysis handoff", expanded=False):
+            st.caption(
+                "This table is the solver-adjacent handoff from debonding metadata to station-based SLS/ULS preview workflows. "
+                "It is still a step-function model; transfer length, development length, anchorage, and final code-certified debonding checks remain separate."
+            )
+            participation = girder_station_participation_dataframe(normalized, span_length_m=float(span))
+            st.dataframe(participation, use_container_width=True, hide_index=True)
 
 def _dataframes_equal(left: pd.DataFrame, right: pd.DataFrame) -> bool:
     left_norm = pd.DataFrame(left).reset_index(drop=True).astype("object")
