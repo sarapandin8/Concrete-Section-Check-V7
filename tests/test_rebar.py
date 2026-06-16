@@ -135,7 +135,7 @@ def test_bar_size_sync_fills_blank_dependent_cells_when_size_unchanged() -> None
     assert normalized.loc[0, "Material"] == "SD40"
 
 
-def test_manual_overrides_are_preserved_when_bar_size_is_unchanged() -> None:
+def test_standard_bar_size_enforces_material_when_size_is_unchanged() -> None:
     rebar_db = load_rebar_database()
     previous = pd.DataFrame(
         [{"Active": True, "Label": "B1", "x_mm": 0, "y_mm": 0, "Bar Size": "DB25", "Diameter_mm": 25, "Material": "SD40", "Count": 1, "Note": ""}]
@@ -147,7 +147,7 @@ def test_manual_overrides_are_preserved_when_bar_size_is_unchanged() -> None:
     normalized = normalize_rebar_table_for_bar_size_sync(edited, previous, rebar_db)
 
     assert normalized.loc[0, "Diameter_mm"] == 23
-    assert normalized.loc[0, "Material"] == "ProjectSteel"
+    assert normalized.loc[0, "Material"] == "SD40"
 
 
 def test_blank_or_custom_bar_size_preserves_manual_input() -> None:

@@ -10,7 +10,6 @@ import pandas as pd
 import streamlit as st
 from pydantic import ValidationError
 
-from concrete_pmm_pro.code_checks import aci_beta1
 from concrete_pmm_pro.core.concrete_materials import (
     CONCRETE_EC_METHOD_OPTIONS,
     c45_precast_material,
@@ -225,9 +224,9 @@ def _parse_concrete_materials(df: pd.DataFrame) -> tuple[list[ConcreteMaterial],
 def _render_concrete_section() -> None:
     st.subheader("Concrete Material Library")
     st.info(
-        "Concrete materials are defined here and assigned to sections in the Section Builder. "
-        "The primary section concrete material is used by PMM analysis. Deck/topping material is used only for "
-        "composite metadata and transformed-width calculation in this milestone."
+        "Concrete materials are defined here as a library only. Assign the active section concrete in "
+        "Sections → Section Builder so each section/preset can use its own main, deck/topping, web, "
+        "or cast-in-place slab concrete without changing the project library."
     )
 
     edited_df = st.data_editor(
@@ -261,30 +260,24 @@ def _render_concrete_section() -> None:
 
     st.session_state["concrete_materials"] = materials
     material_names = [material.name for material in materials]
+    material_map = {material.name: material for material in materials}
 
     active_name = st.session_state.get("active_concrete_material_name")
-    active_index = material_names.index(active_name) if active_name in material_names else 0
-    selected_active = st.selectbox(
-        "Active / primary section concrete material",
-        material_names,
-        index=active_index,
-        help="This material mirrors project.concrete_material and is the concrete material used by PMM analysis.",
-    )
+    if active_name not in material_map:
+        active_name = material_names[0]
+        st.session_state["active_concrete_material_name"] = active_name
+        st.session_state["primary_concrete_material_name"] = active_name
+        st.session_state["concrete_material"] = material_map[active_name]
 
     deck_name = st.session_state.get("deck_topping_material_name")
-    deck_index = material_names.index(deck_name) if deck_name in material_names else min(1, len(material_names) - 1)
-    selected_deck = st.selectbox(
-        "Default deck / topping concrete material",
-        material_names,
-        index=deck_index,
-        help="Used by composite-capable girder presets for Edeck, n, and Btransformed metadata only.",
-    )
+    if deck_name not in material_map:
+        deck_name = material_names[min(1, len(material_names) - 1)]
+        st.session_state["deck_topping_material_name"] = deck_name
 
-    material_map = {material.name: material for material in materials}
-    st.session_state["active_concrete_material_name"] = selected_active
-    st.session_state["primary_concrete_material_name"] = selected_active
-    st.session_state["deck_topping_material_name"] = selected_deck
-    st.session_state["concrete_material"] = material_map[selected_active]
+    st.caption(
+        "Assignment controls are intentionally hidden here. Current section concrete is selected in "
+        "Section Builder; rebar fy is resolved from bar size in Rebar; prestress fpu/fpy/Ep is resolved from Product in Prestress."
+    )
     st.success("Concrete material library is valid.")
 
 
@@ -314,7 +307,11 @@ def _parse_rebar_materials(df: pd.DataFrame) -> tuple[list[RebarMaterial], list[
 
 
 def _render_rebar_section() -> None:
-    st.subheader("Rebar Material")
+    st.subheader("Rebar Material Library")
+    st.info(
+        "Rebar materials are kept here as a library. Standard DB bar rows use the selected Bar Size as the source of truth: "
+        "DB10–DB28 → SD40 / fy 390 MPa and DB32 → SD50 / fy 490 MPa. Use Custom bar size only when a project-specific material is required."
+    )
     edited_df = st.data_editor(
         _rebar_materials_dataframe(st.session_state["rebar_materials"]),
         num_rows="dynamic",
@@ -336,16 +333,17 @@ def _render_rebar_section() -> None:
         st.session_state["rebar_materials"] = materials
         active_names = [material.name for material in materials]
         active_name = st.session_state.get("active_rebar_material_name")
-        active_index = active_names.index(active_name) if active_name in active_names else 0
-        st.session_state["active_rebar_material_name"] = st.selectbox("Active rebar material", active_names, index=active_index)
-        st.success("Rebar materials are valid.")
+        if active_name not in active_names:
+            st.session_state["active_rebar_material_name"] = active_names[0]
+        st.caption("No active rebar material is assigned on this page; standard bar size controls fy in the Rebar workspace.")
+        st.success("Rebar material library is valid.")
 
 
 def _render_prestress_section() -> None:
-    st.subheader("Prestressing Steel Material")
+    st.subheader("Prestressing Steel Material Library")
     st.info(
-        "PT Bar / Prestressing Bar material properties must include fpu, Ep, and preferably fpy or proof stress. "
-        "Effective prestress force is defined later in the Prestress tab."
+        "Prestressing steel products are kept here as a library. In the Prestress workspace, Product is the source of truth "
+        "for Area, fpy, fpu, and Ep; effective prestress force/loss input remains on the Prestress page."
     )
 
     db = load_prestress_steel_database()
@@ -407,17 +405,19 @@ def _render_prestress_section() -> None:
     materials: list[PrestressSteelMaterial] = st.session_state["prestress_materials"]
     active_names = [material.name for material in materials]
     active_name = st.session_state.get("active_prestress_material_name")
-    active_index = active_names.index(active_name) if active_name in active_names else 0
-    st.session_state["active_prestress_material_name"] = st.selectbox("Active prestress material", active_names, index=active_index)
+    if active_names and active_name not in active_names:
+        st.session_state["active_prestress_material_name"] = active_names[0]
+    st.caption("No active prestress material is assigned on this page; Product controls fpu/fpy/Ep in the Prestress workspace.")
 
 
 def _render_summary() -> None:
-    st.subheader("Material Summary")
-    concrete: ConcreteMaterial = st.session_state["concrete_material"]
+    st.subheader("Material Library Summary")
+    concrete_materials: list[ConcreteMaterial] = st.session_state.get("concrete_materials", [])
     cols = st.columns(3)
-    cols[0].metric("Concrete f'c", f"{concrete.fc_MPa:g} MPa")
-    cols[1].metric("Concrete beta1", f"{(concrete.beta1 or aci_beta1(concrete.fc_MPa)):.3g}")
-    cols[2].metric("Concrete ecu", f"{concrete.ecu:g}")
+    cols[0].metric("Concrete library", f"{len(concrete_materials):,} material(s)")
+    cols[1].metric("Rebar library", f"{len(st.session_state.get('rebar_materials', [])):,} material(s)")
+    cols[2].metric("Prestress library", f"{len(st.session_state.get('prestress_materials', [])):,} product(s)")
+    st.caption("Current section material assignment is controlled outside this library page.")
 
     st.markdown("**Rebar materials**")
     st.dataframe(_rebar_materials_dataframe(st.session_state["rebar_materials"]), use_container_width=True, hide_index=True)

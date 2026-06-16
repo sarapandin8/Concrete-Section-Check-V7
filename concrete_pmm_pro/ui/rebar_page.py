@@ -324,6 +324,16 @@ def bar_size_defaults(bar_size: str, rebar_db: pd.DataFrame) -> tuple[float, str
     return diameter, default_material_for_bar_size(bar_size)
 
 
+def is_standard_rebar_bar_size(bar_size: str) -> bool:
+    return str(bar_size).strip() in REBAR_DEFAULT_MATERIAL_BY_SIZE
+
+
+def enforced_material_for_standard_bar_size(bar_size: str) -> str | None:
+    if not is_standard_rebar_bar_size(bar_size):
+        return None
+    return default_material_for_bar_size(bar_size)
+
+
 def _normalized_bar_size(value: Any) -> str:
     return "" if _is_blank(value) else str(value).strip()
 
@@ -412,8 +422,9 @@ def normalize_rebar_table_for_bar_size_sync(edited_df: pd.DataFrame, previous_df
 
         if bar_size_changed or _is_blank(row.get("Diameter_mm")):
             normalized.at[index, "Diameter_mm"] = default_diameter
-        if bar_size_changed or _is_blank(row.get("Material")):
-            normalized.at[index, "Material"] = default_material
+        # Standard DB sizes use bar size as the source of truth for material/fy.
+        # This intentionally corrects legacy/imported rows such as DB32 + SD40.
+        normalized.at[index, "Material"] = default_material
 
     return normalized
 
@@ -489,6 +500,14 @@ def rebars_from_dataframe(df: pd.DataFrame, rebar_db: pd.DataFrame) -> RebarPars
 
         base_label = str(row.get("Label")).strip() if not _is_blank(row.get("Label")) else f"R{len(rebars) + 1}"
         material_name = str(row.get("Material")).strip() if not _is_blank(row.get("Material")) else "SD40"
+        enforced_material = enforced_material_for_standard_bar_size(str(row.get("Bar Size") or ""))
+        if enforced_material is not None:
+            if material_name and material_name != enforced_material:
+                warnings.append(
+                    f"Row {row_number}: Bar Size {str(row.get('Bar Size')).strip()} uses {enforced_material} by standard-size rule; "
+                    f"entered Material '{material_name}' was ignored."
+                )
+            material_name = enforced_material
         for item in range(count):
             label = base_label if count == 1 else f"{base_label}-{item + 1}"
             rebars.append(Rebar(x_mm=float(x_mm), y_mm=float(y_mm), diameter_mm=float(diameter_mm), material_name=material_name, label=label))
@@ -686,7 +705,11 @@ def _rebar_column_config(bar_size_options: list[str]) -> dict[str, Any]:
         "y_mm": st.column_config.NumberColumn("y_mm", help="y coordinate in section axes, mm", width="small"),
         "Bar Size": st.column_config.SelectboxColumn("Bar Size", options=bar_size_options, width="medium"),
         "Diameter_mm": st.column_config.NumberColumn("Diameter_mm", help="Used for Custom or blank Bar Size.", width="small"),
-        "Material": st.column_config.TextColumn("Material", width="small"),
+        "Material": st.column_config.TextColumn(
+            "Material",
+            width="small",
+            help="Auto-resolved from standard DB bar size: DB10–DB28 = SD40, DB32 = SD50. Use Custom bar size for project-specific overrides.",
+        ),
         "Count": st.column_config.NumberColumn("Count", min_value=1, step=1, width="small"),
         "Note": st.column_config.TextColumn("Note", width="medium"),
     }
@@ -1970,7 +1993,7 @@ def _render_longitudinal_rebar_tab(
             summary_slot = st.empty()
             input_mode = st.selectbox("Rebar input mode", ["Manual table", "Auto perimeter layout"])
             st.markdown(
-                '<div class="cpmm-rebar-note">Selecting a database bar size fills Diameter and default Material. Diameter and Material remain editable for project-specific overrides.</div>',
+                '<div class="cpmm-rebar-note">Selecting a database bar size fills Diameter and enforces the standard material/fy rule: DB10–DB28 = SD40, DB32 = SD50. Use Custom bar size for project-specific overrides.</div>',
                 unsafe_allow_html=True,
             )
             if input_mode == "Auto perimeter layout":

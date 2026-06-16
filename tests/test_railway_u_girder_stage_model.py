@@ -9,6 +9,11 @@ def _install_streamlit_stub(monkeypatch):
     import sys
     import types
 
+    # These tests replace Streamlit with a minimal stub. If prestress_page was
+    # imported by an earlier test, remove it so its module-level `st` reference
+    # is rebound to the stub and the tests are order-independent.
+    sys.modules.pop("concrete_pmm_pro.ui.prestress_page", None)
+
     st = types.ModuleType("streamlit")
     st.session_state = {}
     st.column_config = types.SimpleNamespace(

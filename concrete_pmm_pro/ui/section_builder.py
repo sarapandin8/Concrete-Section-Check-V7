@@ -51,6 +51,12 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
 )
 from concrete_pmm_pro.visualization import create_section_preview
 
+RAILWAY_U_GIRDER_PRESET_KEY = "railway_u_girder"
+RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY = "railway_u_girder_stage_settings"
+RAILWAY_U_GIRDER_DEFAULT_WEB_FC_MPA = 45.0
+RAILWAY_U_GIRDER_DEFAULT_WEB_FCI_MPA = 36.0
+RAILWAY_U_GIRDER_DEFAULT_SLAB_FC_MPA = 35.0
+
 
 @dataclass(frozen=True)
 class SectionMetric:
@@ -565,6 +571,28 @@ def _aashto_effective_width_helper_enabled(
     return _is_composite_capable_preset(preset) and is_bridge_beam_girder_workflow(active_settings)
 
 
+def _is_railway_u_girder_preset(preset: dict[str, Any]) -> bool:
+    return str(preset.get("key", "")).strip() == RAILWAY_U_GIRDER_PRESET_KEY
+
+
+def _material_name_for_fc(material_map: dict[str, ConcreteMaterial], target_fc: float, fallback_name: str | None = None) -> str:
+    if fallback_name in material_map:
+        return str(fallback_name)
+    for material in material_map.values():
+        try:
+            if abs(float(material.fc_MPa) - float(target_fc)) <= 1e-9:
+                return material.name
+        except (TypeError, ValueError):
+            continue
+    return next(iter(material_map))
+
+
+def _sync_railway_u_girder_stage_material_settings(settings_update: dict[str, Any]) -> None:
+    settings = dict(st.session_state.get(RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY, {}) or {})
+    settings.update(settings_update)
+    st.session_state[RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY] = settings
+
+
 def _render_concrete_material_assignment(preset: dict[str, Any]) -> dict[str, Any]:
     materials = _ensure_concrete_material_session()
     material_map = concrete_materials_by_name(materials)
@@ -575,6 +603,95 @@ def _render_concrete_material_assignment(preset: dict[str, Any]) -> dict[str, An
         st.session_state["active_concrete_material_name"] = material_names[default_primary_index]
 
     st.markdown("##### Concrete Material Assignment")
+
+    if _is_railway_u_girder_preset(preset):
+        stage_settings = dict(st.session_state.get(RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY, {}) or {})
+        web_default_name = _material_name_for_fc(
+            material_map,
+            RAILWAY_U_GIRDER_DEFAULT_WEB_FC_MPA,
+            st.session_state.get("active_concrete_material_name") or stage_settings.get("web_concrete_material_name"),
+        )
+        slab_default_name = _material_name_for_fc(
+            material_map,
+            RAILWAY_U_GIRDER_DEFAULT_SLAB_FC_MPA,
+            stage_settings.get("slab_concrete_material_name") or st.session_state.get("deck_topping_material_name"),
+        )
+        web_index = _material_select_index(material_names, web_default_name)
+        slab_index = _material_select_index(material_names, slab_default_name, fallback_index=min(1, len(material_names) - 1))
+
+        selected_web = st.selectbox(
+            "Precast web concrete material",
+            material_names,
+            index=web_index,
+            help="Concrete for the two precast prestressed side webs. Transfer, lifting, and wet slab casting stages use web-only section behavior.",
+            key="active_concrete_material_name",
+        )
+        web_material = material_map[selected_web]
+        st.session_state["primary_concrete_material_name"] = selected_web
+        st.session_state["concrete_material"] = web_material
+
+        selected_slab = st.selectbox(
+            "CIP slab concrete material",
+            material_names,
+            index=slab_index,
+            help="Concrete for the cast-in-place slab that connects the two precast webs into the full U-girder after hardening.",
+            key="railway_u_girder_slab_material_name",
+        )
+        slab_material = material_map[selected_slab]
+        st.session_state["deck_topping_material_name"] = selected_slab
+
+        web_fci_default = float(stage_settings.get("web_fci_MPa", RAILWAY_U_GIRDER_DEFAULT_WEB_FCI_MPA) or RAILWAY_U_GIRDER_DEFAULT_WEB_FCI_MPA)
+        web_fci = st.number_input(
+            "Precast web f'ci at transfer (MPa)",
+            min_value=1.0,
+            value=float(web_fci_default),
+            step=1.0,
+            key="railway_u_girder_web_fci_MPa",
+            help="Concrete compressive strength at prestress transfer/release for web-only transfer and lifting checks.",
+        )
+
+        assignment: dict[str, Any] = {
+            "primary_material_name": selected_web,
+            "primary_fc_MPa": web_material.fc_MPa,
+            "Ebeam_MPa": web_material.effective_Ec_MPa,
+            "is_composite_applicable": True,
+            "railway_u_girder_stage_materials": True,
+            "web_concrete_material_name": selected_web,
+            "web_fc_MPa": web_material.fc_MPa,
+            "web_fci_MPa": float(web_fci),
+            "Eweb_MPa": web_material.effective_Ec_MPa,
+            "Eweb_ci_MPa": 4700.0 * float(web_fci) ** 0.5,
+            "slab_concrete_material_name": selected_slab,
+            "slab_fc_MPa": slab_material.fc_MPa,
+            "Eslab_MPa": slab_material.effective_Ec_MPa,
+        }
+        _sync_railway_u_girder_stage_material_settings(
+            {
+                "web_concrete_material_name": selected_web,
+                "web_fc_MPa": float(web_material.fc_MPa),
+                "web_fci_MPa": float(web_fci),
+                "slab_concrete_material_name": selected_slab,
+                "slab_fc_MPa": float(slab_material.fc_MPa),
+            }
+        )
+        st.markdown(
+            _kv_panel_html(
+                [
+                    ("Precast web", f"{selected_web} | f'c {web_material.fc_MPa:g} MPa | Ec {_format_ec(web_material.effective_Ec_MPa)}"),
+                    ("Transfer web f'ci", f"{float(web_fci):g} MPa | Eci {_format_ec(assignment['Eweb_ci_MPa'])}"),
+                    ("CIP slab", f"{selected_slab} | f'c {slab_material.fc_MPa:g} MPa | Ec {_format_ec(slab_material.effective_Ec_MPa)}"),
+                    ("Stage routing", "Transfer/lifting/wet casting = web-only; service = full U-girder staged basis"),
+                ]
+            ),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="cpmm-section-note">Railway U-Girder material assignment is section-specific. '
+            "Setup → Materials remains a library; this panel selects the material sources for this preset and syncs the staged-construction metadata.</div>",
+            unsafe_allow_html=True,
+        )
+        return assignment
+
     selected_primary = st.selectbox(
         "Primary / section concrete material",
         material_names,
@@ -590,7 +707,7 @@ def _render_concrete_material_assignment(preset: dict[str, Any]) -> dict[str, An
     st.session_state["concrete_material"] = primary_material
 
     bridge_composite_metadata = _composite_metadata_enabled_for_workflow(preset)
-    assignment: dict[str, Any] = {
+    assignment = {
         "primary_material_name": selected_primary,
         "primary_fc_MPa": primary_material.fc_MPa,
         "Ebeam_MPa": primary_material.effective_Ec_MPa,
@@ -658,7 +775,6 @@ def _render_concrete_material_assignment(preset: dict[str, Any]) -> dict[str, An
             unsafe_allow_html=True,
         )
     return assignment
-
 
 def _render_section_builder_status_strip(preset: dict[str, Any], material_assignment: dict[str, Any]) -> None:
     """Render the compact default context strip for the definition workspace."""
