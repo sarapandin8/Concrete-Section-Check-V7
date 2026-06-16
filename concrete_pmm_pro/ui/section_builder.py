@@ -825,10 +825,19 @@ def _workflow_specific_preset_display_name(
 
 
 def _preset_option_label(preset: dict[str, Any], settings: AnalysisModeSettings | None = None) -> str:
-    """Return the user-facing label for a section preset selector option."""
+    """Return the user-facing label for a section preset selector option.
+
+    Workflow-specific aliases may already include the preset family/category
+    (for example, the Building/Bridge Precast I-Girder labels).  Do not append
+    the same category again; duplicated labels are confusing and make the
+    selector look like it is offering two different composite-girder concepts.
+    """
 
     display_name = _workflow_specific_preset_display_name(preset, settings)
-    return f"{display_name}  ·  {preset.get('category', 'General')}"
+    category = str(preset.get('category', 'General'))
+    if category and category.casefold() in display_name.casefold():
+        return display_name
+    return f"{display_name}  ·  {category}"
 
 
 def _preset_maps(

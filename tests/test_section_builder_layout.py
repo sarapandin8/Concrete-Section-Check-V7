@@ -161,6 +161,19 @@ def test_preset_option_label_keeps_display_name_and_category() -> None:
     assert section_builder._preset_option_label(rectangle) == "Rectangle  ·  Basic Solid"
 
 
+def test_workflow_specific_preset_option_label_does_not_duplicate_category() -> None:
+    i_girder = preset_by_key("parametric_i_girder")
+
+    assert section_builder._preset_option_label(
+        i_girder,
+        AnalysisModeSettings(member_type="beam_girder"),
+    ) == "Precast I-Girder: Bridge · Precast Composite Girder"
+    assert section_builder._preset_option_label(
+        i_girder,
+        AnalysisModeSettings(member_type="building_beam_girder"),
+    ) == "Precast I-Girder: Building · Precast Composite Girder"
+
+
 def test_preset_maps_are_key_based_and_labelled() -> None:
     rectangle = preset_by_key("rectangle")
     i_girder = preset_by_key("parametric_i_girder")

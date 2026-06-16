@@ -52,8 +52,8 @@ def test_parametric_i_girder_uses_workflow_specific_names_without_changing_key()
     )
 
     assert preset["key"] == "parametric_i_girder"
-    assert building_label == "Precast I-Girder: Building · Precast Composite Girder  ·  Precast Composite Girder"
-    assert bridge_label == "Precast I-Girder: Bridge · Precast Composite Girder  ·  Precast Composite Girder"
+    assert building_label == "Precast I-Girder: Building · Precast Composite Girder"
+    assert bridge_label == "Precast I-Girder: Bridge · Precast Composite Girder"
 
 
 def test_preset_routing_uses_metadata_not_display_name_keyword_matching() -> None:
