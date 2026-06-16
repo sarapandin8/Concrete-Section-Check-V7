@@ -4521,11 +4521,13 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
     debonded_color = "#dc2626"
     section_x_min: float | None = None
     section_x_max: float | None = None
+    section_y_min: float | None = None
+    section_y_max: float | None = None
     if geometry is not None:
         try:
             polygon = to_shapely_polygon(geometry)
             x, y = polygon.exterior.xy
-            section_x_min, _, section_x_max, _ = polygon.bounds
+            section_x_min, section_y_min, section_x_max, section_y_max = polygon.bounds
             fig.add_trace(
                 go.Scatter(
                     x=list(x),
@@ -4686,7 +4688,7 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
                 )
             )
 
-        group_stats = []
+        group_stats_by_y: dict[float, dict[str, Any]] = {}
         for group, group_points in points.groupby("Group ID", as_index=False):
             info = row_info.get(str(group), {"status": "Fully bonded", "left": 0.0, "right": 0.0, "count": len(group_points), "debonded_numbers": (), "explicit": False})
             status = str(info["status"])
@@ -4695,54 +4697,98 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
             count = int(info["count"])
             debonded_count = len(tuple(info["debonded_numbers"]))
             bonded_count = max(0, count - debonded_count)
-            y_value = float(group_points["y_mm_abs"].mean())
+            y_value = round(float(group_points["y_mm_abs"].mean()), 6)
             x_anchor = float(group_points["x_mm"].max())
-            if status == "Fully bonded":
-                label = f"{group} · total {count} · B={bonded_count} · U={debonded_count}"
-            else:
-                label = f"{group} · total {count} · B={bonded_count} · U={debonded_count} · {status} · L={left:.2f} m · R={right:.2f} m"
-            group_stats.append((str(group), y_value, x_anchor, label))
+            row_bucket = group_stats_by_y.setdefault(
+                y_value,
+                {
+                    "groups": [],
+                    "count": 0,
+                    "bonded": 0,
+                    "debonded": 0,
+                    "statuses": [],
+                    "left": 0.0,
+                    "right": 0.0,
+                    "x_anchor": x_anchor,
+                },
+            )
+            row_bucket["groups"].append(str(group))
+            row_bucket["count"] += count
+            row_bucket["bonded"] += bonded_count
+            row_bucket["debonded"] += debonded_count
+            row_bucket["x_anchor"] = max(float(row_bucket["x_anchor"]), x_anchor)
+            if status != "Fully bonded":
+                row_bucket["statuses"].append(status)
+                row_bucket["left"] = max(float(row_bucket["left"]), left)
+                row_bucket["right"] = max(float(row_bucket["right"]), right)
+
+        group_stats: list[tuple[float, float, str]] = []
+        for y_value in sorted(group_stats_by_y):
+            row_bucket = group_stats_by_y[y_value]
+            groups = [str(item) for item in row_bucket["groups"]]
+            row_name = groups[0]
+            if len(groups) > 1:
+                normalized_names = [name.replace("L ", "").replace("R ", "") for name in groups]
+                row_name = normalized_names[0] if len(set(normalized_names)) == 1 else " / ".join(groups)
+            label = (
+                f"{row_name} · total {int(row_bucket['count'])} "
+                f"· B={int(row_bucket['bonded'])} · U={int(row_bucket['debonded'])}"
+            )
+            statuses = [str(item) for item in row_bucket["statuses"]]
+            if statuses:
+                label += f" · {statuses[0]} · L={float(row_bucket['left']):.2f} m · R={float(row_bucket['right']):.2f} m"
+            group_stats.append((float(y_value), float(row_bucket["x_anchor"]), label))
 
         if section_x_max is None:
             section_x_max = float(points["x_mm"].max())
         if section_x_min is None:
             section_x_min = float(points["x_mm"].min())
+        if section_y_max is None:
+            section_y_max = float(points["y_mm_abs"].max())
+        if section_y_min is None:
+            section_y_min = min(float(points["y_mm_abs"].min()), bottom_y)
         section_width = max(section_x_max - section_x_min, 200.0)
-        # Keep row labels outside the concrete outline with enough air to avoid
-        # the text visually touching the section, even for wide box beams.
-        label_gap = max(340.0, 0.34 * section_width)
-        label_x = section_x_max + label_gap
-        for _, y_value, x_anchor, label in group_stats:
+        section_depth = max(section_y_max - section_y_min, 200.0)
+        # Cross-section layout is an inspection view.  Keep the true geometry
+        # aspect ratio, but do not let row labels expand the data range; the
+        # label text is placed in the right paper margin so strand spacing is
+        # readable on dense 72-strand U-girder layouts.
+        x_pad = max(320.0, 0.08 * section_width)
+        y_pad = max(220.0, 0.16 * section_depth)
+        label_leader_x1 = section_x_max + min(max(160.0, 0.04 * section_width), x_pad * 0.70)
+        for y_value, x_anchor, label in group_stats:
             fig.add_shape(
                 type="line",
                 x0=x_anchor + 16.0,
-                x1=label_x - 32.0,
+                x1=label_leader_x1,
                 y0=y_value,
                 y1=y_value,
-                line={"color": "rgba(100, 116, 139, 0.50)", "width": 1.0},
+                line={"color": "rgba(100, 116, 139, 0.45)", "width": 1.0},
             )
             fig.add_annotation(
-                x=label_x,
+                x=1.01,
                 y=y_value,
+                xref="paper",
+                yref="y",
                 text=label,
                 showarrow=False,
                 xanchor="left",
                 yanchor="middle",
-                xshift=8,
                 align="left",
-                font={"size": 11, "color": "#334155"},
+                font={"size": 10, "color": "#334155"},
                 bgcolor="rgba(255, 255, 255, 0.92)",
                 bordercolor="rgba(255, 255, 255, 0.0)",
                 borderpad=1,
             )
-        fig.update_xaxes(range=[section_x_min - 0.15 * section_width, label_x + 760.0])
+        fig.update_xaxes(range=[section_x_min - x_pad, section_x_max + x_pad])
+        fig.update_yaxes(range=[section_y_min - y_pad, section_y_max + y_pad])
     fig.update_layout(
-        height=410,
-        margin={"l": 20, "r": 320, "t": 30, "b": 20},
+        height=560,
+        margin={"l": 44, "r": 260, "t": 58, "b": 44},
         xaxis_title="section x (mm)",
         yaxis_title="section y (mm)",
         showlegend=True,
-        legend={"orientation": "v", "yanchor": "top", "y": 0.98, "xanchor": "left", "x": 1.01},
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "left", "x": 0.0},
         plot_bgcolor="white",
     )
     fig.update_xaxes(gridcolor="rgba(0,0,0,0.08)", zerolinecolor="rgba(0,0,0,0.20)")

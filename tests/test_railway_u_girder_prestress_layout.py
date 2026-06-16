@@ -138,6 +138,30 @@ def test_railway_u_girder_debond_symbol_pattern_is_preview_metadata(monkeypatch)
         assert label in trace_names
 
 
+def test_railway_u_girder_cross_section_layout_uses_readable_inspection_viewport(monkeypatch) -> None:
+    _install_streamlit_stub(monkeypatch)
+
+    from concrete_pmm_pro.ui.prestress_page import (
+        _normalize_girder_strand_layout_table,
+        _plot_girder_strand_cross_section_layout,
+    )
+
+    geometry = _railway_geometry()
+    table = _normalize_girder_strand_layout_table(None, span_length_m=30.0, geometry=geometry)
+    fig = _plot_girder_strand_cross_section_layout(table, geometry)
+
+    assert fig.layout.height == 560
+    assert tuple(fig.layout.xaxis.range) == (-3190.0, 3190.0)
+    assert tuple(fig.layout.yaxis.range) == (-1056.0, 1056.0)
+    assert fig.layout.yaxis.scaleanchor == "x"
+    assert fig.layout.legend.orientation == "h"
+
+    row_annotations = [annotation for annotation in fig.layout.annotations if getattr(annotation, "xref", None) == "paper"]
+    assert len(row_annotations) == 5
+    assert row_annotations[0].text == "Row 1 · total 18 · B=18 · U=0"
+    assert row_annotations[-1].text == "Row 5 · total 8 · B=8 · U=0"
+
+
 def test_project_io_preserves_strand_x_positions_and_debond_pattern_source() -> None:
     from pathlib import Path
 

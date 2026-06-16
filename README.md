@@ -715,3 +715,8 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Prestress page previews now hide Section Builder dimension guides so the canvas focuses on prestressing steel layout.
 - Geometry-only and combined reinforcement coordination previews on the Prestress page also suppress dimension guides for readability.
 - Section Builder remains the owner of dimension review; no prestress force, parser, geometry, solver, SLS, report, or project-schema logic was changed.
+
+### UI.PRESTRESS.CROSSLAYOUT1 — Cross-section Layout Scale and Padding Polish
+- Enlarges the Prestress girder cross-section layout plot and adds explicit x/y inspection padding while preserving equal aspect ratio.
+- Moves row labels into the right paper margin and consolidates symmetric left/right row labels so dense 72-strand Railway U-Girder layouts read clearly.
+- Keeps strand coordinates, debond metadata, prestress force/loss logic, geometry, solver, report, and project schema unchanged.

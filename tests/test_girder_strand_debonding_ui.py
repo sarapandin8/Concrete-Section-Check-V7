@@ -37,7 +37,9 @@ def test_prestress_page_contains_strand_layout_debonding_workflow() -> None:
     assert 'name="Debonded"' in PRESTRESS_SOURCE
     assert "diamond-open" in PRESTRESS_SOURCE
     assert 'xanchor="left"' in PRESTRESS_SOURCE
-    assert "label_gap = max(340.0" in PRESTRESS_SOURCE
+    assert "row labels expand the data range" in PRESTRESS_SOURCE
+    assert 'xref="paper"' in PRESTRESS_SOURCE
+    assert "height=560" in PRESTRESS_SOURCE
     assert "on_change=_sync_girder_strand_layout_editor_to_table" in PRESTRESS_SOURCE
     assert "Row 1 at the bottom" in PRESTRESS_SOURCE
     assert "_girder_debonding_schedule_dataframe" in PRESTRESS_SOURCE
