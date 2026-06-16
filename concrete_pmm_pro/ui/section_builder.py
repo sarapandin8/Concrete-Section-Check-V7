@@ -46,6 +46,9 @@ from concrete_pmm_pro.geometry.summary import summarize_geometry
 from concrete_pmm_pro.geometry.validation import ValidationResult, validate_section_geometry
 from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     BEAM_GIRDER_SYSTEM_SETTINGS_KEY,
+    DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3,
+    DEFAULT_GIRDER_SPACING_M,
+    DEFAULT_NUMBER_OF_GIRDERS,
     DEFAULT_SPAN_LENGTH_M,
     system_settings_from_mapping,
 )
@@ -591,6 +594,255 @@ def _sync_railway_u_girder_stage_material_settings(settings_update: dict[str, An
     settings = dict(st.session_state.get(RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY, {}) or {})
     settings.update(settings_update)
     st.session_state[RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY] = settings
+
+
+def _sync_beam_girder_span_to_existing_sources(settings: dict[str, Any]) -> None:
+    """Keep legacy span consumers synchronized with section-assembly settings."""
+
+    try:
+        span_length_m = float(settings.get("span_length_m", DEFAULT_SPAN_LENGTH_M) or DEFAULT_SPAN_LENGTH_M)
+    except (TypeError, ValueError):
+        span_length_m = DEFAULT_SPAN_LENGTH_M
+
+    prestress_system = dict(st.session_state.get("girder_prestress_system_settings", {}) or {})
+    prestress_system["span_length_m"] = span_length_m
+    st.session_state["girder_prestress_system_settings"] = prestress_system
+
+    section_params = dict(st.session_state.get("section_parameters", {}) or {})
+    if section_params:
+        section_params["girder_length_mm"] = span_length_m * 1000.0
+        st.session_state["section_parameters"] = section_params
+        preset_key = str(st.session_state.get("section_preset_key") or "").strip()
+        if preset_key:
+            st.session_state[f"{preset_key}_girder_length_mm"] = span_length_m * 1000.0
+
+
+def _ensure_beam_girder_system_settings_defaults() -> dict[str, Any]:
+    """Initialize section-specific Beam/Girder assembly settings.
+
+    The settings remain serialized under the legacy metadata key so existing
+    Loads/Prestress/SLS consumers keep working.  SECTION.ASSEMBLY1 moves the
+    user-facing editor from Setup to Section Builder; it does not change solver
+    equations or project schema.
+    """
+
+    existing = st.session_state.get(BEAM_GIRDER_SYSTEM_SETTINGS_KEY)
+    if not isinstance(existing, dict):
+        existing = {}
+    if "span_length_m" not in existing:
+        ps_settings = st.session_state.get("girder_prestress_system_settings") or {}
+        span_from_ps = ps_settings.get("span_length_m") if isinstance(ps_settings, dict) else None
+        section_params = st.session_state.get("section_parameters") or {}
+        span_from_section = None
+        if isinstance(section_params, dict):
+            try:
+                span_from_section = float(section_params.get("girder_length_mm", 0.0) or 0.0) / 1000.0
+            except (TypeError, ValueError):
+                span_from_section = None
+        existing["span_length_m"] = span_from_ps or span_from_section or DEFAULT_SPAN_LENGTH_M
+    existing.setdefault("girder_spacing_m", DEFAULT_GIRDER_SPACING_M)
+    existing.setdefault("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)
+    existing.setdefault("concrete_unit_weight_kN_m3", DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3)
+    existing.setdefault("tributary_width_m", existing.get("girder_spacing_m", DEFAULT_GIRDER_SPACING_M))
+    existing.setdefault("use_girder_spacing_as_tributary_width", False)
+    normalized = system_settings_from_mapping(existing).as_metadata()
+    st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized
+    _sync_beam_girder_span_to_existing_sources(normalized)
+    return normalized
+
+
+def _assembly_unit_label(preset: dict[str, Any], settings: AnalysisModeSettings) -> tuple[str, str, str]:
+    """Return (count label, spacing label, summary noun) for the active assembly."""
+
+    if is_building_beam_girder_workflow(settings):
+        return "Number of precast beams", "Beam / girder spacing (m)", "Building member"
+    if _is_parametric_plank_girder(preset):
+        return "Number of planks", "Plank spacing / module width (m)", "Plank units"
+    if _is_precast_box_beam(preset):
+        return "Number of boxes", "Box spacing / module width (m)", "Box units"
+    if _is_railway_u_girder_preset(preset):
+        return "Precast webs", "Overall U-girder system width (m)", "Railway U-Girder"
+    return "Number of girders", "Girder spacing (m)", "Girder units"
+
+
+def _render_bridge_section_assembly_panel(preset: dict[str, Any], settings: AnalysisModeSettings) -> None:
+    """Render bridge-domain section assembly inputs in Section Builder."""
+
+    values = _ensure_beam_girder_system_settings_defaults()
+    count_label, spacing_label, unit_noun = _assembly_unit_label(preset, settings)
+    with st.container(border=True):
+        st.markdown(
+            _commercial_panel_title_html("Bridge Section Assembly", "Assembly", "Bridge", "Section-specific"),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="cpmm-section-note">Bridge section assembly settings belong with the selected section preset. '
+            'Setup stays limited to project workflow and design-code choices.</div>',
+            unsafe_allow_html=True,
+        )
+        cols = st.columns(4)
+        with cols[0]:
+            values["span_length_m"] = st.number_input(
+                "Span length L (m)",
+                min_value=0.1,
+                step=0.5,
+                value=float(values.get("span_length_m", DEFAULT_SPAN_LENGTH_M)),
+                format="%.3f",
+                key="section_assembly_span_length_m_input",
+                help="Single source for simple-span SLS load diagrams and prestress/debonding station previews.",
+            )
+        with cols[1]:
+            if _is_railway_u_girder_preset(preset):
+                st.metric("Assembly units", "2 webs + CIP slab", help="Railway U-Girder is not a repeated-girder system.")
+                values.setdefault("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)
+            else:
+                values["number_of_girders"] = int(
+                    st.number_input(
+                        count_label,
+                        min_value=1,
+                        step=1,
+                        value=int(values.get("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)),
+                        key="section_assembly_number_of_girders_input",
+                        help="Assembly count for equal-share load previews.  For plank/box presets this represents units per bridge cross-section.",
+                    )
+                )
+        with cols[2]:
+            values["girder_spacing_m"] = st.number_input(
+                spacing_label,
+                min_value=0.1,
+                step=0.1,
+                value=float(values.get("girder_spacing_m", DEFAULT_GIRDER_SPACING_M)),
+                format="%.3f",
+                key="section_assembly_girder_spacing_m_input",
+                help="Module spacing/width used by load take-down previews.  Effective slab width Be remains separate section metadata.",
+            )
+        with cols[3]:
+            values["concrete_unit_weight_kN_m3"] = st.number_input(
+                "Concrete unit weight (kN/m³)",
+                min_value=1.0,
+                step=0.5,
+                value=float(values.get("concrete_unit_weight_kN_m3", DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3)),
+                format="%.2f",
+                key="section_assembly_concrete_unit_weight_input",
+                help="Default unit weight for girder/web self-weight and wet concrete load previews.",
+            )
+        values["tributary_width_m"] = st.number_input(
+            "Tributary width for load take-down (m)",
+            min_value=0.1,
+            step=0.1,
+            value=float(values.get("tributary_width_m") or values.get("girder_spacing_m") or DEFAULT_GIRDER_SPACING_M),
+            format="%.3f",
+            key="section_assembly_tributary_width_m_input",
+            help="Use module spacing by default unless project-specific load distribution requires an override.",
+        )
+        normalized = system_settings_from_mapping(values).as_metadata()
+        st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized
+        _sync_beam_girder_span_to_existing_sources(normalized)
+        summary = system_settings_from_mapping(normalized)
+        rows = [
+            ("Assembly basis", unit_noun),
+            ("Span source", f"{summary.span_length_m:.3f} m"),
+            ("Load tributary width", f"{summary.effective_tributary_width_m:.3f} m"),
+            ("Concrete unit weight", f"{summary.concrete_unit_weight_kN_m3:.2f} kN/m³"),
+        ]
+        if _is_railway_u_girder_preset(preset):
+            rows.append(("Stage behavior", "Web-only until CIP slab hardens; full U at composite/service stages"))
+        else:
+            rows.append(("Assembly count", f"{summary.number_of_girders:d}"))
+        st.markdown(_kv_panel_html(rows), unsafe_allow_html=True)
+
+
+def _render_building_member_assembly_panel(preset: dict[str, Any], settings: AnalysisModeSettings) -> None:
+    """Render building-domain member assembly inputs in Section Builder."""
+
+    values = _ensure_beam_girder_system_settings_defaults()
+    _count_label, spacing_label, _unit_noun = _assembly_unit_label(preset, settings)
+    with st.container(border=True):
+        st.markdown(
+            _commercial_panel_title_html("Building Member Assembly", "Assembly", "Building", "Section-specific"),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="cpmm-section-note">Building member assembly settings are tied to the selected member/preset. '
+            'Bridge-only girder counts, barrier, sidewalk, and wearing-surface assumptions remain outside this workflow.</div>',
+            unsafe_allow_html=True,
+        )
+        cols = st.columns(3)
+        with cols[0]:
+            values["span_length_m"] = st.number_input(
+                "Span length L (m)",
+                min_value=0.1,
+                step=0.5,
+                value=float(values.get("span_length_m", DEFAULT_SPAN_LENGTH_M)),
+                format="%.3f",
+                key="building_member_assembly_span_length_m_input",
+                help="Single source for simple-span service moment diagrams and prestress/debonding previews.",
+            )
+        with cols[1]:
+            values["girder_spacing_m"] = st.number_input(
+                spacing_label,
+                min_value=0.1,
+                step=0.1,
+                value=float(values.get("girder_spacing_m") or values.get("tributary_width_m") or DEFAULT_GIRDER_SPACING_M),
+                format="%.3f",
+                key="building_member_assembly_spacing_m_input",
+                help="Typical building beam/girder spacing for floor/roof load take-down.",
+            )
+        with cols[2]:
+            values["concrete_unit_weight_kN_m3"] = st.number_input(
+                "Concrete unit weight (kN/m³)",
+                min_value=1.0,
+                step=0.5,
+                value=float(values.get("concrete_unit_weight_kN_m3", DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3)),
+                format="%.2f",
+                key="building_member_assembly_unit_weight_input",
+                help="Default unit weight for precast member self-weight and wet topping load preview.",
+            )
+        values["use_girder_spacing_as_tributary_width"] = st.checkbox(
+            "Use beam/girder spacing as tributary width",
+            value=bool(values.get("use_girder_spacing_as_tributary_width", True)),
+            key="building_member_assembly_use_spacing_as_tributary_width",
+            help="Recommended default for ordinary interior building beams/girders.",
+        )
+        if values["use_girder_spacing_as_tributary_width"]:
+            values["tributary_width_m"] = float(values["girder_spacing_m"])
+            st.caption(f"Load tributary width is locked to member spacing = {float(values['girder_spacing_m']):.3f} m.")
+        else:
+            values["tributary_width_m"] = st.number_input(
+                "Tributary width for SDL/LL load take-down (m)",
+                min_value=0.1,
+                step=0.1,
+                value=float(values.get("tributary_width_m") or values.get("girder_spacing_m") or DEFAULT_GIRDER_SPACING_M),
+                format="%.3f",
+                key="building_member_assembly_tributary_width_m_input",
+                help="Override only for edge beams, openings, or special load paths.",
+            )
+        values.setdefault("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)
+        normalized = system_settings_from_mapping(values).as_metadata()
+        st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized
+        _sync_beam_girder_span_to_existing_sources(normalized)
+        summary = system_settings_from_mapping(normalized)
+        st.markdown(
+            _kv_panel_html(
+                [
+                    ("Span source", f"{summary.span_length_m:.3f} m"),
+                    ("Beam/girder spacing", f"{summary.girder_spacing_m:.3f} m"),
+                    ("Load tributary width", f"{summary.effective_tributary_width_m:.3f} m"),
+                    ("Concrete unit weight", f"{summary.concrete_unit_weight_kN_m3:.2f} kN/m³"),
+                ]
+            ),
+            unsafe_allow_html=True,
+        )
+
+
+def _render_section_assembly_panel(preset: dict[str, Any]) -> None:
+    """Render workflow-specific assembly controls in Section Builder."""
+
+    settings = _analysis_mode_from_session_state()
+    if is_bridge_beam_girder_workflow(settings):
+        _render_bridge_section_assembly_panel(preset, settings)
+    elif is_building_beam_girder_workflow(settings):
+        _render_building_member_assembly_panel(preset, settings)
 
 
 def _render_concrete_material_assignment(preset: dict[str, Any]) -> dict[str, Any]:
@@ -1892,6 +2144,9 @@ def _render_section_definition_panel(
 
         with st.expander("Concrete Material Assignment", expanded=False):
             material_assignment = _render_concrete_material_assignment(preset)
+
+        with st.expander("Section / Member Assembly", expanded=False):
+            _render_section_assembly_panel(preset)
 
         _render_section_builder_status_strip(preset, material_assignment)
 

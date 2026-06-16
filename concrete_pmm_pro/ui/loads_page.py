@@ -1893,7 +1893,7 @@ def _render_building_beam_girder_service_load_inputs() -> None:
         basis_cols[2].metric("Tributary width", f"{system.effective_tributary_width_m:.3f} m")
         basis_cols[3].metric("Code basis", "ACI 318")
         basis_cols[4].metric("Bridge SDL", "Not used")
-        st.caption("Spacing and tributary width come from Setup → Building Beam/Girder System Settings. Change them in Setup, not in this Loads panel.")
+        st.caption("Spacing and tributary width come from Sections → Section Builder → Building Member Assembly. Change them in Section Builder, not in this Loads panel.")
 
         stage_cols = st.columns(3)
         with stage_cols[0]:
@@ -2014,7 +2014,7 @@ def _render_beam_girder_auto_sls_load_component_inputs() -> None:
         sys_cols[1].metric("Girder spacing", f"{system.girder_spacing_m:.3f} m")
         sys_cols[2].metric("Number of girders", f"{system.number_of_girders:d}")
         sys_cols[3].metric("Tributary width", f"{system.effective_tributary_width_m:.3f} m")
-        st.caption("These values come from Setup → Beam/Girder System Settings. Change them there, not inside this load-component panel.")
+        st.caption("These values come from Sections → Section Builder → Bridge Section Assembly. Change them there, not inside this load-component panel.")
 
         stage_cols = st.columns(3)
         with stage_cols[0]:

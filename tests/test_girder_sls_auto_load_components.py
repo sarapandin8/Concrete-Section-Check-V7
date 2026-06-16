@@ -21,6 +21,7 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "project_page.py").read_text(encoding="utf-8")
+SECTION_BUILDER_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "section_builder.py").read_text(encoding="utf-8")
 LOADS_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "loads_page.py").read_text(encoding="utf-8")
 ANALYSIS_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "analysis_page.py").read_text(encoding="utf-8")
 
@@ -111,9 +112,9 @@ def test_project_io_preserves_beam_girder_system_and_auto_load_settings() -> Non
 
 
 def test_source_files_have_sls5a_ui_and_analysis_guardrails() -> None:
-    assert "Beam/Girder System Settings" in PROJECT_SOURCE
-    assert "Number of girders" in PROJECT_SOURCE
-    assert "Tributary width for load take-down" in PROJECT_SOURCE
+    assert "Bridge Section Assembly" in SECTION_BUILDER_SOURCE
+    assert "Number of girders" in SECTION_BUILDER_SOURCE
+    assert "Tributary width for load take-down" in SECTION_BUILDER_SOURCE
     render_project_source = PROJECT_SOURCE.split("def render_project_page() -> None:", 1)[1]
     setup_editor_source = PROJECT_SOURCE.split("def _render_project_setup_editor", 1)[1].split(
         "def _render_project_file_actions", 1
@@ -121,8 +122,8 @@ def test_source_files_have_sls5a_ui_and_analysis_guardrails() -> None:
     assert render_project_source.index("_render_analysis_mode_selector") < render_project_source.index(
         "_render_project_setup_editor(analysis_mode)"
     )
-    assert "_render_workflow_system_settings(analysis_mode)" in setup_editor_source
-    assert 'if analysis_mode.member_type == "beam_girder":\n        _render_beam_girder_system_settings()' in PROJECT_SOURCE
+    assert "_render_workflow_system_settings" not in PROJECT_SOURCE
+    assert "_render_bridge_section_assembly_panel" in SECTION_BUILDER_SOURCE
     assert "Beam/Girder SLS Auto Load Components" in LOADS_SOURCE
     assert "Barrier / Parapet / Sidewalk total area for both sides" in LOADS_SOURCE
     assert "Import LL+IM only from CSiBridge" in LOADS_SOURCE

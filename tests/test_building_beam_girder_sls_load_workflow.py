@@ -21,6 +21,7 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 PROJECT_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "project_page.py").read_text(encoding="utf-8")
+SECTION_BUILDER_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "section_builder.py").read_text(encoding="utf-8")
 LOADS_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "loads_page.py").read_text(encoding="utf-8")
 ANALYSIS_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "analysis_page.py").read_text(encoding="utf-8")
 
@@ -142,12 +143,12 @@ def test_building_auto_load_breakdown_uses_building_loads_not_bridge_sdl() -> No
     assert "Wearing surface" not in service_components
 
 def test_building_workflow_ui_hides_bridge_sdl_and_exposes_building_sdl() -> None:
-    assert "Building Beam/Girder System Settings" in PROJECT_SOURCE
-    assert "Beam / Girder spacing" in PROJECT_SOURCE
-    assert "Use beam/girder spacing as tributary width" in PROJECT_SOURCE
-    assert "Tributary width for SDL/LL load take-down" in PROJECT_SOURCE
+    assert "Building Member Assembly" in SECTION_BUILDER_SOURCE
+    assert "Beam / girder spacing" in SECTION_BUILDER_SOURCE
+    assert "Use beam/girder spacing as tributary width" in SECTION_BUILDER_SOURCE
+    assert "Tributary width for SDL/LL load take-down" in SECTION_BUILDER_SOURCE
     assert "Beam/Girder spacing" in LOADS_SOURCE
-    assert "Bridge SDL" in PROJECT_SOURCE
+    assert "Bridge-only girder counts" in SECTION_BUILDER_SOURCE
     assert "Building Beam/Girder ACI Service Load Components" in LOADS_SOURCE
     assert "SDL (kN/m²)" in LOADS_SOURCE
     assert "LL (kN/m²)" in LOADS_SOURCE
