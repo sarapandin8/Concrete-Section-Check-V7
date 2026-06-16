@@ -4062,6 +4062,64 @@ def _strand_layout_existing_rows_by_group(table: pd.DataFrame | None) -> list[di
     return rows
 
 
+
+def _mirror_railway_u_girder_symmetric_debonding_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mirror Railway U-Girder debond metadata between L/R rows.
+
+    In symmetric Railway U-Girder detailing mode, the left web is the primary
+    editing side.  The opposite web is kept matched automatically so users do
+    not have to enter the same debonded strand numbers and sleeve lengths twice.
+    If legacy data contains only an R-row value, the value is copied back to the
+    L row rather than silently discarded.
+    """
+
+    by_row: dict[int, dict[str, dict[str, Any]]] = {}
+    for row in rows:
+        group = str(row.get("Group ID") or "").strip()
+        row_number = _strand_row_number_from_group_id(group)
+        if row_number is None:
+            continue
+        side = ""
+        if group.upper().startswith("L "):
+            side = "L"
+        elif group.upper().startswith("R "):
+            side = "R"
+        if side:
+            by_row.setdefault(row_number, {})[side] = row
+
+    mirror_fields = ["Left debond m", "Right debond m", "Debonded strand nos", "Debond pattern mm"]
+
+    def has_debond_metadata(row: dict[str, Any] | None) -> bool:
+        if not row:
+            return False
+        left = float(_to_float(row.get("Left debond m")) or 0.0)
+        right = float(_to_float(row.get("Right debond m")) or 0.0)
+        selected = str(row.get("Debonded strand nos") or "").strip()
+        pattern = str(row.get("Debond pattern mm") or "").strip()
+        return left > 1e-9 or right > 1e-9 or bool(selected) or bool(pattern)
+
+    for pair in by_row.values():
+        left_row = pair.get("L")
+        right_row = pair.get("R")
+        if left_row is None or right_row is None:
+            continue
+        source = left_row if has_debond_metadata(left_row) or not has_debond_metadata(right_row) else right_row
+        target = right_row if source is left_row else left_row
+        for field in mirror_fields:
+            target[field] = source.get(field)
+        # Keep the sleeve convention symmetric at each end for both sides.
+        for row in (left_row, right_row):
+            left_length = float(_to_float(row.get("Left debond m")) or 0.0)
+            right_length = float(_to_float(row.get("Right debond m")) or 0.0)
+            controlling = max(left_length, right_length)
+            row["Left debond m"] = controlling
+            row["Right debond m"] = controlling
+            note = str(row.get("Note") or "")
+            mirror_note = "Railway U-Girder symmetric mode: L/R debond metadata is mirrored automatically."
+            if mirror_note not in note:
+                row["Note"] = (note + " " + mirror_note).strip()
+    return rows
+
 def _normalize_girder_strand_layout_table(
     table: pd.DataFrame | None,
     *,
@@ -4163,6 +4221,8 @@ def _normalize_girder_strand_layout_table(
                 "Note": str(current.get("Note") or "").strip(),
             }
         )
+    if _is_railway_u_girder_geometry(geometry) and debond_model == "Symmetric left/right":
+        rows = _mirror_railway_u_girder_symmetric_debonding_rows(rows)
     return pd.DataFrame(rows, columns=GIRDER_STRAND_LAYOUT_COLUMNS)
 
 
@@ -5188,8 +5248,11 @@ def _plot_girder_longitudinal_debonding_layout(
     y_tick_values: list[float] = []
     y_tick_labels: list[str] = []
     legend_seen: set[str] = set()
-    row_gap = 0.34
-    row_base = 0.60
+    # Keep row spacing generous enough for engineering labels even when the app
+    # viewport is compressed.  Labels are drawn as paper-referenced annotations
+    # rather than y-axis tick text so they do not collide with the plot axis.
+    row_gap = 0.50
+    row_base = 0.72
     row_y_values = [row_base + i * row_gap for i in range(len(rows))]
     outline_bottom = 0.28
     outline_top = row_base + row_gap * (len(rows) + 1.35)
@@ -5230,8 +5293,8 @@ def _plot_girder_longitudinal_debonding_layout(
             status = "Fully bonded"
 
         y_tick_values.append(y)
-        per_web_suffix = "<br>one web" if one_side_schematic else ""
-        y_tick_labels.append(f"{escape(group)}<br>{count} total · {debonded_count} debonded{per_web_suffix}")
+        tick_suffix = " · one web" if one_side_schematic else ""
+        y_tick_labels.append(f"{escape(group)} · {debonded_count} debonded{tick_suffix}")
 
         if bonded_count > 0 and debonded_count > 0:
             name = "Bonded throughout"
@@ -5323,12 +5386,15 @@ def _plot_girder_longitudinal_debonding_layout(
         # Row-end count label, kept compact to avoid CAD-style clutter.
         debond_text = "bonded only" if debonded_count == 0 else f"{debonded_count} of {count} debonded"
         fig.add_annotation(
-            x=span + 0.012 * span,
+            x=1.006,
             y=y,
+            xref="paper",
+            yref="y",
             text=f"{escape(group)}: {debond_text}",
             showarrow=False,
             xanchor="left",
             yanchor="middle",
+            align="left",
             font={"size": 10, "color": "#334155"},
         )
 
@@ -5368,8 +5434,8 @@ def _plot_girder_longitudinal_debonding_layout(
     if one_side_schematic:
         title_text += " — one web shown, mirrored to the opposite web"
     fig.update_layout(
-        height=max(440, 190 + 54 * max(len(rows), 1)),
-        margin={"l": 118, "r": 168, "t": 64, "b": 104},
+        height=max(500, 230 + 64 * max(len(rows), 1)),
+        margin={"l": 182, "r": 190, "t": 66, "b": 118},
         xaxis_title="station x from left support (m)",
         yaxis={"tickmode": "array", "tickvals": y_tick_values, "ticktext": y_tick_labels, "title": "strand row"},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.03, "xanchor": "left", "x": 0.0},
@@ -5377,7 +5443,7 @@ def _plot_girder_longitudinal_debonding_layout(
         title={"text": title_text, "font": {"size": 14}},
         plot_bgcolor="white",
     )
-    fig.update_xaxes(range=[-0.04 * span, 1.18 * span], gridcolor="rgba(0,0,0,0.08)", zeroline=False)
+    fig.update_xaxes(range=[-0.02 * span, 1.02 * span], gridcolor="rgba(0,0,0,0.08)", zeroline=False)
     y_min = dim_y0 - dim_drop * (max(len(unique_left_dims), len(unique_right_dims), 1) + 0.55)
     fig.update_yaxes(range=[y_min, outline_top + 0.62], gridcolor="rgba(0,0,0,0.08)")
     return fig
@@ -5569,6 +5635,7 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
     st.caption(
         "🟨 Primary input columns: strand size, number of strands, editable strand x coordinates, y-position, left/right debond lengths, optional debonded strand numbers, and stage Pe per strand. "
         "Defaults use 12.7 mm low-relaxation strand. Railway U-Girder uses the drawing-based 72-strand layout; Box/Plank presets use practical BP1 layouts; other girders use 2 rows at y=50/100 mm, 45 mm edge CL, and 50 mm x/y spacing. "
+        "For Railway U-Girder symmetric detailing, enter debonding on L rows; matching R rows are auto-mirrored. "
         "Area, minimum spacing, total Aps, and row debond summaries are auto-calculated."
     )
     edited = st.data_editor(

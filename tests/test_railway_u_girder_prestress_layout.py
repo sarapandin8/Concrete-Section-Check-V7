@@ -182,3 +182,60 @@ def test_debond_pattern_is_not_primary_editor_column() -> None:
     source = (root / "concrete_pmm_pro" / "ui" / "prestress_page.py").read_text(encoding="utf-8")
     assert "Debond pattern (mm)" not in source
     assert "Debond pattern mm" not in source.split("GIRDER_STRAND_LAYOUT_EDITOR_COLUMNS = [", 1)[1].split("]", 1)[0]
+
+
+def test_railway_u_girder_symmetric_mode_mirrors_l_rows_to_r_rows(monkeypatch) -> None:
+    _install_streamlit_stub(monkeypatch)
+
+    from concrete_pmm_pro.ui.prestress_page import (
+        _normalize_girder_strand_layout_table,
+        _railway_u_girder_default_strand_layout_table,
+    )
+
+    geometry = _railway_geometry()
+    raw = _railway_u_girder_default_strand_layout_table(geometry)
+    raw.loc[raw["Group ID"] == "L Row 1", "Debonded strand nos"] = "1,9"
+    raw.loc[raw["Group ID"] == "L Row 1", "Left debond m"] = 2.0
+    raw.loc[raw["Group ID"] == "L Row 1", "Right debond m"] = 2.0
+    raw.loc[raw["Group ID"] == "L Row 2", "Debonded strand nos"] = "1,9"
+    raw.loc[raw["Group ID"] == "L Row 2", "Left debond m"] = 1.0
+    raw.loc[raw["Group ID"] == "L Row 2", "Right debond m"] = 1.0
+
+    table = _normalize_girder_strand_layout_table(raw, span_length_m=10.0, debond_model="Symmetric left/right", geometry=geometry)
+
+    l1 = table.loc[table["Group ID"] == "L Row 1"].iloc[0]
+    r1 = table.loc[table["Group ID"] == "R Row 1"].iloc[0]
+    assert r1["Debonded strand nos"] == l1["Debonded strand nos"] == "1,9"
+    assert r1["Left debond m"] == l1["Left debond m"] == 2.0
+    assert r1["Right debond m"] == l1["Right debond m"] == 2.0
+
+    l2 = table.loc[table["Group ID"] == "L Row 2"].iloc[0]
+    r2 = table.loc[table["Group ID"] == "R Row 2"].iloc[0]
+    assert r2["Debonded strand nos"] == l2["Debonded strand nos"] == "1,9"
+    assert r2["Left debond m"] == l2["Left debond m"] == 1.0
+    assert r2["Right debond m"] == l2["Right debond m"] == 1.0
+
+
+def test_debond_elevation_uses_paper_annotations_for_non_overlapping_row_labels(monkeypatch) -> None:
+    _install_streamlit_stub(monkeypatch)
+
+    from concrete_pmm_pro.ui.prestress_page import (
+        _normalize_girder_strand_layout_table,
+        _plot_girder_longitudinal_debonding_layout,
+        _railway_u_girder_default_strand_layout_table,
+    )
+
+    geometry = _railway_geometry()
+    raw = _railway_u_girder_default_strand_layout_table(geometry)
+    raw.loc[raw["Group ID"] == "L Row 1", "Debonded strand nos"] = "1,9"
+    raw.loc[raw["Group ID"] == "L Row 1", "Left debond m"] = 2.0
+    raw.loc[raw["Group ID"] == "L Row 1", "Right debond m"] = 2.0
+    table = _normalize_girder_strand_layout_table(raw, span_length_m=10.0, debond_model="Symmetric left/right", geometry=geometry)
+    fig = _plot_girder_longitudinal_debonding_layout(table, 10.0, one_side_schematic=True)
+
+    assert fig.layout.height >= 500
+    assert fig.layout.margin.l >= 180
+    tick_text = list(fig.layout.yaxis.ticktext)
+    assert len(tick_text) == 5
+    assert any("Row 1" in text and "2 debonded" in text for text in tick_text)
+    assert all("<br>" not in text for text in tick_text)
