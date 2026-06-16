@@ -44,7 +44,8 @@ def test_railway_u_girder_is_enabled_for_dedicated_strand_layout(monkeypatch) ->
     assert prestress_page.RAILWAY_U_GIRDER_PRESET_KEY == "railway_u_girder"
     assert "railway_u_girder" in prestress_page.GIRDER_PRESTRESS_UI_PRESET_KEYS
     assert "Debond pattern mm" in prestress_page.GIRDER_STRAND_LAYOUT_COLUMNS
-    assert "Debond pattern mm" in prestress_page.GIRDER_STRAND_LAYOUT_EDITOR_COLUMNS
+    assert "Debond pattern mm" not in prestress_page.GIRDER_STRAND_LAYOUT_EDITOR_COLUMNS
+    assert "Debond pattern mm" not in prestress_page.GIRDER_STRAND_LAYOUT_AUDIT_COLUMNS
     assert "1000, 2000" in prestress_page.__dict__["_parse_debond_pattern_mm"].__doc__
 
 
@@ -162,11 +163,22 @@ def test_railway_u_girder_cross_section_layout_uses_readable_inspection_viewport
     assert row_annotations[-1].text == "Row 5 · total 8 · B=8 · U=0"
 
 
-def test_project_io_preserves_strand_x_positions_and_debond_pattern_source() -> None:
+def test_project_io_preserves_strand_x_positions_and_legacy_debond_pattern_source() -> None:
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
     source = (root / "concrete_pmm_pro" / "io" / "project_io.py").read_text(encoding="utf-8")
     assert "Strand x positions mm" in source
     assert "Debonded strand nos" in source
+    # Legacy drawing-symbol metadata remains load/save compatible, but it is no
+    # longer a primary editable input in the Prestress table.
     assert "Debond pattern mm" in source
+
+
+def test_debond_pattern_is_not_primary_editor_column() -> None:
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = (root / "concrete_pmm_pro" / "ui" / "prestress_page.py").read_text(encoding="utf-8")
+    assert "Debond pattern (mm)" not in source
+    assert "Debond pattern mm" not in source.split("GIRDER_STRAND_LAYOUT_EDITOR_COLUMNS = [", 1)[1].split("]", 1)[0]

@@ -729,6 +729,15 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Moves row labels into the right paper margin and consolidates symmetric left/right row labels so dense 72-strand Railway U-Girder layouts read clearly.
 - Keeps strand coordinates, debond metadata, prestress force/loss logic, geometry, solver, report, and project schema unchanged.
 
+
+### PRESTRESS.DEBOND.VIEW2 — Debonding Schematic Label Cleanup
+
+- Removes `Debond pattern (mm)` from the primary editable strand-layout table; left/right debond length and debonded strand numbers are the source of truth.
+- Keeps legacy `Debond pattern mm` backend metadata load/save compatible while deriving the visible row summary from the active inputs.
+- Replaces ambiguous schedule wording with a computed `Debond summary` and explicit `... from left/right end` dimension labels.
+- Removes repeated per-row sleeve-length labels from the schematic and increases bottom spacing to prevent left-end annotation overlap.
+- No solver, effective prestress, prestress loss, SLS/ULS, geometry, section-property, report, or project-schema calculation changes.
+
 ### SECTION.ASSEMBLY2 — Railway U-Girder Assembly Panel Alignment
 
 - Replaces the Railway U-Girder assembly editor with rail-specific controls in Section Builder.

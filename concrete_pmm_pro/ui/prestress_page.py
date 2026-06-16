@@ -324,8 +324,11 @@ GIRDER_STRAND_LAYOUT_NUMERIC_COLUMNS = [
     "Right debond m",
 ]
 
-# Compact editor columns shown by default. Derived detailing values are still
-# preserved in the backend table and shown in an audit expander.
+# Compact editor columns shown by default. The debond pattern shown to the
+# engineer is now derived from left/right debond length + debonded strand
+# numbers. Legacy Debond pattern metadata remains in the backend table for
+# old project compatibility, but it is intentionally not an editable primary
+# input column.
 GIRDER_STRAND_LAYOUT_EDITOR_COLUMNS = [
     "Active",
     "Group ID",
@@ -336,7 +339,6 @@ GIRDER_STRAND_LAYOUT_EDITOR_COLUMNS = [
     "Left debond m",
     "Right debond m",
     "Debonded strand nos",
-    "Debond pattern mm",
     "Note",
 ]
 
@@ -355,7 +357,6 @@ GIRDER_STRAND_LAYOUT_AUDIT_COLUMNS = [
     "Left debond m",
     "Right debond m",
     "Debonded strand nos",
-    "Debond pattern mm",
 ]
 
 GIRDER_DEBOND_MODE_OPTIONS = [
@@ -4657,12 +4658,12 @@ def _girder_debonding_schedule_dataframe(table: pd.DataFrame, span_length_m: flo
         bonded_count = max(0, count - debonded_count)
         row_number = _strand_row_number_from_group_id(group)
         default_row_debond = _railway_u_girder_default_debond_length_for_row_m(row_number, span_length_m) if row_number is not None else None
-        pattern = "—"
+        summary = "Bonded only"
         if debonded_count > 0:
             if abs(left - right) <= 1e-9:
-                pattern = f"{debonded_count} @ {left:.3f} m"
+                summary = f"{debonded_count} strand(s) @ {left:.3f} m each end"
             else:
-                pattern = f"{debonded_count} @ L={left:.3f} m / R={right:.3f} m"
+                summary = f"{debonded_count} strand(s): left {left:.3f} m / right {right:.3f} m"
         rows.append(
             {
                 "Group ID": group,
@@ -4672,7 +4673,7 @@ def _girder_debonding_schedule_dataframe(table: pd.DataFrame, span_length_m: flo
                 "Debonded strand nos": ", ".join(str(value) for value in debonded_numbers) if debonded_numbers else "—",
                 "Selection mode": "Individual" if explicit_numbers else ("Row-based all" if debonded_count else "None"),
                 "Debond status": status,
-                "Debond pattern": pattern,
+                "Debond summary": summary,
                 "Default row debond m": "—" if default_row_debond is None else f"{default_row_debond:.3f}",
                 "Left debond m": left,
                 "Right debond m": right,
@@ -5304,10 +5305,6 @@ def _plot_girder_longitudinal_debonding_layout(
                 )
                 legend_seen.add(name)
                 unique_right_dims.add(round(right, 6))
-            if left > 1e-9:
-                fig.add_annotation(x=left / 2.0, y=y + 0.12, text=f"{left * 1000:.0f} mm", showarrow=False, font={"size": 10, "color": "#7f1d1d"})
-            if right > 1e-9:
-                fig.add_annotation(x=span - right / 2.0, y=y + 0.12, text=f"{right * 1000:.0f} mm", showarrow=False, font={"size": 10, "color": "#7f1d1d"})
         else:
             name = "Bonded"
             fig.add_trace(
@@ -5336,27 +5333,43 @@ def _plot_girder_longitudinal_debonding_layout(
         )
 
     # Compact dimension ticks from each end for the unique sleeve lengths in view.
-    dim_y0 = outline_bottom - 0.08
-    dim_drop = 0.12
+    dim_y0 = outline_bottom - 0.18
+    dim_drop = 0.16
     for level, length in enumerate(sorted(value for value in unique_left_dims if value > 1e-9), start=1):
         y_dim = dim_y0 - dim_drop * level
         fig.add_shape(type="line", x0=0.0, x1=length, y0=y_dim, y1=y_dim, line={"color": dimension_color, "width": 1})
         fig.add_shape(type="line", x0=0.0, x1=0.0, y0=y_dim - 0.035, y1=y_dim + 0.035, line={"color": dimension_color, "width": 1})
         fig.add_shape(type="line", x0=length, x1=length, y0=y_dim - 0.035, y1=y_dim + 0.035, line={"color": dimension_color, "width": 1})
-        fig.add_annotation(x=length / 2.0, y=y_dim - 0.045, text=f"{length * 1000:.0f}", showarrow=False, font={"size": 10, "color": "#92400e"})
+        fig.add_annotation(
+            x=length / 2.0,
+            y=y_dim - 0.055,
+            text=f"{length * 1000:.0f} mm from left end",
+            showarrow=False,
+            xanchor="center",
+            yanchor="top",
+            font={"size": 10, "color": "#92400e"},
+        )
     for level, length in enumerate(sorted(value for value in unique_right_dims if value > 1e-9), start=1):
         y_dim = dim_y0 - dim_drop * level
         fig.add_shape(type="line", x0=span - length, x1=span, y0=y_dim, y1=y_dim, line={"color": dimension_color, "width": 1})
         fig.add_shape(type="line", x0=span - length, x1=span - length, y0=y_dim - 0.035, y1=y_dim + 0.035, line={"color": dimension_color, "width": 1})
         fig.add_shape(type="line", x0=span, x1=span, y0=y_dim - 0.035, y1=y_dim + 0.035, line={"color": dimension_color, "width": 1})
-        fig.add_annotation(x=span - length / 2.0, y=y_dim - 0.045, text=f"{length * 1000:.0f}", showarrow=False, font={"size": 10, "color": "#92400e"})
+        fig.add_annotation(
+            x=span - length / 2.0,
+            y=y_dim - 0.055,
+            text=f"{length * 1000:.0f} mm from right end",
+            showarrow=False,
+            xanchor="center",
+            yanchor="top",
+            font={"size": 10, "color": "#92400e"},
+        )
 
     title_text = "Debonding elevation schematic"
     if one_side_schematic:
         title_text += " — one web shown, mirrored to the opposite web"
     fig.update_layout(
         height=max(440, 190 + 54 * max(len(rows), 1)),
-        margin={"l": 118, "r": 168, "t": 64, "b": 72},
+        margin={"l": 118, "r": 168, "t": 64, "b": 104},
         xaxis_title="station x from left support (m)",
         yaxis={"tickmode": "array", "tickvals": y_tick_values, "ticktext": y_tick_labels, "title": "strand row"},
         legend={"orientation": "h", "yanchor": "bottom", "y": 1.03, "xanchor": "left", "x": 0.0},
@@ -5556,7 +5569,7 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
     st.caption(
         "🟨 Primary input columns: strand size, number of strands, editable strand x coordinates, y-position, left/right debond lengths, optional debonded strand numbers, and stage Pe per strand. "
         "Defaults use 12.7 mm low-relaxation strand. Railway U-Girder uses the drawing-based 72-strand layout; Box/Plank presets use practical BP1 layouts; other girders use 2 rows at y=50/100 mm, 45 mm edge CL, and 50 mm x/y spacing. "
-        "Area, minimum spacing, and total Aps are auto-calculated."
+        "Area, minimum spacing, total Aps, and row debond summaries are auto-calculated."
     )
     edited = st.data_editor(
         table,
@@ -5589,10 +5602,6 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
             "Debonded strand nos": st.column_config.TextColumn(
                 "🟨 Debonded strand nos",
                 help="Optional PS6A individual selection, e.g. 1,2,18,19 or 1-4. Blank keeps PS5 row-based all-strands debonding when L/R debond length is nonzero.",
-            ),
-            "Debond pattern mm": st.column_config.TextColumn(
-                "Debond pattern (mm)",
-                help="Optional per-strand drawing symbols only: enter 0/1000/2000/3000/4000/5000 for each strand. This preview metadata does not change station-based analysis yet.",
             ),
             "Note": st.column_config.TextColumn("Note"),
         },

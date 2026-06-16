@@ -316,8 +316,11 @@ def test_longitudinal_debonding_plot_shows_sleeve_symbols_with_streamlit_stub(mo
 
     assert "Debonded sleeve" in trace_names
     assert "Bonded after sleeve" in trace_names
-    assert any(annotation.text == "1000 mm" for annotation in fig.layout.annotations)
-    assert any(annotation.text == "2000 mm" for annotation in fig.layout.annotations)
+    annotation_texts = [annotation.text for annotation in fig.layout.annotations]
+    assert "1000 mm from left end" in annotation_texts
+    assert "2000 mm from right end" in annotation_texts
+    assert "1000 mm" not in annotation_texts
+    assert "2000 mm" not in annotation_texts
     bonded_traces = [trace for trace in fig.data if trace.name == "Bonded after sleeve"]
     assert bonded_traces
     assert all(trace.line.color == "#1f77b4" for trace in bonded_traces)
@@ -1911,8 +1914,15 @@ def test_debonding_elevation_one_web_schematic_summarizes_row_counts(monkeypatch
     assert "Row 1" in tick_text[0]
     assert "2 debonded" in tick_text[0]
     assert "one web" in tick_text[0]
-    assert any(annotation.text == "2000 mm" for annotation in fig.layout.annotations)
+    annotation_texts = [annotation.text for annotation in fig.layout.annotations]
+    assert "2000 mm" not in annotation_texts
+    assert "2000 mm from left end" in annotation_texts
+    assert "2000 mm from right end" in annotation_texts
+    # Debond length labels are carried by the dimension lines, not repeated on
+    # each strand row where they would overlap the left-end annotations.
+    assert annotation_texts.count("2000 mm from left end") == 1
+    assert annotation_texts.count("2000 mm from right end") == 1
     schedule = _girder_debonding_schedule_dataframe(table, span_length_m=10.0)
     assert schedule.loc[0, "Debonded strands"] == 2
-    assert schedule.loc[0, "Debond pattern"] == "2 @ 2.000 m"
+    assert schedule.loc[0, "Debond summary"] == "2 strand(s) @ 2.000 m each end"
     assert schedule.loc[0, "Default row debond m"] == "2.000"
