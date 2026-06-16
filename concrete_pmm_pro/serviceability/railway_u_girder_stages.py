@@ -22,6 +22,14 @@ from shapely.geometry import Polygon
 from concrete_pmm_pro.core.models import Point2D, SectionGeometry
 from concrete_pmm_pro.geometry.summary import summarize_geometry
 from concrete_pmm_pro.serviceability.girder_prestress import run_girder_prestress_stress_effect
+from concrete_pmm_pro.serviceability.girder_code_limits import (
+    STAGE_DECK_CASTING,
+    STAGE_FINAL_SERVICE,
+    STAGE_TRANSFER,
+    StressLimitInputRow,
+    default_girder_sls_limit_profile,
+    run_girder_service_stress_limit_check,
+)
 from concrete_pmm_pro.serviceability.girder_prestress_station import (
     evaluate_girder_prestress_station,
     station_candidates_from_debonding,
@@ -52,6 +60,21 @@ RAILWAY_UGIRDER_SLS_PREVIEW_COLUMNS = [
     "Effective strands",
     "Active group IDs",
     "Preview note",
+]
+
+RAILWAY_UGIRDER_SLS_LIMIT_COLUMNS = [
+    "Stage",
+    "Station x (m)",
+    "Section basis",
+    "Concrete strength used (MPa)",
+    "Limit stage profile",
+    "Top total (MPa)",
+    "Bottom total (MPa)",
+    "Top status",
+    "Bottom status",
+    "Overall status",
+    "Max utilization",
+    "Limit note",
 ]
 
 
@@ -462,6 +485,121 @@ def railway_u_girder_stage_governing_rows(df: pd.DataFrame) -> pd.DataFrame:
                 "Max tension (MPa)": tens["Max tension (MPa)"],
                 "Section basis": str(comp.get("Section basis") or ""),
                 "Preview note": str(comp.get("Preview note") or ""),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _railway_u_girder_limit_stage_for_preview(stage: str, settings: Mapping[str, Any] | None) -> tuple[str, float, str]:
+    """Return (code-limit stage, concrete strength, note) for a staged preview row.
+
+    This helper deliberately keeps Railway U-Girder limits as a preview layer.
+    The stress values are generated elsewhere; this function only assigns the
+    editable code-profile context and concrete strength used for the limit table.
+    """
+
+    settings = dict(settings or {})
+    web_fc = _positive(settings.get("web_fc_MPa"), 45.0)
+    web_fci = _positive(settings.get("web_fci_MPa"), 36.0)
+    slab_fc = _positive(settings.get("slab_fc_MPa"), 35.0)
+    name = str(stage or "").strip().lower()
+    if name == "transfer":
+        return STAGE_TRANSFER, web_fci, "Transfer/release preview uses one precast web and f'ci(web)."
+    if name == "lifting":
+        return STAGE_TRANSFER, web_fci, "Temporary lifting preview uses transfer-stage web strength f'ci(web)."
+    if name == "wet slab casting":
+        return STAGE_DECK_CASTING, web_fc, "Wet slab casting preview uses one precast web and f'c(web)."
+    if name == "service pe reference":
+        return (
+            STAGE_FINAL_SERVICE,
+            min(web_fc, slab_fc),
+            "Full-U Pe-only reference uses min(f'c web, f'c slab) for a conservative preview; service loads remain outside this table.",
+        )
+    return STAGE_FINAL_SERVICE, web_fc, "User-defined Railway U-Girder preview stage."
+
+
+def railway_u_girder_staged_stress_limit_check_dataframe(
+    stress_df: pd.DataFrame,
+    *,
+    settings: Mapping[str, Any] | None,
+    code: str = "AASHTO LRFD Bridge",
+) -> pd.DataFrame:
+    """Check staged Railway U-Girder stress-preview rows against editable limits.
+
+    SLS.RAIL.UGIRDER2 adds a stage-aware limit-check handoff without changing
+    the stress solver.  It is intentionally conservative/guarded:
+    - Transfer and lifting use f'ci(web).
+    - Wet slab casting uses f'c(web).
+    - The full-U service row remains Pe-reference only and uses min(web/slab f'c)
+      unless a later transformed locked-in service workflow supersedes it.
+    """
+
+    if stress_df is None or pd.DataFrame(stress_df).empty:
+        return pd.DataFrame(columns=RAILWAY_UGIRDER_SLS_LIMIT_COLUMNS)
+    df = pd.DataFrame(stress_df).copy()
+    rows: list[dict[str, Any]] = []
+    for _, source in df.iterrows():
+        stage = str(source.get("Stage") or "")
+        limit_stage, fc, note = _railway_u_girder_limit_stage_for_preview(stage, settings)
+        profile = default_girder_sls_limit_profile(code=code, stage=limit_stage)
+        top = _float_value(source.get("Top total (MPa)", source.get("Top service+Pe (MPa)")), 0.0)
+        bottom = _float_value(source.get("Bottom total (MPa)", source.get("Bottom service+Pe (MPa)")), 0.0)
+        result = run_girder_service_stress_limit_check(
+            stresses=(
+                StressLimitInputRow("Top", top),
+                StressLimitInputRow("Bottom", bottom),
+            ),
+            fc_MPa=fc,
+            profile=profile,
+        )
+        point_by_fiber = {point.fiber.lower(): point for point in result.points}
+        top_point = point_by_fiber.get("top")
+        bottom_point = point_by_fiber.get("bottom")
+        rows.append(
+            {
+                "Stage": stage,
+                "Station x (m)": source.get("Station x (m)"),
+                "Section basis": source.get("Section basis"),
+                "Concrete strength used (MPa)": fc,
+                "Limit stage profile": profile.stage,
+                "Top total (MPa)": top,
+                "Bottom total (MPa)": bottom,
+                "Top status": getattr(top_point, "status", "NOT_CHECKED"),
+                "Bottom status": getattr(bottom_point, "status", "NOT_CHECKED"),
+                "Overall status": result.overall_status,
+                "Max utilization": result.max_utilization,
+                "Limit note": note,
+            }
+        )
+    return pd.DataFrame(rows, columns=RAILWAY_UGIRDER_SLS_LIMIT_COLUMNS)
+
+
+def railway_u_girder_stage_limit_governing_rows(limit_df: pd.DataFrame) -> pd.DataFrame:
+    """Return compact governing SLS-limit status rows per stage."""
+
+    if limit_df is None or pd.DataFrame(limit_df).empty:
+        return pd.DataFrame()
+    df = pd.DataFrame(limit_df).copy()
+    rows: list[dict[str, Any]] = []
+    for stage, group in df.groupby("Stage", sort=False):
+        # Prefer the highest utilization. If all are unchecked/None, fall back to
+        # the most tensile absolute station for deterministic UI behavior.
+        util = pd.to_numeric(group.get("Max utilization"), errors="coerce")
+        if util.notna().any():
+            idx = util.idxmax()
+        else:
+            idx = group.index[0]
+        row = df.loc[idx]
+        rows.append(
+            {
+                "Stage": stage,
+                "Governing x (m)": row.get("Station x (m)"),
+                "Overall status": row.get("Overall status"),
+                "Max utilization": row.get("Max utilization"),
+                "Concrete strength used (MPa)": row.get("Concrete strength used (MPa)"),
+                "Limit stage profile": row.get("Limit stage profile"),
+                "Section basis": row.get("Section basis"),
+                "Limit note": row.get("Limit note"),
             }
         )
     return pd.DataFrame(rows)

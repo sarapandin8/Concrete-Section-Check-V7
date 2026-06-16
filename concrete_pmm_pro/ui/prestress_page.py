@@ -66,6 +66,8 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
 )
 from concrete_pmm_pro.serviceability.railway_u_girder_stages import (
     railway_u_girder_stage_governing_rows,
+    railway_u_girder_stage_limit_governing_rows,
+    railway_u_girder_staged_stress_limit_check_dataframe,
     railway_u_girder_staged_stress_preview_dataframe,
 )
 from concrete_pmm_pro.serviceability.girder_prestress_station import (
@@ -5571,9 +5573,9 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
 
     st.markdown("**Railway U-Girder staged SLS stress preview**")
     st.caption(
-        "SLS.RAIL.UGIRDER1 consumes station-based debonded strand participation for a guarded staged stress preview. "
-        "Transfer, lifting, and wet slab casting use one precast web only; the service row is a full-U Pe reference. "
-        "Locked-in staged stress superposition, transfer-length ramping, development length, and final code-certified checks remain future scope."
+        "SLS.RAIL.UGIRDER1 consumes station-based debonded strand participation; SLS.RAIL.UGIRDER2 consumes station-based debonded strand participation and adds stage-aware editable stress-limit checks. "
+        "Transfer, lifting, and wet slab casting use one precast web only; the service row is still a full-U Pe reference until locked-in service-load superposition is finalized. "
+        "Locked-in staged stress superposition is still limited to this guarded handoff; transfer-length ramping, development length, anchorage/end-zone bursting, and final code-certified checks remain future scope."
     )
     strand_table = st.session_state.get("girder_strand_layout_table")
     try:
@@ -5597,7 +5599,24 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                 "Max tension (MPa)": st.column_config.NumberColumn("Max tension (MPa)", format="%.3f"),
             },
         )
-        with st.expander("Station-by-station staged stress preview", expanded=False):
+        limit_df = railway_u_girder_staged_stress_limit_check_dataframe(stress_df, settings=settings)
+        if not limit_df.empty:
+            st.markdown("**Stage stress-limit preview**")
+            st.caption(
+                "Editable preview limits are assigned by stage: transfer/lifting use f'ci(web), wet slab casting uses f'c(web), "
+                "and the full-U Pe reference uses min(f'c web, f'c slab). Review project specifications before final design."
+            )
+            limit_governing = railway_u_girder_stage_limit_governing_rows(limit_df)
+            st.dataframe(
+                limit_governing,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Max utilization": st.column_config.NumberColumn("Max utilization", format="%.3f"),
+                    "Concrete strength used (MPa)": st.column_config.NumberColumn("Concrete strength used (MPa)", format="%.2f"),
+                },
+            )
+        with st.expander("Station-by-station staged stress and limit preview", expanded=False):
             st.dataframe(
                 stress_df,
                 use_container_width=True,
@@ -5610,6 +5629,18 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                     "Bottom total (MPa)": st.column_config.NumberColumn("Bottom total (MPa)", format="%.3f"),
                 },
             )
+            if not limit_df.empty:
+                st.dataframe(
+                    limit_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Concrete strength used (MPa)": st.column_config.NumberColumn("Concrete strength used (MPa)", format="%.2f"),
+                        "Top total (MPa)": st.column_config.NumberColumn("Top total (MPa)", format="%.3f"),
+                        "Bottom total (MPa)": st.column_config.NumberColumn("Bottom total (MPa)", format="%.3f"),
+                        "Max utilization": st.column_config.NumberColumn("Max utilization", format="%.3f"),
+                    },
+                )
     else:
         st.info("Staged stress preview will appear after a valid strand layout / force-state table is available.")
 
@@ -5617,6 +5648,7 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
         st.write("- Transfer, lifting, and wet slab casting must not use the full U-section inertia.")
         st.write("- Wet slab self-weight and formwork load are applied to the two precast webs before composite action for Case B.")
         st.write("- Service preview currently reports full-U Pe reference only; service loads remain in Loads/Analysis.")
+        st.write("- Stage stress-limit rows are editable preview checks, not final code certification.")
         st.write("- Debonded strands are consumed through station-based participation as a step-function preview; transfer-length force ramping is not modeled yet.")
 
 

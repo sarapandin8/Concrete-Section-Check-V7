@@ -1,3 +1,12 @@
+
+### SLS.RAIL.UGIRDER2 — Stage Stress-Limit Preview
+
+- Adds guarded stage-aware stress-limit checks to the Railway U-Girder staged SLS preview.
+- Transfer and lifting limit checks use one precast web and `f'ci(web)`.
+- Wet slab casting limit checks use one precast web and `f'c(web)`.
+- The full-U service row remains a Pe-only reference and uses `min(f'c web, f'c slab)` as a conservative preview strength until locked-in service-load superposition is finalized.
+- No solver-equation, geometry, PMM, shear/torsion, load-import, rebar, prestress-loss, report, or project-schema calculation changes.
+
 - PRESTRESS.DEBOND.ANALYSIS1: adds an explicit station-based debonded-strand participation handoff for girder strand layouts. The new row-level station table derives effective strand count, Aps, transfer/construction/final Pe, and yps from Left/Right debond length plus Debonded strand nos, and is surfaced under Prestress → Effective prestress preview. This is a guarded step-function participation model only; no transfer-length ramp, development/anchorage check, final code-certified debonding check, or SLS/ULS stress-equation change is included.
 - PRESTRESS.DEBOND.VIEW3: cleans up Railway U-Girder debonding UI by auto-mirroring L-row debond metadata to matching R rows in symmetric left/right mode and by simplifying the Debonding along span left-side row labels into single-line, non-overlapping text. The editable source remains Left/Right debond length plus Debonded strand nos; no solver, Pe/loss, station-effective prestress, SLS/ULS, geometry, section-property, report, or project-schema equation changes.
 - PRESTRESS.DEBOND.VIEW1: replaces the Debonding along span line chart with an elevation-style debonding schematic and row summary. Railway U-Girder shows one representative web by default for symmetric left/right layouts, labels debonded strand counts per row, and uses the approved default debond length rule `max(0, L/5 - 0.5 m × (row - 1))` when debonded strand numbers are selected with zero entered length. This remains detailing/preview metadata only; no solver, Pe/loss, effective prestress, PMM, SLS, geometry, report, or project-schema equation changes.
