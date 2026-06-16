@@ -59,6 +59,11 @@ RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY = "railway_u_girder_stage_settings"
 RAILWAY_U_GIRDER_DEFAULT_WEB_FC_MPA = 45.0
 RAILWAY_U_GIRDER_DEFAULT_WEB_FCI_MPA = 36.0
 RAILWAY_U_GIRDER_DEFAULT_SLAB_FC_MPA = 35.0
+RAILWAY_U_GIRDER_DEFAULT_SPAN_LENGTH_M = 10.0
+RAILWAY_U_GIRDER_DEFAULT_FORMWORK_LOAD_KN_M2 = 2.5
+RAILWAY_U_GIRDER_DEFAULT_LIFTING_RATIO = 0.20
+RAILWAY_U_GIRDER_DEFAULT_LIFTING_IMPACT = 1.10
+RAILWAY_U_GIRDER_DEFAULT_WET_SLAB_DISTRIBUTION = 0.50
 
 
 @dataclass(frozen=True)
@@ -617,6 +622,81 @@ def _sync_beam_girder_span_to_existing_sources(settings: dict[str, Any]) -> None
             st.session_state[f"{preset_key}_girder_length_mm"] = span_length_m * 1000.0
 
 
+def _ensure_railway_u_girder_stage_settings_defaults() -> dict[str, Any]:
+    """Initialize Railway U-Girder stage settings from section assembly.
+
+    SECTION.ASSEMBLY2 keeps Railway U-Girder assembly controls rail-specific:
+    span/lifting/construction-stage fields are shown, while generic repeated
+    girder width and tributary-width fields are hidden for this preset.
+    """
+
+    existing = st.session_state.get(RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY)
+    if not isinstance(existing, dict):
+        existing = {}
+    existing.setdefault("web_fc_MPa", RAILWAY_U_GIRDER_DEFAULT_WEB_FC_MPA)
+    existing.setdefault("web_fci_MPa", RAILWAY_U_GIRDER_DEFAULT_WEB_FCI_MPA)
+    existing.setdefault("slab_fc_MPa", RAILWAY_U_GIRDER_DEFAULT_SLAB_FC_MPA)
+    existing.setdefault("concrete_unit_weight_kN_m3", DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3)
+    existing.setdefault("support_condition", "Simply supported")
+    existing.setdefault("construction_method", "Case B - wet slab carried by precast webs")
+    existing.setdefault("wet_slab_distribution_each_web", RAILWAY_U_GIRDER_DEFAULT_WET_SLAB_DISTRIBUTION)
+    existing.setdefault("formwork_construction_load_kN_m2", RAILWAY_U_GIRDER_DEFAULT_FORMWORK_LOAD_KN_M2)
+    existing.setdefault("lifting_point_ratio", RAILWAY_U_GIRDER_DEFAULT_LIFTING_RATIO)
+    existing.setdefault("lifting_impact_factor", RAILWAY_U_GIRDER_DEFAULT_LIFTING_IMPACT)
+    st.session_state[RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY] = dict(existing)
+    return dict(existing)
+
+
+def _railway_u_girder_default_span_from_sources(values: dict[str, Any], stage_settings: dict[str, Any]) -> float:
+    """Return the Railway U-Girder span default, migrating the old generic 20 m default."""
+
+    for candidate in (
+        stage_settings.get("span_length_m"),
+        values.get("span_length_m"),
+        (st.session_state.get("girder_prestress_system_settings") or {}).get("span_length_m")
+        if isinstance(st.session_state.get("girder_prestress_system_settings"), dict)
+        else None,
+    ):
+        try:
+            span = float(candidate)
+        except (TypeError, ValueError):
+            continue
+        if span > 0.0:
+            # The previous generic Beam/Girder panel defaulted Railway U-Girder
+            # to 20 m.  For this rail preset that is a stale default, not a
+            # meaningful user choice; use the agreed 10 m default instead.
+            if abs(span - DEFAULT_SPAN_LENGTH_M) <= 1e-9:
+                return RAILWAY_U_GIRDER_DEFAULT_SPAN_LENGTH_M
+            return span
+    return RAILWAY_U_GIRDER_DEFAULT_SPAN_LENGTH_M
+
+
+def _normalize_railway_u_girder_assembly_settings(values: dict[str, Any], stage_settings: dict[str, Any]) -> dict[str, Any]:
+    """Persist rail-specific assembly values under legacy metadata for downstream readers."""
+
+    span = _railway_u_girder_default_span_from_sources(values, stage_settings)
+    unit_weight = stage_settings.get("concrete_unit_weight_kN_m3", values.get("concrete_unit_weight_kN_m3"))
+    try:
+        unit_weight = float(unit_weight)
+    except (TypeError, ValueError):
+        unit_weight = DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3
+    normalized = system_settings_from_mapping(
+        {
+            "span_length_m": span,
+            # Hidden legacy fallbacks only. Railway U-Girder is not a repeated
+            # I/box/plank system, so these are not user-facing controls.
+            "girder_spacing_m": DEFAULT_GIRDER_SPACING_M,
+            "number_of_girders": 2,
+            "concrete_unit_weight_kN_m3": unit_weight,
+            "tributary_width_m": None,
+            "use_girder_spacing_as_tributary_width": False,
+        }
+    ).as_metadata()
+    st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized
+    _sync_beam_girder_span_to_existing_sources(normalized)
+    return normalized
+
+
 def _ensure_beam_girder_system_settings_defaults() -> dict[str, Any]:
     """Initialize section-specific Beam/Girder assembly settings.
 
@@ -661,14 +741,121 @@ def _assembly_unit_label(preset: dict[str, Any], settings: AnalysisModeSettings)
     if _is_precast_box_beam(preset):
         return "Number of boxes", "Box spacing / module width (m)", "Box units"
     if _is_railway_u_girder_preset(preset):
-        return "Precast webs", "Overall U-girder system width (m)", "Railway U-Girder"
+        return "Precast webs", "Railway stage control (m)", "Railway U-Girder"
     return "Number of girders", "Girder spacing (m)", "Girder units"
+
+
+def _render_railway_u_girder_assembly_panel(values: dict[str, Any]) -> None:
+    """Render rail-specific Railway U-Girder assembly settings."""
+
+    stage_settings = _ensure_railway_u_girder_stage_settings_defaults()
+    rail_span_default = _railway_u_girder_default_span_from_sources(values, stage_settings)
+    with st.container(border=True):
+        st.markdown(
+            _commercial_panel_title_html("Bridge Section Assembly", "Assembly", "Railway U-Girder", "Section-specific"),
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            '<div class="cpmm-section-note">Railway U-Girder is modeled as two precast prestressed webs connected by a cast-in-place slab. '
+            'This rail-specific assembly panel intentionally hides generic girder spacing, overall system width, and tributary-width controls.</div>',
+            unsafe_allow_html=True,
+        )
+
+        top_cols = st.columns(4)
+        with top_cols[0]:
+            span_length_m = st.number_input(
+                "Span length L (m)",
+                min_value=0.1,
+                step=0.5,
+                value=float(rail_span_default),
+                format="%.3f",
+                key="rail_ugirder_assembly_span_length_m_input",
+                help="Default is 10.0 m for the Railway U-Girder family. This value also synchronizes prestress/debond station previews.",
+            )
+        with top_cols[1]:
+            st.metric("Assembly units", "2 webs + CIP slab", help="Railway U-Girder is not a repeated-girder/box/plank system.")
+        with top_cols[2]:
+            stage_settings["concrete_unit_weight_kN_m3"] = st.number_input(
+                "Concrete unit weight (kN/m³)",
+                min_value=1.0,
+                step=0.5,
+                value=float(stage_settings.get("concrete_unit_weight_kN_m3", DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3)),
+                format="%.2f",
+                key="rail_ugirder_assembly_concrete_unit_weight_input",
+                help="Used for web self-weight and wet slab load previews.",
+            )
+        with top_cols[3]:
+            stage_settings["formwork_construction_load_kN_m2"] = st.number_input(
+                "Formwork load (kN/m²)",
+                min_value=0.0,
+                step=0.5,
+                value=float(stage_settings.get("formwork_construction_load_kN_m2", RAILWAY_U_GIRDER_DEFAULT_FORMWORK_LOAD_KN_M2)),
+                format="%.2f",
+                key="rail_ugirder_assembly_formwork_load_input",
+                help="Editable construction load during wet slab casting. It is distributed 50/50 to the two precast webs in the stage model.",
+            )
+
+        lift_cols = st.columns(4)
+        with lift_cols[0]:
+            stage_settings["lifting_point_ratio"] = st.number_input(
+                "Lifting a/L",
+                min_value=0.05,
+                max_value=0.45,
+                value=float(stage_settings.get("lifting_point_ratio", RAILWAY_U_GIRDER_DEFAULT_LIFTING_RATIO)),
+                step=0.01,
+                format="%.3f",
+                key="rail_ugirder_assembly_lifting_ratio_input",
+                help="Default 0.20L from each end for two-point lifting of each precast web.",
+            )
+        with lift_cols[1]:
+            st.metric("Lifting a", f"{float(stage_settings['lifting_point_ratio']) * float(span_length_m):.3f} m", "from each end")
+        with lift_cols[2]:
+            stage_settings["lifting_impact_factor"] = st.number_input(
+                "Lifting impact factor",
+                min_value=1.0,
+                value=float(stage_settings.get("lifting_impact_factor", RAILWAY_U_GIRDER_DEFAULT_LIFTING_IMPACT)),
+                step=0.05,
+                format="%.2f",
+                key="rail_ugirder_assembly_lifting_impact_input",
+                help="Applied to web self-weight in the lifting-stage preview.",
+            )
+        with lift_cols[3]:
+            st.metric("Wet slab case", "Case B", "50/50 to left/right web")
+
+        stage_settings.update(
+            {
+                "span_length_m": float(span_length_m),
+                "support_condition": "Simply supported",
+                "construction_method": "Case B - wet slab carried by precast webs",
+                "wet_slab_distribution_each_web": RAILWAY_U_GIRDER_DEFAULT_WET_SLAB_DISTRIBUTION,
+            }
+        )
+        st.session_state[RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY] = dict(stage_settings)
+        normalized = _normalize_railway_u_girder_assembly_settings(values, stage_settings)
+        summary = system_settings_from_mapping(normalized)
+        st.markdown(
+            _kv_panel_html(
+                [
+                    ("Assembly basis", "2 precast prestressed webs + CIP slab"),
+                    ("Support / span", f"Simply supported | L = {summary.span_length_m:.3f} m"),
+                    ("Wet slab casting", "Case B: wet slab + formwork carried by web-only sections"),
+                    ("Load distribution", "50% to left web / 50% to right web"),
+                    ("Lifting", f"a = {float(stage_settings['lifting_point_ratio']) * float(span_length_m):.3f} m from each end | IF = {float(stage_settings['lifting_impact_factor']):.2f}"),
+                    ("Stage behavior", "Transfer/lifting/wet casting = web-only; composite/service = full U-girder"),
+                ]
+            ),
+            unsafe_allow_html=True,
+        )
 
 
 def _render_bridge_section_assembly_panel(preset: dict[str, Any], settings: AnalysisModeSettings) -> None:
     """Render bridge-domain section assembly inputs in Section Builder."""
 
     values = _ensure_beam_girder_system_settings_defaults()
+    if _is_railway_u_girder_preset(preset):
+        _render_railway_u_girder_assembly_panel(values)
+        return
+
     count_label, spacing_label, unit_noun = _assembly_unit_label(preset, settings)
     with st.container(border=True):
         st.markdown(
@@ -692,20 +879,16 @@ def _render_bridge_section_assembly_panel(preset: dict[str, Any], settings: Anal
                 help="Single source for simple-span SLS load diagrams and prestress/debonding station previews.",
             )
         with cols[1]:
-            if _is_railway_u_girder_preset(preset):
-                st.metric("Assembly units", "2 webs + CIP slab", help="Railway U-Girder is not a repeated-girder system.")
-                values.setdefault("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)
-            else:
-                values["number_of_girders"] = int(
-                    st.number_input(
-                        count_label,
-                        min_value=1,
-                        step=1,
-                        value=int(values.get("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)),
-                        key="section_assembly_number_of_girders_input",
-                        help="Assembly count for equal-share load previews.  For plank/box presets this represents units per bridge cross-section.",
-                    )
+            values["number_of_girders"] = int(
+                st.number_input(
+                    count_label,
+                    min_value=1,
+                    step=1,
+                    value=int(values.get("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)),
+                    key="section_assembly_number_of_girders_input",
+                    help="Assembly count for equal-share load previews.  For plank/box presets this represents units per bridge cross-section.",
                 )
+            )
         with cols[2]:
             values["girder_spacing_m"] = st.number_input(
                 spacing_label,
@@ -744,11 +927,8 @@ def _render_bridge_section_assembly_panel(preset: dict[str, Any], settings: Anal
             ("Span source", f"{summary.span_length_m:.3f} m"),
             ("Load tributary width", f"{summary.effective_tributary_width_m:.3f} m"),
             ("Concrete unit weight", f"{summary.concrete_unit_weight_kN_m3:.2f} kN/m³"),
+            ("Assembly count", f"{summary.number_of_girders:d}"),
         ]
-        if _is_railway_u_girder_preset(preset):
-            rows.append(("Stage behavior", "Web-only until CIP slab hardens; full U at composite/service stages"))
-        else:
-            rows.append(("Assembly count", f"{summary.number_of_girders:d}"))
         st.markdown(_kv_panel_html(rows), unsafe_allow_html=True)
 
 

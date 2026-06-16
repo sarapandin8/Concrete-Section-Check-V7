@@ -727,3 +727,10 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Enlarges the Prestress girder cross-section layout plot and adds explicit x/y inspection padding while preserving equal aspect ratio.
 - Moves row labels into the right paper margin and consolidates symmetric left/right row labels so dense 72-strand Railway U-Girder layouts read clearly.
 - Keeps strand coordinates, debond metadata, prestress force/loss logic, geometry, solver, report, and project schema unchanged.
+
+### SECTION.ASSEMBLY2 — Railway U-Girder Assembly Panel Alignment
+
+- Replaces the Railway U-Girder assembly editor with rail-specific controls in Section Builder.
+- Uses default span `L = 10.0 m`, Case B wet slab support, 50/50 wet slab distribution to webs, editable formwork load, lifting a/L, and lifting impact factor.
+- Hides generic repeated-girder fields such as overall system width and tributary load-take-down width for Railway U-Girder.
+- Keeps legacy `beam_girder_system_settings` synchronized for downstream span/unit-weight consumers without changing solver equations.

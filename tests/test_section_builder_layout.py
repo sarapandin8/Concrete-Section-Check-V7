@@ -702,3 +702,20 @@ def test_section_builder_focuses_material_and_assembly_panels_source() -> None:
     assert "material_assignment = _render_concrete_material_assignment(preset)" in source
     assert "_render_section_assembly_panel(preset)" in source
     assert "Reinforcement and section-specific material/assembly controls are shown" in source
+
+
+def test_section_assembly2_railway_u_girder_panel_is_rail_specific() -> None:
+    source = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "section_builder.py").read_text(encoding="utf-8")
+    rail_start = source.index("def _render_railway_u_girder_assembly_panel")
+    rail_end = source.index("def _render_bridge_section_assembly_panel")
+    rail_source = source[rail_start:rail_end]
+
+    assert "RAILWAY_U_GIRDER_DEFAULT_SPAN_LENGTH_M = 10.0" in source
+    assert "Case B: wet slab + formwork carried by web-only sections" in rail_source
+    assert "50% to left web / 50% to right web" in rail_source
+    assert "Formwork load (kN/m²)" in rail_source
+    assert "Lifting a/L" in rail_source
+    assert "Stage behavior" in rail_source
+    assert "Overall U-girder system width" not in rail_source
+    assert "Tributary width for load take-down" not in rail_source
+    assert "section_assembly_tributary_width_m_input" not in rail_source
