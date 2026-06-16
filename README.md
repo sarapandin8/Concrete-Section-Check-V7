@@ -1,4 +1,13 @@
 
+### SLS.RAIL.UGIRDER3 — Locked-In Staged Stress Accumulation Handoff
+
+- Adds a guarded Railway U-Girder locked-in staged stress accumulation handoff under Prestress → Rail U-Girder stages.
+- Transfer locked-in stress uses one precast web with web self-weight plus `Pe_transfer`.
+- Wet slab casting locked-in stress adds the wet slab/formwork increment plus `(Pe_construction - Pe_transfer)` on the one-web basis.
+- Final service Pe is reported as a full-U section handoff increment `(Pe_final - Pe_construction)` and is not algebraically summed with web-locked fibers.
+- Service loads, transfer-length ramping, development length, anchorage/end-zone bursting, creep/shrinkage redistribution, ULS coupling, and final code-certified checks remain guarded future scope.
+
+
 ### SLS.RAIL.UGIRDER2 — Stage Stress-Limit Preview
 
 - Adds guarded stage-aware stress-limit checks to the Railway U-Girder staged SLS preview.

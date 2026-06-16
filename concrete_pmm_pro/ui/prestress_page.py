@@ -65,6 +65,8 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     system_settings_from_mapping,
 )
 from concrete_pmm_pro.serviceability.railway_u_girder_stages import (
+    railway_u_girder_locked_in_governing_rows,
+    railway_u_girder_locked_in_stress_accumulation_dataframe,
     railway_u_girder_stage_governing_rows,
     railway_u_girder_stage_limit_governing_rows,
     railway_u_girder_staged_stress_limit_check_dataframe,
@@ -5573,7 +5575,7 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
 
     st.markdown("**Railway U-Girder staged SLS stress preview**")
     st.caption(
-        "SLS.RAIL.UGIRDER1 consumes station-based debonded strand participation; SLS.RAIL.UGIRDER2 consumes station-based debonded strand participation and adds stage-aware editable stress-limit checks. "
+        "SLS.RAIL.UGIRDER1 consumes station-based debonded strand participation; SLS.RAIL.UGIRDER2 consumes station-based debonded strand participation and adds stage-aware editable stress-limit checks; SLS.RAIL.UGIRDER3 adds a locked-in staged stress accumulation handoff. "
         "Transfer, lifting, and wet slab casting use one precast web only; the service row is still a full-U Pe reference until locked-in service-load superposition is finalized. "
         "Locked-in staged stress superposition is still limited to this guarded handoff; transfer-length ramping, development length, anchorage/end-zone bursting, and final code-certified checks remain future scope."
     )
@@ -5616,7 +5618,34 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                     "Concrete strength used (MPa)": st.column_config.NumberColumn("Concrete strength used (MPa)", format="%.2f"),
                 },
             )
-        with st.expander("Station-by-station staged stress and limit preview", expanded=False):
+        st.markdown("**Locked-in staged stress accumulation preview**")
+        st.caption(
+            "SLS.RAIL.UGIRDER3 separates true web-stage locked-in increments from the later full-U Pe handoff. "
+            "Transfer and wet-slab casting rows accumulate on the one-web basis; the final Pe row is a full-U service increment and is not algebraically summed with web-locked fibers. "
+            "Service loads from the Loads tab, transfer-length ramping, time-dependent redistribution, and final code-certified checks remain guarded future scope."
+        )
+        try:
+            locked_df = railway_u_girder_locked_in_stress_accumulation_dataframe(
+                geometry=geometry,
+                settings=settings,
+                strand_table=strand_table,
+                span_length_m=float(span_length_m),
+            )
+        except Exception as exc:
+            st.warning(f"Locked-in staged stress accumulation preview is not available: {exc}")
+            locked_df = pd.DataFrame()
+        if not locked_df.empty:
+            locked_governing = railway_u_girder_locked_in_governing_rows(locked_df)
+            st.dataframe(
+                locked_governing,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Governing compression (MPa)": st.column_config.NumberColumn("Governing compression (MPa)", format="%.3f"),
+                    "Governing tension (MPa)": st.column_config.NumberColumn("Governing tension (MPa)", format="%.3f"),
+                },
+            )
+        with st.expander("Station-by-station staged stress, limits, and locked-in handoff", expanded=False):
             st.dataframe(
                 stress_df,
                 use_container_width=True,
@@ -5641,13 +5670,28 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                         "Max utilization": st.column_config.NumberColumn("Max utilization", format="%.3f"),
                     },
                 )
+            if not locked_df.empty:
+                st.dataframe(
+                    locked_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Load increment w (kN/m)": st.column_config.NumberColumn("Load increment w (kN/m)", format="%.3f"),
+                        "Moment increment (kN-m)": st.column_config.NumberColumn("Moment increment (kN-m)", format="%.3f"),
+                        "Pe increment (kN)": st.column_config.NumberColumn("Pe increment (kN)", format="%.1f"),
+                        "Top increment (MPa)": st.column_config.NumberColumn("Top increment (MPa)", format="%.3f"),
+                        "Bottom increment (MPa)": st.column_config.NumberColumn("Bottom increment (MPa)", format="%.3f"),
+                        "Cumulative top (MPa)": st.column_config.NumberColumn("Cumulative top (MPa)", format="%.3f"),
+                        "Cumulative bottom (MPa)": st.column_config.NumberColumn("Cumulative bottom (MPa)", format="%.3f"),
+                    },
+                )
     else:
         st.info("Staged stress preview will appear after a valid strand layout / force-state table is available.")
 
     with st.expander("Guardrails for staged stress calculation", expanded=False):
         st.write("- Transfer, lifting, and wet slab casting must not use the full U-section inertia.")
         st.write("- Wet slab self-weight and formwork load are applied to the two precast webs before composite action for Case B.")
-        st.write("- Service preview currently reports full-U Pe reference only; service loads remain in Loads/Analysis.")
+        st.write("- Service preview still keeps service loads in Loads/Analysis; the full-U Pe handoff is intentionally separated from web-stage locked-in stress.")
         st.write("- Stage stress-limit rows are editable preview checks, not final code certification.")
         st.write("- Debonded strands are consumed through station-based participation as a step-function preview; transfer-length force ramping is not modeled yet.")
 

@@ -62,6 +62,23 @@ RAILWAY_UGIRDER_SLS_PREVIEW_COLUMNS = [
     "Preview note",
 ]
 
+
+RAILWAY_UGIRDER_LOCKED_IN_COLUMNS = [
+    "Accumulation step",
+    "Station x (m)",
+    "Section basis",
+    "Load increment w (kN/m)",
+    "Moment increment (kN-m)",
+    "Pe increment (kN)",
+    "Effective strands",
+    "Top increment (MPa)",
+    "Bottom increment (MPa)",
+    "Cumulative top (MPa)",
+    "Cumulative bottom (MPa)",
+    "Carry-over basis",
+    "Preview note",
+]
+
 RAILWAY_UGIRDER_SLS_LIMIT_COLUMNS = [
     "Stage",
     "Station x (m)",
@@ -600,6 +617,262 @@ def railway_u_girder_stage_limit_governing_rows(limit_df: pd.DataFrame) -> pd.Da
                 "Limit stage profile": row.get("Limit stage profile"),
                 "Section basis": row.get("Section basis"),
                 "Limit note": row.get("Limit note"),
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+
+def _signed_prestress_top_bottom_MPa(
+    basis: GirderSectionBasis,
+    *,
+    Pe_increment_kN: float,
+    tendon_y_from_bottom_mm: float | None,
+) -> tuple[float, float]:
+    """Return signed prestress stress increment at top/bottom fibers.
+
+    Unlike ``run_girder_prestress_stress_effect``, this helper intentionally
+    accepts negative Pe increments so construction/service loss increments can
+    be accumulated as a reduction in compression.  It is a local Railway
+    U-Girder staged-preview helper, not a new prestress-loss solver.
+    """
+
+    pe = _float_value(Pe_increment_kN, 0.0)
+    if abs(pe) <= 1.0e-12 or tendon_y_from_bottom_mm is None:
+        return 0.0, 0.0
+    try:
+        yps = float(tendon_y_from_bottom_mm)
+    except (TypeError, ValueError):
+        return 0.0, 0.0
+    if basis.area_mm2 <= 0.0 or basis.ix_mm4 <= 0.0:
+        return 0.0, 0.0
+    pe_n = pe * 1000.0
+    eccentricity_mm = yps - basis.centroid_y_from_bottom_mm
+    equivalent_moment_kNm = pe * eccentricity_mm / 1000.0
+
+    def _stress_at(y_from_bottom_mm: float) -> float:
+        axial = -pe_n / basis.area_mm2
+        bending = equivalent_moment_kNm * 1_000_000.0 * (
+            basis.centroid_y_from_bottom_mm - float(y_from_bottom_mm)
+        ) / basis.ix_mm4
+        return float(axial + bending)
+
+    return _stress_at(basis.top_fiber_y_from_bottom_mm), _stress_at(basis.bottom_fiber_y_from_bottom_mm)
+
+
+def _load_top_bottom_increment_MPa(
+    basis: GirderSectionBasis,
+    *,
+    w_kN_m: float,
+    x_m: float,
+    span_length_m: float,
+    lifting_point_ratio: float | None = None,
+) -> tuple[float, float, float]:
+    """Return (Mx, top, bottom) stress increment from a simple UDL action."""
+
+    if lifting_point_ratio is None:
+        mx = simple_span_udl_moment_kNm(w_kN_m, x_m, span_length_m)
+    else:
+        mx = lifting_udl_moment_kNm(w_kN_m, x_m, span_length_m, lifting_point_ratio)
+    result = run_basic_girder_service_stress(basis, N_kN=0.0, M_kNm=mx)
+    return float(mx), float(result.top.total_stress_MPa), float(result.bottom.total_stress_MPa)
+
+
+def railway_u_girder_locked_in_stress_accumulation_dataframe(
+    *,
+    geometry: SectionGeometry | None,
+    settings: Mapping[str, Any] | None,
+    strand_table: pd.DataFrame | None,
+    span_length_m: float,
+    stations_m: Iterable[float] | None = None,
+) -> pd.DataFrame:
+    """Return guarded locked-in stress accumulation rows for Railway U-Girder.
+
+    SLS.RAIL.UGIRDER3 keeps the stage mechanics explicit:
+    - Transfer is a locked web-only stress increment.
+    - Wet slab casting adds the wet slab/formwork load increment plus the
+      construction-stage prestress change on the web-only basis.
+    - Final Pe is reported as a full-U section handoff increment only; locked
+      web stresses are not algebraically transformed into full-U top/bottom
+      fibers in this preview.
+
+    The function deliberately does not model transfer-length force ramping,
+    development length, end-zone bursting, creep/shrinkage redistribution, or
+    final code-certified locked-in service stress.
+    """
+
+    settings = dict(settings or {})
+    span = max(float(span_length_m), 0.001)
+    lifting_ratio = min(max(_float_value(settings.get("lifting_point_ratio"), 0.20), 0.05), 0.45)
+    basis_set = railway_u_girder_stage_basis_set(geometry, settings)
+    q = basis_set.quantities
+    station_grid = list(stations_m or railway_u_girder_stage_station_grid(span, strand_table, lifting_ratio))
+    web_strands = _one_web_strand_table(strand_table)
+    rows: list[dict[str, Any]] = []
+
+    for x in station_grid:
+        transfer_m, transfer_load_top, transfer_load_bottom = _load_top_bottom_increment_MPa(
+            basis_set.web_basis,
+            w_kN_m=q.web_self_weight_kN_m,
+            x_m=x,
+            span_length_m=span,
+        )
+        pe_transfer, yps_transfer, effective_transfer, active_transfer = _station_pe(
+            web_strands,
+            x_m=x,
+            span_length_m=span,
+            pe_source="transfer",
+        )
+        ps_top, ps_bottom = _signed_prestress_top_bottom_MPa(
+            basis_set.web_basis,
+            Pe_increment_kN=pe_transfer,
+            tendon_y_from_bottom_mm=yps_transfer,
+        )
+        transfer_top = transfer_load_top + ps_top
+        transfer_bottom = transfer_load_bottom + ps_bottom
+        rows.append(
+            {
+                "Accumulation step": "1 Transfer locked-in web stress",
+                "Station x (m)": round(float(x), 6),
+                "Section basis": "One precast web only",
+                "Load increment w (kN/m)": q.web_self_weight_kN_m,
+                "Moment increment (kN-m)": transfer_m,
+                "Pe increment (kN)": pe_transfer,
+                "Effective strands": effective_transfer,
+                "Top increment (MPa)": transfer_top,
+                "Bottom increment (MPa)": transfer_bottom,
+                "Cumulative top (MPa)": transfer_top,
+                "Cumulative bottom (MPa)": transfer_bottom,
+                "Carry-over basis": "Locked into precast web",
+                "Preview note": f"web self-weight + Pe_transfer; active rows: {active_transfer}",
+            }
+        )
+
+        casting_w = q.wet_slab_to_each_web_kN_m + q.formwork_to_each_web_kN_m
+        casting_m, casting_load_top, casting_load_bottom = _load_top_bottom_increment_MPa(
+            basis_set.web_basis,
+            w_kN_m=casting_w,
+            x_m=x,
+            span_length_m=span,
+        )
+        pe_construction, yps_construction, effective_construction, active_construction = _station_pe(
+            web_strands,
+            x_m=x,
+            span_length_m=span,
+            pe_source="construction",
+        )
+        delta_pe_construction = pe_construction - pe_transfer
+        delta_yps = yps_construction if yps_construction is not None else yps_transfer
+        dps_top, dps_bottom = _signed_prestress_top_bottom_MPa(
+            basis_set.web_basis,
+            Pe_increment_kN=delta_pe_construction,
+            tendon_y_from_bottom_mm=delta_yps,
+        )
+        casting_top = casting_load_top + dps_top
+        casting_bottom = casting_load_bottom + dps_bottom
+        cumulative_top = transfer_top + casting_top
+        cumulative_bottom = transfer_bottom + casting_bottom
+        rows.append(
+            {
+                "Accumulation step": "2 Wet slab casting locked-in web stress",
+                "Station x (m)": round(float(x), 6),
+                "Section basis": "One precast web only",
+                "Load increment w (kN/m)": casting_w,
+                "Moment increment (kN-m)": casting_m,
+                "Pe increment (kN)": delta_pe_construction,
+                "Effective strands": effective_construction,
+                "Top increment (MPa)": casting_top,
+                "Bottom increment (MPa)": casting_bottom,
+                "Cumulative top (MPa)": cumulative_top,
+                "Cumulative bottom (MPa)": cumulative_bottom,
+                "Carry-over basis": "Locked into precast web before composite action",
+                "Preview note": f"wet slab + formwork + (Pe_construction - Pe_transfer); active rows: {active_construction}",
+            }
+        )
+
+        pe_final, yps_final, effective_final, active_final = _station_pe(
+            strand_table,
+            x_m=x,
+            span_length_m=span,
+            pe_source="final",
+        )
+        # Use the full strand table for construction Pe at the same station so
+        # the final-service prestress loss handoff is on a full-U basis.
+        pe_construction_full, yps_construction_full, _eff_c_full, _active_c_full = _station_pe(
+            strand_table,
+            x_m=x,
+            span_length_m=span,
+            pe_source="construction",
+        )
+        delta_pe_final = pe_final - pe_construction_full
+        delta_yps_final = yps_final if yps_final is not None else yps_construction_full
+        final_top, final_bottom = _signed_prestress_top_bottom_MPa(
+            basis_set.full_u_basis,
+            Pe_increment_kN=delta_pe_final,
+            tendon_y_from_bottom_mm=delta_yps_final,
+        )
+        rows.append(
+            {
+                "Accumulation step": "3 Final Pe handoff on full U-section",
+                "Station x (m)": round(float(x), 6),
+                "Section basis": "Full Railway U-Girder gross reference",
+                "Load increment w (kN/m)": 0.0,
+                "Moment increment (kN-m)": 0.0,
+                "Pe increment (kN)": delta_pe_final,
+                "Effective strands": effective_final,
+                "Top increment (MPa)": final_top,
+                "Bottom increment (MPa)": final_bottom,
+                "Cumulative top (MPa)": pd.NA,
+                "Cumulative bottom (MPa)": pd.NA,
+                "Carry-over basis": "Full-U service increment only; not summed with web-locked fibers",
+                "Preview note": f"Pe_final - Pe_construction on full-U basis; service loads remain in Loads/Analysis; active rows: {active_final}",
+            }
+        )
+
+    if not rows:
+        return pd.DataFrame(columns=RAILWAY_UGIRDER_LOCKED_IN_COLUMNS)
+    return pd.DataFrame(rows, columns=RAILWAY_UGIRDER_LOCKED_IN_COLUMNS)
+
+
+def railway_u_girder_locked_in_governing_rows(locked_df: pd.DataFrame) -> pd.DataFrame:
+    """Return compact governing rows for locked-in staged stress handoff."""
+
+    if locked_df is None or pd.DataFrame(locked_df).empty:
+        return pd.DataFrame()
+    df = pd.DataFrame(locked_df).copy()
+    rows: list[dict[str, Any]] = []
+    for step, group in df.groupby("Accumulation step", sort=False):
+        comp = pd.to_numeric(group.get("Cumulative top (MPa)"), errors="coerce")
+        comp_bottom = pd.to_numeric(group.get("Cumulative bottom (MPa)"), errors="coerce")
+        inc_top = pd.to_numeric(group.get("Top increment (MPa)"), errors="coerce")
+        inc_bottom = pd.to_numeric(group.get("Bottom increment (MPa)"), errors="coerce")
+        # Governing by cumulative stress where available; otherwise use increment
+        # rows such as full-U Pe handoff.
+        combined = pd.concat([comp, comp_bottom], axis=1).min(axis=1, skipna=True)
+        tension = pd.concat([comp, comp_bottom], axis=1).max(axis=1, skipna=True)
+        if combined.notna().any():
+            comp_idx = combined.idxmin()
+            tens_idx = tension.idxmax()
+            comp_val = combined.loc[comp_idx]
+            tens_val = tension.loc[tens_idx]
+        else:
+            inc_comp = pd.concat([inc_top, inc_bottom], axis=1).min(axis=1, skipna=True)
+            inc_tens = pd.concat([inc_top, inc_bottom], axis=1).max(axis=1, skipna=True)
+            comp_idx = inc_comp.idxmin()
+            tens_idx = inc_tens.idxmax()
+            comp_val = inc_comp.loc[comp_idx]
+            tens_val = inc_tens.loc[tens_idx]
+        row = df.loc[comp_idx]
+        tens_row = df.loc[tens_idx]
+        rows.append(
+            {
+                "Accumulation step": step,
+                "Governing compression x (m)": row.get("Station x (m)"),
+                "Governing compression (MPa)": comp_val,
+                "Governing tension x (m)": tens_row.get("Station x (m)"),
+                "Governing tension (MPa)": tens_val,
+                "Section basis": row.get("Section basis"),
+                "Carry-over basis": row.get("Carry-over basis"),
             }
         )
     return pd.DataFrame(rows)
