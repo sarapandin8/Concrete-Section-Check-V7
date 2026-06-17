@@ -1,10 +1,61 @@
+### SLS.RAIL.UGIRDER8.RECOVERY — Multi-Fiber Service Plot Rebased on Correct Latest Baseline
+
+This recovery package fixes the earlier SLS.RAIL.UGIRDER8 packaging mistake by rebasing the Railway U-Girder service multi-fiber stress plot onto the latest accepted baseline that already includes:
+
+- SLS.MATERIAL.ROUTING4 canonical transfer-stage strength routing.
+- SLS.RAIL.UGIRDER7 dedicated Lifting stage tab.
+- SLS.TENSION.DEFAULT1 verified bonded tension reinforcement default.
+
+The Railway U-Girder Service stage SLS plot now samples the existing full gross U-section elastic stress field at:
+
+- Top web fiber.
+- Bottom web fiber.
+- CIP slab top fiber.
+- CIP slab bottom fiber.
+
+The graph labels the web and slab stress limits directly on the limit lines so the web f'c and CIP slab f'c bases are not confused. This milestone is UI/plot routing only and does not change stress equations, section properties, Pe/debond logic, ULS, anchorage, transfer length, development length, or report logic.
+
+Validation performed from packaged working tree:
+
+```bash
+python -m compileall -q app.py concrete_pmm_pro tests
+pytest -q \
+  tests/test_railway_u_girder_service_multifiber_plot.py \
+  tests/test_girder_sls_full_length_diagram.py \
+  tests/test_sls_material_routing1_stage_strength.py \
+  tests/test_railway_u_girder_sls_lifting_stage_tab.py \
+  tests/test_railway_u_girder_sls_decision_summary.py \
+  tests/test_railway_u_girder_sls_final_accumulation.py \
+  tests/test_railway_u_girder_sls_service_load_handoff.py \
+  tests/test_railway_u_girder_sls_locked_in.py \
+  tests/test_railway_u_girder_sls_stage_limits.py \
+  tests/test_railway_u_girder_sls_stage_preview.py \
+  tests/test_girder_prestress_station.py \
+  tests/test_girder_strand_debonding_ui.py \
+  tests/test_railway_u_girder_prestress_layout.py \
+  tests/test_railway_u_girder_stage_model.py \
+  tests/test_girder_code_limit_analysis_preview.py \
+  tests/test_project_io.py \
+  tests/test_analysis_modes.py \
+  tests/test_app_commercial_tabs.py \
+  tests/test_ui_keys1_widget_keys.py \
+  tests/test_file_uploader_clear_button_css.py \
+  tests/test_rebar_compact_workspace.py \
+  tests/test_rebar_inclusion_visual_regression.py \
+  tests/test_reinforcement_system_flags.py \
+  tests/test_prestress_preview_policy.py
+```
+
+Result: `244 passed in 11.35s`.
+
 ## Latest milestone
 
-### SLS.RAIL.UGIRDER8 — Service Stage Multi-Fiber Stress Plot with Web/Slab Limit Labels
-
-- Adds a Railway U-Girder-specific Service-stage graph that samples the existing full gross U-section elastic stress field at Top web fiber, Bottom web fiber, CIP slab top fiber, and CIP slab bottom fiber.
-- Labels Web and Slab compression/tension limit lines directly on the plot so users do not confuse web `f'c` with CIP slab `f'c`.
-- Keeps Service stage as a gross full-U elastic preview and does not change stress equations, stage accumulation, Pe/debond participation, ULS, report, geometry, or project schema logic.
+### SLS.RAIL.UGIRDER7 — Dedicated Railway U-Girder lifting stage tab
+- Adds a Railway-only `Lifting stage` tab to the Beam/Girder SLS stress workspace.
+- The lifting preview uses one precast web, Pe_transfer, station-based debond participation, two-point lifting moment, a/L from stage settings, and the lifting impact factor.
+- Lifting limit guidance routes to web f'ci, not final web f'c.
+- Other Beam/Girder workflows keep the existing Transfer / Construction / Service tabs.
+- No ULS, anchorage, transfer/development length, lifting-insert, geometry, or report logic changes.
 
 
 ### SLS.MATERIAL.ROUTING4 — Canonical Transfer Stage Strength Hotfix
@@ -843,3 +894,11 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Generic prestressed girder transfer checks now use prestress/loss `f'ci` when available, falling back to `0.8 f'c` only when no transfer strength is available.
 - Adds regression tests so a transfer-stage preview cannot silently reuse a stale service concrete strength.
 - No solver equations, geometry, section-property, prestress-loss, ULS, shear/torsion, report, or project-schema calculation logic changed.
+
+
+### SLS.TENSION.DEFAULT1 — Verified Bonded Tension Reinforcement Default
+
+- Default the SLS tensile-limit guide to `Verified bonded tension reinforcement` for all section/stage stress tabs.
+- Promote legacy Auto defaults once while preserving explicit conservative/no-tension user selections.
+- Keep `Auto from current ordinary rebar layout` available as a manual screening option.
+- No solver, material-strength routing, geometry, prestress/debonding, ULS, or report logic changes.

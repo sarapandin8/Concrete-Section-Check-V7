@@ -126,6 +126,14 @@ def test_sls_limit4_has_reinforcement_aware_tension_limit_guide() -> None:
     assert "Auto rebar detection is a screening aid only" in SOURCE
 
 
+def test_sls_tension_default1_defaults_to_verified_bonded_reinforcement() -> None:
+    guide_block = SOURCE[SOURCE.find("def _render_girder_tension_limit_guidance"):SOURCE.find("def _render_girder_code_limit_preview")]
+    assert "SLS.TENSION.DEFAULT1" in guide_block
+    assert 'default_method = "Verified bonded tension reinforcement"' in guide_block
+    assert 'current_method == "Auto from current ordinary rebar layout"' in guide_block
+    assert "verified_default_applied" in guide_block
+
+
 def test_sls_limit4_1_tensile_limit_guide_is_visible_in_full_length_diagram() -> None:
     assert "CODE.SLS.LIMIT4.1" in SOURCE
     assert "_render_girder_sls_diagram_tensile_limit_guide" in SOURCE
