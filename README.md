@@ -1,3 +1,9 @@
+### QA.RAIL.UGIRDER1 — Railway U-Girder Workflow Regression Audit
+
+This milestone stabilizes the accepted `SLS.RAIL.UGIRDER8.RECOVERY` baseline before new feature work. It adds regression coverage for Railway U-Girder save/load preservation, symmetric debond station participation, stage material-strength routing, and guarded engineering-review wording. No solver equations, section properties, Pe/debond participation logic, ULS, anchorage, transfer-length, development-length, or report logic are changed.
+
+See `docs/design/qa_rail_ugirder1.md`.
+
 ### SLS.RAIL.UGIRDER8.RECOVERY — Multi-Fiber Service Plot Rebased on Correct Latest Baseline
 
 This recovery package fixes the earlier SLS.RAIL.UGIRDER8 packaging mistake by rebasing the Railway U-Girder service multi-fiber stress plot onto the latest accepted baseline that already includes:
