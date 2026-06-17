@@ -1,11 +1,10 @@
 ## Latest milestone
 
-### SLS.RAIL.UGIRDER7 — Dedicated Railway U-Girder lifting stage tab
-- Adds a Railway-only `Lifting stage` tab to the Beam/Girder SLS stress workspace.
-- The lifting preview uses one precast web, Pe_transfer, station-based debond participation, two-point lifting moment, a/L from stage settings, and the lifting impact factor.
-- Lifting limit guidance routes to web f'ci, not final web f'c.
-- Other Beam/Girder workflows keep the existing Transfer / Construction / Service tabs.
-- No ULS, anchorage, transfer/development length, lifting-insert, geometry, or report logic changes.
+### SLS.RAIL.UGIRDER8 — Service Stage Multi-Fiber Stress Plot with Web/Slab Limit Labels
+
+- Adds a Railway U-Girder-specific Service-stage graph that samples the existing full gross U-section elastic stress field at Top web fiber, Bottom web fiber, CIP slab top fiber, and CIP slab bottom fiber.
+- Labels Web and Slab compression/tension limit lines directly on the plot so users do not confuse web `f'c` with CIP slab `f'c`.
+- Keeps Service stage as a gross full-U elastic preview and does not change stress equations, stage accumulation, Pe/debond participation, ULS, report, geometry, or project schema logic.
 
 
 ### SLS.MATERIAL.ROUTING4 — Canonical Transfer Stage Strength Hotfix
@@ -844,11 +843,3 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Generic prestressed girder transfer checks now use prestress/loss `f'ci` when available, falling back to `0.8 f'c` only when no transfer strength is available.
 - Adds regression tests so a transfer-stage preview cannot silently reuse a stale service concrete strength.
 - No solver equations, geometry, section-property, prestress-loss, ULS, shear/torsion, report, or project-schema calculation logic changed.
-
-
-### SLS.TENSION.DEFAULT1 — Verified Bonded Tension Reinforcement Default
-
-- Default the SLS tensile-limit guide to `Verified bonded tension reinforcement` for all section/stage stress tabs.
-- Promote legacy Auto defaults once while preserving explicit conservative/no-tension user selections.
-- Keep `Auto from current ordinary rebar layout` available as a manual screening option.
-- No solver, material-strength routing, geometry, prestress/debonding, ULS, or report logic changes.
