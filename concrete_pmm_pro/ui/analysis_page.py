@@ -133,6 +133,7 @@ from concrete_pmm_pro.serviceability import (
     STAGE_TRANSFER,
     STAGE_DECK_CASTING,
     STAGE_FINAL_SERVICE,
+    STAGE_USER_DEFINED,
     GirderServiceStageCase,
     GirderServiceStressLimitCheckResult,
     GirderStressLimitPointResult,
@@ -13787,10 +13788,17 @@ def _stage_material_strength_values_for_sls_limit_preview(stage_label: str | Non
     f'ci setting when available, then fall back to 0.8 f'c.
     """
 
-    stage = normalize_girder_sls_stage(_beam_sls_stage_default_code_limit_stage(stage_label or ""))
-    if stage not in DEFAULT_GIRDER_SLS_STAGES:
-        stage = normalize_girder_sls_stage(stage_label or "")
-    if stage not in DEFAULT_GIRDER_SLS_STAGES:
+    # SLS.MATERIAL.ROUTING4: callers may pass either the simplified UI tab label
+    # ("Transfer stage") or the canonical code-limit stage
+    # ("Transfer / Release").  Normalize the direct stage first; otherwise a
+    # canonical transfer stage is mapped to "User-defined" and falls through to
+    # service f'c, which silently displays f'c as f'ci in the visible guide.
+    direct_stage = normalize_girder_sls_stage(stage_label or "")
+    if direct_stage in DEFAULT_GIRDER_SLS_STAGES and direct_stage != STAGE_USER_DEFINED:
+        stage = direct_stage
+    else:
+        stage = normalize_girder_sls_stage(_beam_sls_stage_default_code_limit_stage(stage_label or ""))
+    if stage not in DEFAULT_GIRDER_SLS_STAGES or stage == STAGE_USER_DEFINED:
         stage = STAGE_FINAL_SERVICE
 
     concrete_material = st.session_state.get("concrete_material")

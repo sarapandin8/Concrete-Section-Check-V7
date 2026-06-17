@@ -200,3 +200,28 @@ def test_visible_tensile_guide_uses_stage_routed_strength_not_generic_fc_helper(
     assert "guide_strength_label" in source
     assert "guide_strength_note" in source
     assert "Tension formula substitution" in source
+
+
+def test_railway_u_girder_transfer_strength_routes_from_canonical_transfer_stage_label() -> None:
+    _state, backup = _with_session_state(
+        {
+            "section_preset_key": "railway_u_girder",
+            "concrete_material": ConcreteMaterial(name="C45_PRECAST", fc_MPa=45.0, density_kg_m3=2400.0),
+            "railway_u_girder_stage_settings": {
+                "web_fc_MPa": 45.0,
+                "web_fci_MPa": 36.0,
+                "slab_fc_MPa": 35.0,
+                "construction_method": "Case B - wet slab carried by precast webs",
+            },
+        }
+    )
+    try:
+        # The visible tensile guide passes the canonical code-limit stage, not the
+        # simplified tab label.  This was the remaining bug: "Transfer / Release"
+        # was being remapped to User-defined and then falling through to service f'c.
+        transfer = analysis_page._stage_material_strength_values_for_sls_limit_preview("Transfer / Release")
+        assert transfer["strength_MPa"] == pytest.approx(36.0)
+        assert transfer["strength_label"] == "web f'ci at transfer / release"
+        assert "not web final f'c = 45.000 MPa" in str(transfer["audit_note"])
+    finally:
+        _restore_session_state(backup)

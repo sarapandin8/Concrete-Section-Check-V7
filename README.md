@@ -1,5 +1,13 @@
 ## Latest milestone
 
+### SLS.MATERIAL.ROUTING4 — Canonical Transfer Stage Strength Hotfix
+
+- Fixed the actual remaining visible Transfer-stage tensile-guide bug: canonical code-limit labels such as `Transfer / Release` now route directly to the stage material source instead of being remapped to `User-defined` and falling through to service `f'c`.
+- Railway U-Girder visible Transfer guide now uses `web f'ci = 36 MPa` when staged settings define `web_fc_MPa = 45`, `web_fci_MPa = 36`, and `slab_fc_MPa = 35`.
+- Added regression coverage for the visible-guide path that passes the canonical `Transfer / Release` label.
+- No solver, geometry, PMM, ULS, prestress-loss, report, or project-schema calculation changes.
+
+
 ### SLS.MATERIAL.ROUTING3 — Visible Transfer Guide Stage-Strength Hotfix
 
 - Fixed the remaining visible SLS tensile guide route that could still show final concrete `f'c` as transfer `f'ci` for Railway U-Girder after Analysis reruns or stale selector paths.
