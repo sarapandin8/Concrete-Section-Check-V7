@@ -154,6 +154,18 @@ RAILWAY_UGIRDER_FINAL_SERVICE_COLUMNS = [
     "Preview note",
 ]
 
+RAILWAY_UGIRDER_SLS_DECISION_SUMMARY_COLUMNS = [
+    "Check stage",
+    "Decision",
+    "Governing source",
+    "Governing x / case",
+    "Max utilization",
+    "Compression (MPa)",
+    "Tension (MPa)",
+    "Section basis",
+    "Review action",
+]
+
 RAILWAY_UGIRDER_FINAL_SERVICE_LIMIT_COLUMNS = [
     "Load Case",
     "Station x (m)",
@@ -1326,3 +1338,166 @@ def railway_u_girder_final_service_governing_rows(final_df: pd.DataFrame) -> pd.
             }
         )
     return pd.DataFrame(rows)
+
+
+def _railway_preview_decision_from_statuses(statuses: Iterable[Any]) -> tuple[str, str]:
+    """Return guarded user-facing decision and review action from limit statuses."""
+
+    clean = [str(status or "").strip().upper() for status in statuses if str(status or "").strip()]
+    if not clean:
+        return "REVIEW", "No stress-limit result available for this stage."
+    if any(status == "FAIL" for status in clean):
+        return "REVIEW", "At least one fiber exceeds the preview stress limit."
+    if all(status == "PASS" for status in clean):
+        return "Preview PASS", "Available for engineering review; not code-certified."
+    return "REVIEW", "One or more fibers are not checked by the selected preview profile."
+
+
+def _railway_max_utilization(group: pd.DataFrame) -> float | None:
+    util = pd.to_numeric(group.get("Max utilization"), errors="coerce")
+    if util.notna().any():
+        return float(util.max())
+    return None
+
+
+def _railway_stage_limit_decision_row(
+    *,
+    check_stage: str,
+    source_df: pd.DataFrame,
+    stage_filter: str | None,
+    top_column: str,
+    bottom_column: str,
+    x_column: str,
+    source_label: str,
+    section_basis_fallback: str,
+) -> dict[str, Any]:
+    if source_df is None or pd.DataFrame(source_df).empty:
+        return {
+            "Check stage": check_stage,
+            "Decision": "REVIEW",
+            "Governing source": source_label,
+            "Governing x / case": "No rows",
+            "Max utilization": pd.NA,
+            "Compression (MPa)": pd.NA,
+            "Tension (MPa)": pd.NA,
+            "Section basis": section_basis_fallback,
+            "Review action": "No stress-limit rows are available for this stage.",
+        }
+    df = pd.DataFrame(source_df).copy()
+    if stage_filter is not None and "Stage" in df.columns:
+        df = df[df["Stage"].astype(str).str.strip() == stage_filter]
+    if df.empty:
+        return {
+            "Check stage": check_stage,
+            "Decision": "REVIEW",
+            "Governing source": source_label,
+            "Governing x / case": "No matching rows",
+            "Max utilization": pd.NA,
+            "Compression (MPa)": pd.NA,
+            "Tension (MPa)": pd.NA,
+            "Section basis": section_basis_fallback,
+            "Review action": f"No rows found for {check_stage}.",
+        }
+    decision, action = _railway_preview_decision_from_statuses(df.get("Overall status", []))
+    util = pd.to_numeric(df.get("Max utilization"), errors="coerce")
+    if util.notna().any():
+        idx = util.idxmax()
+    else:
+        # Deterministic fallback: row with largest absolute reported stress.
+        top_abs = pd.to_numeric(df.get(top_column), errors="coerce").abs()
+        bottom_abs = pd.to_numeric(df.get(bottom_column), errors="coerce").abs()
+        combined = pd.concat([top_abs, bottom_abs], axis=1).max(axis=1, skipna=True)
+        idx = combined.idxmax() if combined.notna().any() else df.index[0]
+    row = df.loc[idx]
+    top = _float_value(row.get(top_column), 0.0)
+    bottom = _float_value(row.get(bottom_column), 0.0)
+    return {
+        "Check stage": check_stage,
+        "Decision": decision,
+        "Governing source": source_label,
+        "Governing x / case": row.get(x_column),
+        "Max utilization": _railway_max_utilization(df),
+        "Compression (MPa)": min(top, bottom),
+        "Tension (MPa)": max(top, bottom),
+        "Section basis": row.get("Section basis", section_basis_fallback),
+        "Review action": action,
+    }
+
+
+def railway_u_girder_sls_decision_summary_dataframe(
+    *,
+    stage_limit_df: pd.DataFrame | None,
+    final_service_limit_df: pd.DataFrame | None,
+    active_sls_count: int = 0,
+) -> pd.DataFrame:
+    """Return compact Railway U-Girder staged SLS decision-summary rows.
+
+    SLS.RAIL.UGIRDER6 intentionally presents guarded review decisions, not a
+    code-certified design result.  Transfer/lifting/wet casting are derived from
+    the staged local limit table.  Final service is derived from the final
+    accumulated service limit table and requires at least one active SLS load
+    case from Loads.
+    """
+
+    stage_df = pd.DataFrame(stage_limit_df).copy() if stage_limit_df is not None else pd.DataFrame()
+    final_df = pd.DataFrame(final_service_limit_df).copy() if final_service_limit_df is not None else pd.DataFrame()
+    rows = [
+        _railway_stage_limit_decision_row(
+            check_stage="Transfer",
+            source_df=stage_df,
+            stage_filter="Transfer",
+            top_column="Top total (MPa)",
+            bottom_column="Bottom total (MPa)",
+            x_column="Station x (m)",
+            source_label="Stage stress-limit preview",
+            section_basis_fallback="One precast web only",
+        ),
+        _railway_stage_limit_decision_row(
+            check_stage="Lifting",
+            source_df=stage_df,
+            stage_filter="Lifting",
+            top_column="Top total (MPa)",
+            bottom_column="Bottom total (MPa)",
+            x_column="Station x (m)",
+            source_label="Stage stress-limit preview",
+            section_basis_fallback="One precast web only",
+        ),
+        _railway_stage_limit_decision_row(
+            check_stage="Wet slab casting",
+            source_df=stage_df,
+            stage_filter="Wet slab casting",
+            top_column="Top total (MPa)",
+            bottom_column="Bottom total (MPa)",
+            x_column="Station x (m)",
+            source_label="Stage stress-limit preview",
+            section_basis_fallback="One precast web only",
+        ),
+    ]
+    if int(active_sls_count or 0) <= 0:
+        rows.append(
+            {
+                "Check stage": "Final service",
+                "Decision": "REVIEW",
+                "Governing source": "Final staged service accumulation",
+                "Governing x / case": "No active SLS load case",
+                "Max utilization": pd.NA,
+                "Compression (MPa)": pd.NA,
+                "Tension (MPa)": pd.NA,
+                "Section basis": "Locked web fibers + full Railway U-Girder incremental service",
+                "Review action": "Add/activate SLS load cases in Loads before final service review.",
+            }
+        )
+    else:
+        rows.append(
+            _railway_stage_limit_decision_row(
+                check_stage="Final service",
+                source_df=final_df,
+                stage_filter=None,
+                top_column="Final top (MPa)",
+                bottom_column="Final bottom (MPa)",
+                x_column="Load Case",
+                source_label="Final staged service accumulation",
+                section_basis_fallback="Locked web fibers + full Railway U-Girder incremental service",
+            )
+        )
+    return pd.DataFrame(rows, columns=RAILWAY_UGIRDER_SLS_DECISION_SUMMARY_COLUMNS)

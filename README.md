@@ -796,3 +796,9 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Keeps load attribution guarded: Loads tab rows are treated as additional post-composite service increments to avoid double-counting automatic self-weight.
 - Adds governing rows, service-limit preview, documentation, and regression tests.
 - No ULS, geometry, prestress-loss, anchorage, transfer-length, development-length, report, or project-schema calculation changes.
+
+### SLS.RAIL.UGIRDER6 — Decision Summary + Status Polish
+
+- Added a guarded Railway U-Girder SLS decision summary for Transfer, Lifting, Wet slab casting, and Final service.
+- Decision wording is limited to `Preview PASS` / `REVIEW` and remains engineering-review level, not code-certified design.
+- No solver equations, geometry, ULS, shear/torsion, prestress-loss, report, or project-schema calculation logic changed.

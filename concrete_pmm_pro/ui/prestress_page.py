@@ -65,6 +65,7 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     system_settings_from_mapping,
 )
 from concrete_pmm_pro.serviceability.railway_u_girder_stages import (
+    railway_u_girder_sls_decision_summary_dataframe,
     railway_u_girder_final_service_accumulation_dataframe,
     railway_u_girder_final_service_governing_rows,
     railway_u_girder_final_service_limit_check_dataframe,
@@ -5772,6 +5773,33 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
                             "Max utilization": st.column_config.NumberColumn("Max utilization", format="%.3f"),
                         },
                     )
+        decision_df = railway_u_girder_sls_decision_summary_dataframe(
+            stage_limit_df=limit_df,
+            final_service_limit_df=final_limit_df,
+            active_sls_count=active_sls_count,
+        )
+        st.markdown("**Railway U-Girder SLS decision summary**")
+        st.caption(
+            "SLS.RAIL.UGIRDER6 condenses Transfer, Lifting, Wet slab casting, and Final service into a guarded decision view. "
+            "Statuses are `Preview PASS` or `REVIEW` for engineering review only; they are not code-certified design approvals."
+        )
+        st.dataframe(
+            decision_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Max utilization": st.column_config.NumberColumn("Max utilization", format="%.3f"),
+                "Compression (MPa)": st.column_config.NumberColumn("Compression (MPa)", format="%.3f"),
+                "Tension (MPa)": st.column_config.NumberColumn("Tension (MPa)", format="%.3f"),
+            },
+        )
+        if (decision_df.get("Decision", pd.Series(dtype=str)).astype(str) == "REVIEW").any():
+            st.warning(
+                "One or more Railway U-Girder SLS stages need review. Check the governing row, stress-limit profile, load attribution, and project-specific limits before using the result."
+            )
+        else:
+            st.success("All reported Railway U-Girder SLS preview stages are available for engineering review.")
+
         with st.expander("Station-by-station staged stress, limits, locked-in, service handoff, and final service accumulation", expanded=False):
             st.dataframe(
                 stress_df,
