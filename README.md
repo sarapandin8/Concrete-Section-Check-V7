@@ -844,3 +844,11 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Generic prestressed girder transfer checks now use prestress/loss `f'ci` when available, falling back to `0.8 f'c` only when no transfer strength is available.
 - Adds regression tests so a transfer-stage preview cannot silently reuse a stale service concrete strength.
 - No solver equations, geometry, section-property, prestress-loss, ULS, shear/torsion, report, or project-schema calculation logic changed.
+
+
+### SLS.TENSION.DEFAULT1 — Verified Bonded Tension Reinforcement Default
+
+- Default the SLS tensile-limit guide to `Verified bonded tension reinforcement` for all section/stage stress tabs.
+- Promote legacy Auto defaults once while preserving explicit conservative/no-tension user selections.
+- Keep `Auto from current ordinary rebar layout` available as a manual screening option.
+- No solver, material-strength routing, geometry, prestress/debonding, ULS, or report logic changes.

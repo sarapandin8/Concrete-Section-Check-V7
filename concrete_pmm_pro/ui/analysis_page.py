@@ -14424,8 +14424,22 @@ def _render_girder_tension_limit_guidance(
         "Not verified / use conservative preview",
         "No bonded reinforcement / no-tension condition",
     ]
-    if st.session_state.get(guide_method_key) not in method_options:
-        st.session_state[guide_method_key] = method_options[0]
+    # SLS.TENSION.DEFAULT1: default all SLS stage tensile-limit guides to
+    # the engineer-verified bonded reinforcement condition.  The Auto option
+    # remains available as a screening aid, but it is no longer the startup
+    # default because it can silently downgrade the tensile limit when ordinary
+    # rebar is disabled or hidden from the current preview.  A one-time
+    # migration also promotes legacy Auto defaults to the verified condition;
+    # after that, explicit user selections are preserved.
+    default_method = "Verified bonded tension reinforcement"
+    default_migration_key = f"{guide_method_key}_verified_default_applied"
+    current_method = st.session_state.get(guide_method_key)
+    if not bool(st.session_state.get(default_migration_key, False)):
+        if current_method not in method_options or current_method == "Auto from current ordinary rebar layout":
+            st.session_state[guide_method_key] = default_method
+        st.session_state[default_migration_key] = True
+    elif st.session_state.get(guide_method_key) not in method_options:
+        st.session_state[guide_method_key] = default_method
     guide_enabled = st.checkbox(
         "Use guided tensile limit profile",
         value=bool(st.session_state.get(guide_enabled_key, True)),
