@@ -86,6 +86,16 @@ from concrete_pmm_pro.reporting.traceability import (
 )
 from concrete_pmm_pro.reporting.units import UnitConvention, get_unit_conventions, unit_conventions_to_dataframe
 
+from concrete_pmm_pro.reporting.railway_u_girder_report import (
+    RAILWAY_UGIRDER_REPORT_CAPABILITY,
+    RAILWAY_UGIRDER_REPORT_STATUS,
+    RAILWAY_UGIRDER_REPORT_TABLE_KEYS,
+    RailwayUGirderSLSReportPackage,
+    build_railway_u_girder_sls_report_package,
+    is_railway_u_girder_report_context,
+    railway_u_girder_report_tables_to_dataframe,
+)
+
 __all__ = [
     "EngineeringTerm",
     "EngineeringLimitation",
@@ -103,6 +113,13 @@ __all__ = [
     "ReportTableInfo",
     "ResultTraceabilitySnapshot",
     "UnitConvention",
+    "railway_u_girder_report_tables_to_dataframe",
+    "is_railway_u_girder_report_context",
+    "build_railway_u_girder_sls_report_package",
+    "RailwayUGirderSLSReportPackage",
+    "RAILWAY_UGIRDER_REPORT_TABLE_KEYS",
+    "RAILWAY_UGIRDER_REPORT_STATUS",
+    "RAILWAY_UGIRDER_REPORT_CAPABILITY",
     "build_result_traceability_snapshot",
     "build_report_manifest",
     "build_exportable_figure",

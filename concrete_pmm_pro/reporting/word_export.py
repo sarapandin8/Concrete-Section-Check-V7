@@ -22,6 +22,7 @@ from concrete_pmm_pro.reporting.readiness import report_readiness_to_dataframe
 from concrete_pmm_pro.reporting.terminology import terminology_to_dataframe
 from concrete_pmm_pro.reporting.traceability import result_traceability_snapshot_to_dataframe
 from concrete_pmm_pro.reporting.units import unit_conventions_to_dataframe
+from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
 
 
 @dataclass(frozen=True)
@@ -290,6 +291,44 @@ def _add_figures(document: DocumentObject, manifest: ReportManifest, session_sta
                 document.add_paragraph(str(warning), style="List Bullet")
 
 
+
+def _add_railway_u_girder_sls_report_section(
+    document: DocumentObject,
+    session_state: Any | None,
+    options: ReportExportOptions,
+) -> None:
+    """Add REPORT.RAIL.UGIRDER1 guarded SLS report tables when applicable."""
+
+    package = build_railway_u_girder_sls_report_package(session_state or {})
+    if not package.available:
+        return
+    add_report_heading(document, "Railway U-Girder SLS Engineering Review", level=1)
+    document.add_paragraph(
+        "This section is generated for the Railway U-Girder staged SLS workflow. "
+        "It is an engineering-review report section only and is not a final design certification."
+    )
+    document.add_paragraph(
+        "Decision wording is limited to Preview PASS / REVIEW. Excluded checks include transfer/development length, "
+        "anchorage/end-zone bursting, lifting hardware, creep/shrinkage redistribution, ULS coupling, and final code-certified design checks."
+    )
+    for warning in package.warnings:
+        document.add_paragraph(str(warning), style="List Bullet")
+
+    table_sequence = [
+        ("Scope and Guardrails", package.scope),
+        ("Geometry Summary", package.geometry_summary),
+        ("Material and Stage Settings", package.material_stage_settings),
+        ("Stage Quantities", package.stage_quantities),
+        ("Prestress / Debonding Summary", package.prestress_debonding_summary),
+        ("Staged SLS Governing Stress Rows", package.stage_governing),
+        ("Staged SLS Limit Governing Rows", package.limit_governing),
+        ("Final Service Governing Rows", package.final_service_governing),
+        ("SLS Decision Summary", package.decision_summary),
+        ("Service Multi-Fiber Summary", package.service_multifiber_summary),
+    ]
+    for title, dataframe in table_sequence:
+        dataframe_to_word_table(document, dataframe, title=title, max_rows=options.max_table_rows)
+
 def _add_generation_notes(document: DocumentObject, manifest: ReportManifest) -> None:
     add_report_heading(document, "Report Generation Notes", level=1)
     rows = [
@@ -316,6 +355,7 @@ def build_draft_word_report(
     _add_cover(document, manifest)
     _add_executive_summary(document, manifest)
     _add_analysis_scope(document, manifest)
+    _add_railway_u_girder_sls_report_section(document, session_state, options)
 
     add_report_heading(document, "Result Traceability Snapshot", level=1)
     dataframe_to_word_table(document, result_traceability_snapshot_to_dataframe(manifest.traceability_snapshot), max_rows=options.max_table_rows)

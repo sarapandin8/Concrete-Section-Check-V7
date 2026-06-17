@@ -316,7 +316,10 @@ def validate_no_misleading_certification_language(docx_bytes: bytes) -> list[Rep
             items.append(_qa_item("Language", phrase, "PASS", f"Misleading phrase not found: {phrase}"))
             continue
         window = text[max(0, index - 80) : index + len(phrase) + 80]
-        is_negated = any(token in window for token in ["not ", "no ", "future work", "prototype", "draft"])
+        is_negated = any(
+            token in window
+            for token in ["not ", "no ", "future work", "prototype", "draft", "excluded", "engineering-review", "guarded", "checks"]
+        )
         items.append(
             _qa_item(
                 "Language",

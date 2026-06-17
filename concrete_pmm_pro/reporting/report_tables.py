@@ -12,6 +12,7 @@ from concrete_pmm_pro.reporting.report_models import ReportTableInfo
 from concrete_pmm_pro.reporting.terminology import terminology_to_dataframe
 from concrete_pmm_pro.reporting.traceability import build_result_traceability_snapshot, result_traceability_snapshot_to_dataframe
 from concrete_pmm_pro.reporting.units import unit_conventions_to_dataframe
+from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
 from concrete_pmm_pro.verification.column_pier_vt_benchmarks import benchmark_cases
 from concrete_pmm_pro.verification.pmm_published_benchmark_inventory import (
     summarize_pmm_published_benchmark_inventory,
@@ -57,6 +58,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
     readiness = check_report_readiness(snapshot)
     limitations = collect_limitations_for_report(session_state, include_all=True)
     pmm_benchmark_inventory = summarize_pmm_published_benchmark_inventory()
+    railway_report = build_railway_u_girder_sls_report_package(session_state)
 
     standard_tables = [
         ReportTableInfo(
@@ -155,6 +157,31 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
             ReportTableInfo("sls_visualization_selected_combo", "Selected SLS Visualization Data", _has_any(session_state, ["sls_visualization_dataframe", "sls_stress_visualization_selected_combo"]), "sls_visualization_dataframe", "Selected-combo SLS stress visualization source data.", row_count=_row_count(_get(session_state, "sls_visualization_dataframe"))),
         ]
     )
+    if railway_report.available:
+        railway_table_titles = {
+            "railway_u_girder_sls_scope": "Railway U-Girder SLS Report Scope",
+            "railway_u_girder_geometry_summary": "Railway U-Girder Geometry Summary",
+            "railway_u_girder_material_stage_settings": "Railway U-Girder Material and Stage Settings",
+            "railway_u_girder_stage_quantities": "Railway U-Girder Stage Quantities",
+            "railway_u_girder_prestress_debonding_summary": "Railway U-Girder Prestress / Debonding Summary",
+            "railway_u_girder_sls_stage_governing": "Railway U-Girder SLS Stage Governing Rows",
+            "railway_u_girder_sls_limit_governing": "Railway U-Girder SLS Limit Governing Rows",
+            "railway_u_girder_sls_final_service_governing": "Railway U-Girder Final Service Governing Rows",
+            "railway_u_girder_sls_decision_summary": "Railway U-Girder SLS Decision Summary",
+            "railway_u_girder_service_multifiber_summary": "Railway U-Girder Service Multi-Fiber Summary",
+        }
+        for table_key, dataframe in railway_report.tables().items():
+            standard_tables.append(
+                ReportTableInfo(
+                    table_key,
+                    railway_table_titles.get(table_key, table_key.replace("_", " ").title()),
+                    not dataframe.empty,
+                    "reporting.railway_u_girder_report",
+                    "Railway U-Girder staged SLS engineering-review report table. Guarded preview only; not final code-certified.",
+                    row_count=len(dataframe),
+                    warning="Railway U-Girder report is engineering-review preview, not final code-certified design.",
+                )
+            )
     return standard_tables
 
 

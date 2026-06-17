@@ -36,6 +36,7 @@ def default_report_section_plan(
     scope_limitation_keys: list[str] = []
     if snapshot.member_type == "beam_girder":
         scope_limitation_keys.append("beam_girder_shear_torsion")
+        scope_limitation_keys.append("railway_u_girder_sls_report_scope")
     elif snapshot.member_type == "column_pier_pmm":
         scope_limitation_keys.append("column_pier_vt_scope")
     verification_table_keys = ["pmm_verification", "hand_check_results", "sls_verification_results", "pmm_published_benchmark_inventory"]
@@ -53,6 +54,25 @@ def default_report_section_plan(
         ReportSection("uls_pmm_strength", "ULS PMM Strength Check", status=pmm_status, table_keys=["pmm_summary"], figure_keys=[key for key in ["pmm_interaction_surface", "pmm_mux_muy_slice"] if key in figure_keys], limitation_keys=["neutral_axis_sweep_resolution", "prestress_axial_cap"]),
         ReportSection("uls_dc_summary", "ULS Demand / Capacity Summary", status=dc_status, table_keys=["uls_demand_capacity_result", "pmm_slice", "pmm_slice_envelope"], figure_keys=["pmm_slice_envelope"] if "pmm_slice_envelope" in figure_keys else [], limitation_keys=["dc_directional_slice_envelope", "convex_hull_slice_envelope"]),
         ReportSection("sls_stress_check", "SLS Stress Check", status=sls_status, table_keys=["sls_stress_results", "sls_prestress_contribution", "transformed_section_properties"], figure_keys=[key for key in ["sls_section_stress_points", "sls_stress_bar_diagram", "transformed_section_preview"] if key in figure_keys], limitation_keys=["ixy_coupling_sls", "cracked_section_sls", "unbonded_prestress"]),
+        ReportSection(
+            "railway_u_girder_sls_engineering_review",
+            "Railway U-Girder SLS Engineering Review",
+            status="AVAILABLE" if snapshot.member_type == "beam_girder" else "NOT_APPLICABLE",
+            summary="Railway U-Girder staged SLS report-ready section when the active preset is Railway U-Girder; guarded engineering-review only, not final code-certified.",
+            table_keys=[
+                "railway_u_girder_sls_scope",
+                "railway_u_girder_geometry_summary",
+                "railway_u_girder_material_stage_settings",
+                "railway_u_girder_stage_quantities",
+                "railway_u_girder_prestress_debonding_summary",
+                "railway_u_girder_sls_stage_governing",
+                "railway_u_girder_sls_limit_governing",
+                "railway_u_girder_sls_final_service_governing",
+                "railway_u_girder_sls_decision_summary",
+                "railway_u_girder_service_multifiber_summary",
+            ],
+            limitation_keys=["railway_u_girder_sls_report_scope", "beam_girder_shear_torsion"],
+        ),
         ReportSection("cracking_classification", "No-Tension / Decompression / Cracking Classification", status=crack_status, table_keys=["cracking_classification"], figure_keys=["cracking_classification_overlay"] if "cracking_classification_overlay" in figure_keys else [], limitation_keys=["cracked_section_sls", "crack_width_check"]),
         ReportSection("sls_visualization", "SLS Stress Visualization", status="AVAILABLE" if snapshot.sls_result_available else "MISSING", table_keys=["sls_visualization_selected_combo"], figure_keys=[key for key in ["sls_section_stress_points", "sls_stress_bar_diagram"] if key in figure_keys]),
         ReportSection("verification", "Verification and Benchmark Checks", status="AVAILABLE" if verification_available else "PARTIAL", table_keys=verification_table_keys),

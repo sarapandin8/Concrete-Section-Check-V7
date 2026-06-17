@@ -125,6 +125,16 @@ def get_engineering_limitations() -> list[EngineeringLimitation]:
             "Use the dedicated Beam/Girder ULS/SLS workspaces for scoped preview checks and perform independent final design review for excluded items.",
         ),
         EngineeringLimitation(
+            "railway_u_girder_sls_report_scope",
+            "Railway U-Girder SLS report scope",
+            "ENGINEERING_REVIEW",
+            "HIGH",
+            "Railway U-Girder",
+            "Railway U-Girder report output is an SLS engineering-review report section only.",
+            "It summarizes staged SLS preview checks and guarded decision summaries; it is not a final code-certified design and excludes transfer/development length, anchorage/end-zone bursting, lifting hardware, creep/shrinkage redistribution, and ULS coupling.",
+            "Use the generated report as review evidence and complete independent final design checks for excluded items before issue.",
+        ),
+        EngineeringLimitation(
             "column_pier_vt_scope",
             "Column/Pier shear, torsion, and V+T scope",
             "GUARDED_SCOPE",
@@ -299,6 +309,7 @@ def collect_limitations_for_report(session_state: Any = None, include_all: bool 
         relevant_keys.add("lightweight_concrete_ec")
     if _detect_member_type(session_state) == "beam_girder":
         relevant_keys.add("beam_girder_shear_torsion")
+        relevant_keys.add("railway_u_girder_sls_report_scope")
     if _detect_member_type(session_state) == "column_pier_pmm":
         relevant_keys.add("column_pier_vt_scope")
     selected.extend(item for item in limitations if item.key in relevant_keys)

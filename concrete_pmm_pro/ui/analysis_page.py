@@ -94,6 +94,9 @@ from concrete_pmm_pro.reporting import (
     build_report_manifest,
     build_draft_word_report,
     build_exportable_figure,
+    build_railway_u_girder_sls_report_package,
+    is_railway_u_girder_report_context,
+    railway_u_girder_report_tables_to_dataframe,
     build_report_figure_context,
     check_report_readiness,
     collect_available_report_figures,
@@ -16030,6 +16033,54 @@ def _render_serviceability_expander() -> None:
             st.info("Run the elastic SLS stress check to populate stress results.")
 
 
+
+def _render_railway_u_girder_report_preview_panel() -> None:
+    """Render REPORT.RAIL.UGIRDER1 report-ready SLS tables in Report / QA."""
+
+    if not is_railway_u_girder_report_context(st.session_state):
+        return
+    st.markdown("**Railway U-Girder SLS Engineering Review Report**")
+    st.info(
+        "REPORT.RAIL.UGIRDER1 adds report-ready tables for the Railway U-Girder staged SLS workflow. "
+        "This is an engineering-review report section only; it is not a final code-certified design check."
+    )
+    package = build_railway_u_girder_sls_report_package(st.session_state)
+    st.session_state["railway_u_girder_sls_report_package_available"] = bool(package.available)
+    registry_df = railway_u_girder_report_tables_to_dataframe(package)
+    cols = st.columns(4)
+    cols[0].metric("Report status", "Available" if package.available else "Review")
+    cols[1].metric("Report tables", f"{len(registry_df):,}")
+    cols[2].metric("Warnings", f"{len(package.warnings):,}")
+    cols[3].metric("Certification", "Not final")
+    if package.warnings:
+        for warning in package.warnings:
+            st.warning(warning)
+    st.dataframe(registry_df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "Download Railway U-Girder Report Table Registry CSV",
+        data=registry_df.to_csv(index=False),
+        file_name="railway_u_girder_sls_report_table_registry.csv",
+        mime="text/csv",
+        use_container_width=True,
+        key="ui_keys1_analysis_page_download_button_rail_report_registry_1",
+    )
+    if not package.available:
+        st.warning("Railway U-Girder report package is not available. Review geometry, stage settings, and strand layout before exporting the draft report.")
+        return
+    report_tables = package.tables()
+    for key, dataframe in report_tables.items():
+        title = key.replace("railway_u_girder_", "").replace("_", " ").title()
+        with st.expander(f"Railway U-Girder · {title}", expanded=(key == "railway_u_girder_sls_decision_summary")):
+            st.dataframe(dataframe, use_container_width=True, hide_index=True)
+            st.download_button(
+                f"Download {title} CSV",
+                data=dataframe.to_csv(index=False),
+                file_name=f"{key}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key=f"ui_keys1_analysis_page_download_button_{key}",
+            )
+
 def _render_pre_report_qa_expander() -> None:
     with st.expander("Pre-Report QA / Result Traceability", expanded=False):
         st.info(
@@ -16132,6 +16183,7 @@ def _render_pre_report_qa_expander() -> None:
 
         st.markdown("**Report Export Foundation**")
         st.info("Report manifest, draft outline, draft Word export, and Word report QA are available. PDF export remains future work.")
+        _render_railway_u_girder_report_preview_panel()
         meta_cols = st.columns(2)
         report_title = meta_cols[0].text_input(
             "Report title",

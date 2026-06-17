@@ -908,3 +908,11 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Promote legacy Auto defaults once while preserving explicit conservative/no-tension user selections.
 - Keep `Auto from current ordinary rebar layout` available as a manual screening option.
 - No solver, material-strength routing, geometry, prestress/debonding, ULS, or report logic changes.
+
+### REPORT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Report Section
+
+- Adds a report-ready Railway U-Girder staged SLS engineering-review package to Report / QA and Draft Word Report export.
+- Exposes guarded tables for geometry, material/stage settings, stage quantities, prestress/debonding, governing staged SLS rows, final service rows, decision summary, and service multi-fiber web/slab stress summary.
+- Keeps decision wording limited to `Preview PASS` / `REVIEW` and explicitly states the output is not final code-certified design.
+- Adds a Railway U-Girder report-scope limitation so exported reports disclose excluded checks such as transfer/development length, anchorage/end-zone, lifting hardware, creep/shrinkage redistribution, ULS coupling, and final certified design checks.
+- No solver equation, prestress force, debond participation, geometry, section-property, ULS, or project-schema calculation logic changed.
