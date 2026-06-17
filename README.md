@@ -1,5 +1,13 @@
 ## Latest milestone
 
+### SLS.RAIL.UGIRDER7 — Dedicated Railway U-Girder lifting stage tab
+- Adds a Railway-only `Lifting stage` tab to the Beam/Girder SLS stress workspace.
+- The lifting preview uses one precast web, Pe_transfer, station-based debond participation, two-point lifting moment, a/L from stage settings, and the lifting impact factor.
+- Lifting limit guidance routes to web f'ci, not final web f'c.
+- Other Beam/Girder workflows keep the existing Transfer / Construction / Service tabs.
+- No ULS, anchorage, transfer/development length, lifting-insert, geometry, or report logic changes.
+
+
 ### SLS.MATERIAL.ROUTING4 — Canonical Transfer Stage Strength Hotfix
 
 - Fixed the actual remaining visible Transfer-stage tensile-guide bug: canonical code-limit labels such as `Transfer / Release` now route directly to the stage material source instead of being remapped to `User-defined` and falling through to service `f'c`.

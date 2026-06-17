@@ -174,6 +174,9 @@ from concrete_pmm_pro.serviceability.girder_prestress_station import (
     evaluate_girder_prestress_station,
     station_candidates_from_debonding,
 )
+from concrete_pmm_pro.serviceability.railway_u_girder_stages import (
+    railway_u_girder_staged_stress_preview_dataframe,
+)
 from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     BEAM_GIRDER_SYSTEM_SETTINGS_KEY,
     BEAM_GIRDER_SLS_AUTO_LOAD_SETTINGS_KEY,
@@ -10971,6 +10974,8 @@ def _beam_sls_stage_label_for_analysis(value: object) -> str:
         return ""
     if "transfer" in cf or "release" in cf:
         return "Transfer stage"
+    if "lifting" in cf or "handling" in cf or "hoisting" in cf:
+        return "Lifting stage"
     if "construction" in cf or "deck" in cf or "pre-composite" in cf or "pre composite" in cf or "wet" in cf:
         return "Construction stage"
     if "service" in cf or "final" in cf or "post-composite" in cf or "post composite" in cf or "composite service" in cf:
@@ -10984,6 +10989,8 @@ def _beam_sls_component_for_analysis(stage: object, component: object = "") -> s
     label = _beam_sls_stage_label_for_analysis(stage)
     if label == "Transfer stage":
         return "Girder self-weight"
+    if label == "Lifting stage":
+        return "Two-point lifting self-weight with impact"
     if label == "Construction stage":
         return "Girder self-weight + wet deck/topping"
     if label == "Service stage":
@@ -11136,13 +11143,30 @@ def _beam_sls_load_row_summary_cards(row: Mapping[str, object]) -> list[dict[str
 
 
 def _beam_sls_stage_tab_specs() -> list[tuple[str, str, str]]:
-    """Return commercial three-stage SLS analysis tab metadata."""
+    """Return commercial Beam/Girder SLS analysis tab metadata.
 
-    return [
+    SLS.RAIL.UGIRDER7 adds a dedicated Railway U-Girder lifting tab because
+    the temporary two-point lifting check is not the same engineering state as
+    transfer/release, construction, or final service.  Other Beam/Girder
+    workflows keep the prior three-stage view to avoid adding irrelevant tabs.
+    """
+
+    specs: list[tuple[str, str, str]] = [
         ("transfer", "Transfer stage", "Precast girder self-weight + transfer prestress check context"),
-        ("construction", "Construction stage", "Precast girder plus wet deck/topping on precast gross section"),
-        ("service", "Service stage", "Final service total SLS resultant on the intended service basis"),
     ]
+    if _is_railway_u_girder_active_for_sls_material_routing():
+        specs.append((
+            "lifting",
+            "Lifting stage",
+            "Railway U-Girder temporary two-point lifting: one precast web, transfer Pe, self-weight with lifting impact",
+        ))
+    specs.extend(
+        [
+            ("construction", "Construction stage", "Precast girder plus wet deck/topping on precast gross section"),
+            ("service", "Service stage", "Final service total SLS resultant on the intended service basis"),
+        ]
+    )
+    return specs
 
 
 def _beam_sls_rows_for_stage(rows: list[dict[str, object]], stage_label: str) -> list[dict[str, object]]:
@@ -11155,6 +11179,8 @@ def _beam_sls_stage_default_code_limit_stage(stage_label: str) -> str:
     """Map simplified Load-stage tabs to code-limit stage defaults."""
 
     if stage_label == "Transfer stage":
+        return "Transfer / Release"
+    if stage_label == "Lifting stage":
         return "Transfer / Release"
     if stage_label == "Construction stage":
         return "Deck casting / Pre-composite"
@@ -11191,6 +11217,8 @@ def _girder_sls_stage_pe_value_from_station(station_result: object, stage_label:
 
     normalized = _beam_sls_stage_label_for_analysis(stage_label)
     if normalized == "Transfer stage":
+        return float(getattr(station_result, "pe_transfer_eff_kN", 0.0) or 0.0)
+    if normalized == "Lifting stage":
         return float(getattr(station_result, "pe_transfer_eff_kN", 0.0) or 0.0)
     if normalized == "Construction stage":
         return float(getattr(station_result, "pe_construction_eff_kN", 0.0) or 0.0)
@@ -11269,6 +11297,8 @@ def _girder_sls_default_case_name_for_stage(stage_label: str) -> str:
     prefix = "BLDG" if is_building_beam_girder_workflow(_analysis_mode_from_session()) else "AUTO"
     if stage == "Transfer stage":
         return f"{prefix}-TR"
+    if stage == "Lifting stage":
+        return f"{prefix}-LIFT"
     if stage == "Construction stage":
         return f"{prefix}-CONST"
     if stage == "Service stage":
@@ -11330,6 +11360,107 @@ def _girder_sls_stage_rows_with_auto_station_grid(
     return generated
 
 
+def _railway_u_girder_lifting_full_length_sls_dataframe(
+    *,
+    load_rows: list[dict[str, object]],
+    span_length_m: float,
+) -> pd.DataFrame:
+    """Return Railway U-Girder lifting-stage rows for the Analysis SLS diagram.
+
+    SLS.RAIL.UGIRDER7 keeps the dedicated Analysis-page Lifting tab consistent
+    with the Railway U-Girder staged preview: one precast web only, Pe_transfer,
+    and a two-point lifting moment with the editable lifting impact factor.
+    This is a presentation/preview handoff; it does not alter ULS, anchorage,
+    transfer-length, or general serviceability solvers.
+    """
+
+    geometry = st.session_state.get("section_geometry")
+    if geometry is None:
+        return pd.DataFrame()
+    strand_table = st.session_state.get("girder_strand_layout_table")
+    settings = st.session_state.get("railway_u_girder_stage_settings") or {}
+    if not isinstance(settings, Mapping):
+        settings = {}
+    stations = sorted({_analysis_float_or_zero(row.get("Station x (m)")) for row in load_rows})
+    stations = [x for x in stations if 0.0 <= x <= max(float(span_length_m), 0.0)]
+    if not stations:
+        stations = _girder_sls_auto_station_grid(span_length_m)
+    try:
+        preview = railway_u_girder_staged_stress_preview_dataframe(
+            geometry=geometry,
+            settings=settings,
+            strand_table=pd.DataFrame(strand_table) if strand_table is not None else None,
+            span_length_m=span_length_m,
+            stations_m=stations,
+        )
+    except Exception as exc:  # guarded UI preview path
+        return pd.DataFrame(
+            [
+                {
+                    "Station x (m)": 0.0,
+                    "Case Name": _girder_sls_default_case_name_for_stage("Lifting stage"),
+                    "Stage": "Lifting stage",
+                    "Basis": "Railway U-Girder lifting unavailable",
+                    "N (kN)": 0.0,
+                    "User Mx (kN-m)": 0.0,
+                    "Auto Mx (kN-m)": 0.0,
+                    "Mx (kN-m)": 0.0,
+                    "Auto Vy (kN)": 0.0,
+                    "Auto load w (kN/m)": 0.0,
+                    "Auto load components": f"Railway U-Girder lifting preview unavailable: {exc}",
+                    "Pe stage (kN)": 0.0,
+                    "yps eff (mm)": None,
+                    "Top service (MPa)": 0.0,
+                    "Bottom service (MPa)": 0.0,
+                    "Top PS (MPa)": 0.0,
+                    "Bottom PS (MPa)": 0.0,
+                    "Top total (MPa)": 0.0,
+                    "Bottom total (MPa)": 0.0,
+                    "Max compression (MPa)": 0.0,
+                    "Max tension (MPa)": 0.0,
+                    "Active PS groups": "Unavailable",
+                }
+            ]
+        )
+    if preview.empty:
+        return pd.DataFrame()
+    lift = preview[preview["Stage"].astype(str).str.casefold() == "lifting"].copy()
+    if lift.empty:
+        return pd.DataFrame()
+    case_name = _girder_sls_default_case_name_for_stage("Lifting stage")
+    rows: list[dict[str, object]] = []
+    for _, row in lift.sort_values("Station x (m)").iterrows():
+        top_total = _analysis_float_or_zero(row.get("Top total (MPa)", row.get("Top service+Pe (MPa)")))
+        bottom_total = _analysis_float_or_zero(row.get("Bottom total (MPa)", row.get("Bottom service+Pe (MPa)")))
+        rows.append(
+            {
+                "Station x (m)": _analysis_float_or_zero(row.get("Station x (m)")),
+                "Case Name": case_name,
+                "Stage": "Lifting stage",
+                "Basis": "Railway U-Girder one-web lifting section",
+                "N (kN)": 0.0,
+                "User Mx (kN-m)": 0.0,
+                "Auto Mx (kN-m)": _analysis_float_or_zero(row.get("Auto Mx (kN-m)")),
+                "Mx (kN-m)": _analysis_float_or_zero(row.get("Auto Mx (kN-m)")),
+                "Auto Vy (kN)": 0.0,
+                "Auto load w (kN/m)": _analysis_float_or_zero(row.get("Auto load w (kN/m)")),
+                "Auto load components": str(row.get("Preview note") or "one-web self-weight × lifting impact; two-point lifting moment"),
+                "Pe stage (kN)": _analysis_float_or_zero(row.get("Pe stage (kN)")),
+                "yps eff (mm)": row.get("yps eff (mm from bottom)"),
+                "Top service (MPa)": None,
+                "Bottom service (MPa)": None,
+                "Top PS (MPa)": None,
+                "Bottom PS (MPa)": None,
+                "Top total (MPa)": top_total,
+                "Bottom total (MPa)": bottom_total,
+                "Max compression (MPa)": min(top_total, bottom_total),
+                "Max tension (MPa)": max(top_total, bottom_total),
+                "Active PS groups": row.get("Active group IDs", ""),
+            }
+        )
+    return pd.DataFrame(rows).sort_values(["Case Name", "Station x (m)"]).reset_index(drop=True)
+
+
 def _girder_full_length_sls_stage_rows(
     *,
     stage_label: str,
@@ -11345,6 +11476,12 @@ def _girder_full_length_sls_stage_rows(
     it does not change any solver, load table, prestress table, or code-limit
     formula.
     """
+
+    if _beam_sls_stage_label_for_analysis(stage_label) == "Lifting stage" and _is_railway_u_girder_active_for_sls_material_routing():
+        return _railway_u_girder_lifting_full_length_sls_dataframe(
+            load_rows=_girder_sls_stage_rows_with_auto_station_grid(stage_label, load_rows, span_length_m),
+            span_length_m=span_length_m,
+        )
 
     load_rows = _girder_sls_stage_rows_with_auto_station_grid(stage_label, load_rows, span_length_m)
     strand_table = st.session_state.get("girder_strand_layout_table")
@@ -11890,6 +12027,13 @@ def _girder_sls4c_action_hints(
                     "Check f'ci, end-zone bursting/splitting reinforcement, and local release-zone detailing before accepting the layout.",
                 ]
             )
+    elif stage_label == "Lifting stage":
+        hints.extend(
+            [
+                "Review lifting point a/L, lifting impact factor, temporary support hardware, and whether the one-web section controls during handling.",
+                "Check f'ci at lifting, strand release force, end-zone detailing, and lifting insert/local stresses before accepting the preview result.",
+            ]
+        )
     elif stage_label == "Construction stage":
         hints.extend(
             [
@@ -11958,7 +12102,7 @@ def _render_girder_sls4b_combined_stage_result_table(
 
     st.markdown("##### Governing station / stage result summary")
     st.caption(
-        "GIRDER.SLS4B summarizes Transfer, Construction, and Service in one decision table. "
+        "GIRDER.SLS4B summarizes Transfer, Railway lifting where applicable, Construction, and Service in one decision table. "
         "It reports actual stress versus the matching preview limit, utilization, governing station, and controlling fiber."
     )
     if not beam_sls_rows:
@@ -13303,7 +13447,7 @@ def _render_girder_full_length_sls_diagram(
     with st.expander("Full-length diagram assumptions", expanded=False):
         st.write("- Loads page station rows provide user/imported N and Mx. When station rows are missing or only one station is available, GIRDER.SLS5A generates a span station grid for auto load + Pe(x) plotting.")
         # Legacy SLS5A source phrase retained: Service auto load = SDL after composite only.
-        st.write("- Transfer auto load = precast self-weight; Construction auto load = precast self-weight + wet topping/slab. Bridge Service auto load = bridge SDL after composite; Building Service auto load = Building SDL/LL from Loads (q × tributary width).")
+        st.write("- Transfer auto load = precast self-weight; Railway U-Girder Lifting auto load = one-web self-weight × lifting impact with two-point lifting moment; Construction auto load = precast self-weight + wet topping/slab. Bridge Service auto load = bridge SDL after composite; Building Service auto load = Building SDL/LL from Loads (q × tributary width).")
         st.write("- Stage Pe is read from the current Prestress Force States / Losses backend values at each station, including debonded-strand step-function effectiveness.")
         st.write("- The graph connects station rows for one Case Name; it does not generate an envelope. Auto station rows carry zero user Mx unless imported/user rows are present at that station.")
         st.write("- Preview limit lines use the Project Design Code SLS profile for the active stage. The limit stage is not user-selected inside a stage tab.")
@@ -15023,7 +15167,7 @@ def _render_beam_girder_service_stress_preview() -> None:
     # Legacy source phrase retained for regression tests: Default view is for checking top/bottom stresses along the girder length.
     st.markdown("##### SLS result workspace")
     st.caption(
-        "Default view is for checking top/bottom stresses along the member length in Transfer, Construction, and Service. "
+        "Default view is for checking top/bottom stresses along the member length in Transfer, Railway lifting where applicable, Construction, and Service. "
         "For Building workflow, Transfer/Construction use auto self-weight/topping where possible and Service uses Building SDL/LL from Loads. "
         "It shows code basis, stress diagram, governing result, and action hints first; audit/detail controls stay collapsed below each stage."
     )
