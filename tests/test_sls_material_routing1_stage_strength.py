@@ -68,11 +68,68 @@ def test_generic_prestressed_girder_transfer_uses_fci_not_final_fc() -> None:
         _restore_session_state(backup)
 
 
+def test_railway_u_girder_transfer_strength_routes_from_geometry_metadata_when_selector_missing() -> None:
+    from concrete_pmm_pro.geometry.generators import railway_u_girder
+
+    geometry = railway_u_girder(
+        width_mm=5500.0,
+        depth_mm=1600.0,
+        top_wall_width_mm=600.0,
+        bottom_side_width_mm=650.0,
+        haunch_x_mm=300.0,
+        haunch_y_mm=300.0,
+        h1_step_height_mm=670.0,
+        h2_bottom_opening_mm=305.0,
+        h3_floor_side_thickness_mm=395.0,
+        h4_floor_center_thickness_mm=450.0,
+    )
+    _state, backup = _with_session_state(
+        {
+            # Stale/missing selector condition reproduced from Analysis reroute paths.
+            "section_preset_key": "parametric_i_girder",
+            "section_geometry": geometry,
+            "concrete_material": ConcreteMaterial(name="C45_PRECAST", fc_MPa=45.0, density_kg_m3=2400.0),
+            "railway_u_girder_stage_settings": {
+                "web_fc_MPa": 45.0,
+                "web_fci_MPa": 36.0,
+                "slab_fc_MPa": 35.0,
+            },
+        }
+    )
+    try:
+        transfer = analysis_page._stage_material_strength_values_for_sls_limit_preview("Transfer stage")
+        assert transfer["strength_MPa"] == pytest.approx(36.0)
+        assert "Railway U-Girder" in str(transfer["audit_note"])
+    finally:
+        _restore_session_state(backup)
+
+
+def test_railway_u_girder_transfer_strength_routes_from_display_name_when_geometry_unavailable() -> None:
+    _state, backup = _with_session_state(
+        {
+            "section_preset_name": "Railway U-Girder",
+            "concrete_material": ConcreteMaterial(name="C45_PRECAST", fc_MPa=45.0, density_kg_m3=2400.0),
+            "railway_u_girder_stage_settings": {
+                "web_fc_MPa": 45.0,
+                "web_fci_MPa": 36.0,
+                "slab_fc_MPa": 35.0,
+            },
+        }
+    )
+    try:
+        transfer = analysis_page._stage_material_strength_values_for_sls_limit_preview("Transfer stage")
+        assert transfer["strength_MPa"] == pytest.approx(36.0)
+    finally:
+        _restore_session_state(backup)
+
+
 def test_stage_strength_routing_is_threaded_into_analysis_page_source() -> None:
     from pathlib import Path
 
     source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
     assert "SLS.MATERIAL.ROUTING1" in source
+    assert "SLS.MATERIAL.ROUTING2" in source
     assert "web f'ci at transfer / release" in source
     assert "_stage_material_strength_values_for_sls_limit_preview(locked_stage_label or stage)" in source
     assert "must not reuse a stale service f'c" in source
+    assert "geometry metadata before the" in source

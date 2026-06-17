@@ -13660,25 +13660,61 @@ def _render_girder_sls_check_case_panel(
 
 
 def _active_section_preset_key_for_sls_material_routing() -> str:
-    """Return the active section preset key used by SLS material-strength routing."""
+    """Return the active section preset key used by SLS material-strength routing.
 
-    preset = str(st.session_state.get("section_preset_key") or "").strip()
-    if preset:
-        return preset
+    SLS.MATERIAL.ROUTING2 deliberately checks geometry metadata before the
+    session-state preset key.  Analysis pages can be revisited after project
+    load/rerun sequences where ``section_preset_key`` is stale or missing, but
+    the accepted concrete geometry still carries the actual preset metadata.
+    Material-strength routing must follow the active generated section, not a
+    stale UI selector value.
+    """
+
     geometry = st.session_state.get("section_geometry")
     metadata = getattr(geometry, "metadata", {}) or {}
     if isinstance(metadata, Mapping):
-        for key in ("preset", "generator", "preset_key"):
+        for key in ("preset", "generator", "preset_key", "section_preset_key"):
             value = str(metadata.get(key) or "").strip()
             if value:
                 return value
+
+    # Fall back to session state only when geometry metadata is unavailable.
+    preset = str(st.session_state.get("section_preset_key") or "").strip()
+    if preset:
+        return preset
     return ""
 
 
 def _is_railway_u_girder_active_for_sls_material_routing() -> bool:
-    """Return True when the active SLS preview is for the Railway U-Girder preset."""
+    """Return True when the active SLS preview is for the Railway U-Girder preset.
 
-    return _active_section_preset_key_for_sls_material_routing() == "railway_u_girder"
+    The prior SLS.MATERIAL.ROUTING1 fix was too narrow: some Analysis routes
+    still reached the generic girder stress-limit guide with a stale or missing
+    ``section_preset_key`` and therefore displayed final web f'c as transfer
+    f'ci.  Use multiple, ordered signals so the stress-limit guide cannot miss
+    an active Railway U-Girder generated section.
+    """
+
+    preset_key = _active_section_preset_key_for_sls_material_routing().casefold()
+    if preset_key == "railway_u_girder":
+        return True
+
+    for state_key in ("section_preset_name", "active_section_preset_name"):
+        label = str(st.session_state.get(state_key) or "").casefold()
+        if "railway" in label and "u-girder" in label:
+            return True
+
+    geometry = st.session_state.get("section_geometry")
+    geometry_name = str(getattr(geometry, "name", "") or "").casefold()
+    if "railway" in geometry_name and "u-girder" in geometry_name:
+        return True
+    metadata = getattr(geometry, "metadata", {}) or {}
+    if isinstance(metadata, Mapping):
+        for key in ("girder_type", "display_name", "name"):
+            label = str(metadata.get(key) or "").casefold()
+            if "railway" in label and "u-girder" in label:
+                return True
+    return False
 
 
 def _positive_float_or_default(value: object, default: float) -> float:

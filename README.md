@@ -803,6 +803,14 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Decision wording is limited to `Preview PASS` / `REVIEW` and remains engineering-review level, not code-certified design.
 - No solver equations, geometry, ULS, shear/torsion, prestress-loss, report, or project-schema calculation logic changed.
 
+
+### SLS.MATERIAL.ROUTING2 — Robust Stage Material Routing for SLS Diagram Guide
+
+- Fixes a missed Analysis-page route where the full-length SLS tensile-limit guide could still show final concrete `f'c` as transfer `f'ci` when `section_preset_key` was stale/missing.
+- Railway U-Girder detection now prioritizes generated section geometry metadata, then falls back to section display names and session-state keys.
+- Protects Transfer/Lifting routing to precast web `f'ci = 36 MPa` for Railway U-Girder while retaining Construction as web `f'c` and Service extreme-fiber preview as web `f'c` with CIP slab `f'c` audit notes.
+- No solver equation, geometry, section-property, prestress-loss, ULS, shear/torsion, report, or project-schema calculation logic changed.
+
 ### SLS.MATERIAL.ROUTING1 — Stage Material Strength Routing Audit and Correction
 
 - Corrects Beam/Girder SLS stress-limit preview material routing so Transfer/Release checks use `f'ci` instead of final `f'c` where applicable.
