@@ -1,3 +1,13 @@
+## Latest milestone
+
+### SLS.MATERIAL.ROUTING3 — Visible Transfer Guide Stage-Strength Hotfix
+
+- Fixed the remaining visible SLS tensile guide route that could still show final concrete `f'c` as transfer `f'ci` for Railway U-Girder after Analysis reruns or stale selector paths.
+- Broadened Railway U-Girder detection from section parameters and geometry metadata parameters.
+- Made the visible tensile guide consume the same stage-routed material-strength helper as the diagram controls.
+- Added regression tests for stale generic selector + stale generic transfer `fci = f'c` conditions.
+- No solver, geometry, ULS, prestress-loss, report, or project-schema calculation changes.
+
 
 ### SLS.RAIL.UGIRDER3 — Locked-In Staged Stress Accumulation Handoff
 

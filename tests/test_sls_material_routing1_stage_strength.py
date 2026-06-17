@@ -133,3 +133,70 @@ def test_stage_strength_routing_is_threaded_into_analysis_page_source() -> None:
     assert "_stage_material_strength_values_for_sls_limit_preview(locked_stage_label or stage)" in source
     assert "must not reuse a stale service f'c" in source
     assert "geometry metadata before the" in source
+
+
+def test_railway_u_girder_transfer_strength_routes_from_section_parameters_when_other_signals_are_stale() -> None:
+    _state, backup = _with_session_state(
+        {
+            # Reproduce the Analysis-page failure mode: stale generic selector and
+            # stale generic transfer fci must not override Railway U-Girder stage settings.
+            "section_preset_key": "parametric_i_girder",
+            "section_parameters": {
+                "width_mm": 5500.0,
+                "depth_mm": 1600.0,
+                "top_wall_width_mm": 600.0,
+                "bottom_side_width_mm": 650.0,
+                "h1_step_height_mm": 670.0,
+                "h2_bottom_opening_mm": 305.0,
+                "h3_floor_side_thickness_mm": 395.0,
+                "h4_floor_center_thickness_mm": 450.0,
+            },
+            "concrete_material": ConcreteMaterial(name="C45_PRECAST", fc_MPa=45.0, density_kg_m3=2400.0),
+            "girder_code_loss_fci_mpa": 45.0,
+            "girder_prestress_system_settings": {"fci_MPa": 45.0},
+            "railway_u_girder_stage_settings": {
+                "web_fc_MPa": 45.0,
+                "web_fci_MPa": 36.0,
+                "slab_fc_MPa": 35.0,
+                "construction_method": "Case B - wet slab carried by precast webs",
+            },
+        }
+    )
+    try:
+        transfer = analysis_page._stage_material_strength_values_for_sls_limit_preview("Transfer stage")
+        assert transfer["strength_MPa"] == pytest.approx(36.0)
+        assert "web f'ci" in str(transfer["strength_label"])
+    finally:
+        _restore_session_state(backup)
+
+
+def test_railway_u_girder_transfer_strength_routes_from_stage_settings_guarded_fallback() -> None:
+    _state, backup = _with_session_state(
+        {
+            "section_preset_key": "parametric_i_girder",
+            "concrete_material": ConcreteMaterial(name="C45_PRECAST", fc_MPa=45.0, density_kg_m3=2400.0),
+            "girder_code_loss_fci_mpa": 45.0,
+            "railway_u_girder_stage_settings": {
+                "web_fc_MPa": 45.0,
+                "web_fci_MPa": 36.0,
+                "slab_fc_MPa": 35.0,
+                "construction_method": "Case B - wet slab carried by precast webs",
+            },
+        }
+    )
+    try:
+        transfer = analysis_page._stage_material_strength_values_for_sls_limit_preview("Transfer stage")
+        assert transfer["strength_MPa"] == pytest.approx(36.0)
+    finally:
+        _restore_session_state(backup)
+
+
+def test_visible_tensile_guide_uses_stage_routed_strength_not_generic_fc_helper() -> None:
+    from pathlib import Path
+
+    source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
+    assert "SLS.MATERIAL.ROUTING3" in source
+    assert "guide_stage_strength = _stage_material_strength_values_for_sls_limit_preview(stage)" in source
+    assert "guide_strength_label" in source
+    assert "guide_strength_note" in source
+    assert "Tension formula substitution" in source

@@ -13662,7 +13662,7 @@ def _render_girder_sls_check_case_panel(
 def _active_section_preset_key_for_sls_material_routing() -> str:
     """Return the active section preset key used by SLS material-strength routing.
 
-    SLS.MATERIAL.ROUTING2 deliberately checks geometry metadata before the
+    SLS.MATERIAL.ROUTING2/3 deliberately checks geometry metadata before the
     session-state preset key.  Analysis pages can be revisited after project
     load/rerun sequences where ``section_preset_key`` is stale or missing, but
     the accepted concrete geometry still carries the actual preset metadata.
@@ -13704,6 +13704,26 @@ def _is_railway_u_girder_active_for_sls_material_routing() -> bool:
         if "railway" in label and "u-girder" in label:
             return True
 
+    # SLS.MATERIAL.ROUTING3: Analysis rerun paths can lose the display label
+    # and even keep a stale selector while durable Section Builder parameters
+    # still describe the Railway U-Girder geometry.  Detect the rail preset from
+    # its distinctive parameter set before falling back to generic prestressed
+    # girder f'ci settings.
+    for params_key in ("section_parameters", "active_section_parameters"):
+        params = st.session_state.get(params_key)
+        if isinstance(params, Mapping):
+            parameter_keys = {str(key) for key in params.keys()}
+            railway_keys = {
+                "h1_step_height_mm",
+                "h2_bottom_opening_mm",
+                "h3_floor_side_thickness_mm",
+                "h4_floor_center_thickness_mm",
+            }
+            if railway_keys.issubset(parameter_keys):
+                return True
+            if str(params.get("preset") or params.get("section_preset_key") or "").casefold() == "railway_u_girder":
+                return True
+
     geometry = st.session_state.get("section_geometry")
     geometry_name = str(getattr(geometry, "name", "") or "").casefold()
     if "railway" in geometry_name and "u-girder" in geometry_name:
@@ -13713,6 +13733,32 @@ def _is_railway_u_girder_active_for_sls_material_routing() -> bool:
         for key in ("girder_type", "display_name", "name"):
             label = str(metadata.get(key) or "").casefold()
             if "railway" in label and "u-girder" in label:
+                return True
+        if str(metadata.get("preset") or "").casefold() == "railway_u_girder":
+            return True
+        params = metadata.get("parameters")
+        if isinstance(params, Mapping):
+            parameter_keys = {str(key) for key in params.keys()}
+            railway_keys = {
+                "h1_step_height_mm",
+                "h2_bottom_opening_mm",
+                "h3_floor_side_thickness_mm",
+                "h4_floor_center_thickness_mm",
+            }
+            if railway_keys.issubset(parameter_keys):
+                return True
+
+    # Last guarded fallback for the active rail staged workflow.  This is only
+    # accepted when the stage settings carry the Railway-specific construction
+    # method/default material triplet; it prevents the Transfer guide from
+    # reusing a stale generic f'ci = f'c value after Analysis reruns.
+    rail_settings = st.session_state.get("railway_u_girder_stage_settings")
+    if isinstance(rail_settings, Mapping):
+        method = str(rail_settings.get("construction_method") or "").casefold()
+        has_material_triplet = all(key in rail_settings for key in ("web_fc_MPa", "web_fci_MPa", "slab_fc_MPa"))
+        if has_material_triplet and ("wet slab" in method or "precast webs" in method or "case b" in method):
+            nonrail_preset = preset_key and preset_key not in {"railway_u_girder", "parametric_i_girder"}
+            if not nonrail_preset:
                 return True
     return False
 
@@ -14326,7 +14372,13 @@ def _render_girder_tension_limit_guidance(
 
     selected_profile_key = recommended_key if guide_enabled else str(st.session_state.get(profile_key, profile_key))
     selected_profile = build_girder_sls_limit_profile(code=code, stage=stage, limit_profile_key=selected_profile_key)
-    fc_for_formula = _girder_fc_for_sls_limit_preview(stage)
+    # SLS.MATERIAL.ROUTING3: the visible tensile guide must consume the same
+    # stage-routed concrete strength source as the diagram controls.  Do not
+    # call a generic f'c helper that can fall back to stale transfer settings.
+    guide_stage_strength = _stage_material_strength_values_for_sls_limit_preview(stage)
+    fc_for_formula = float(guide_stage_strength.get("strength_MPa", _girder_fc_for_sls_limit_preview(stage)))
+    guide_strength_label = str(guide_stage_strength.get("strength_label") or selected_profile.concrete_strength_label or "f'c")
+    guide_strength_note = str(guide_stage_strength.get("audit_note") or "Stage-routed strength used by the visible guide.")
     formula_summary = girder_sls_limit_formula_summary(profile=selected_profile, fc_MPa=float(fc_for_formula))
     _render_analysis_summary_strip(
         [
@@ -14339,7 +14391,7 @@ def _render_girder_tension_limit_guidance(
             {
                 "title": "Tension formula substitution",
                 "value": formula_summary.tension_substitution,
-                "detail": f"{formula_summary.strength_label} = {float(fc_for_formula):.3f} MPa · {selected_profile.limit_profile_label}",
+                "detail": f"{guide_strength_label} = {float(fc_for_formula):.3f} MPa · {selected_profile.limit_profile_label} · {guide_strength_note}",
                 "status": "info",
             },
         ],
