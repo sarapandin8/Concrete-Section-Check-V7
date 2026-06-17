@@ -802,3 +802,11 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Added a guarded Railway U-Girder SLS decision summary for Transfer, Lifting, Wet slab casting, and Final service.
 - Decision wording is limited to `Preview PASS` / `REVIEW` and remains engineering-review level, not code-certified design.
 - No solver equations, geometry, ULS, shear/torsion, prestress-loss, report, or project-schema calculation logic changed.
+
+### SLS.MATERIAL.ROUTING1 — Stage Material Strength Routing Audit and Correction
+
+- Corrects Beam/Girder SLS stress-limit preview material routing so Transfer/Release checks use `f'ci` instead of final `f'c` where applicable.
+- Railway U-Girder full-length SLS diagram now routes Transfer/Lifting to web `f'ci`, pre-composite construction to web `f'c`, and current top/bottom service preview to web `f'c` with CIP slab `f'c` retained in audit notes.
+- Generic prestressed girder transfer checks now use prestress/loss `f'ci` when available, falling back to `0.8 f'c` only when no transfer strength is available.
+- Adds regression tests so a transfer-stage preview cannot silently reuse a stale service concrete strength.
+- No solver equations, geometry, section-property, prestress-loss, ULS, shear/torsion, report, or project-schema calculation logic changed.

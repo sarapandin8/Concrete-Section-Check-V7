@@ -11506,7 +11506,7 @@ def _render_girder_sls_diagram_tensile_limit_guide(stage_label: str, df: pd.Data
 def _girder_sls_diagram_limit_summary(stage_label: str) -> tuple[float, float, str]:
     """Return compression/tension preview limits for full-length diagrams."""
 
-    fc = _girder_fc_for_sls_limit_preview()
+    fc = _girder_fc_for_sls_limit_preview(stage_label)
     profile = _girder_stage_limit_profile_for_diagram(stage_label)
     compression_limit = profile.compression_limit_MPa(fc)
     tension_allowable = profile.tension_allowable_MPa(fc)
@@ -13659,17 +13659,119 @@ def _render_girder_sls_check_case_panel(
             )
 
 
-def _girder_fc_for_sls_limit_preview() -> float:
-    """Return the primary concrete f'c for Beam/Girder SLS limit preview."""
+def _active_section_preset_key_for_sls_material_routing() -> str:
+    """Return the active section preset key used by SLS material-strength routing."""
+
+    preset = str(st.session_state.get("section_preset_key") or "").strip()
+    if preset:
+        return preset
+    geometry = st.session_state.get("section_geometry")
+    metadata = getattr(geometry, "metadata", {}) or {}
+    if isinstance(metadata, Mapping):
+        for key in ("preset", "generator", "preset_key"):
+            value = str(metadata.get(key) or "").strip()
+            if value:
+                return value
+    return ""
+
+
+def _is_railway_u_girder_active_for_sls_material_routing() -> bool:
+    """Return True when the active SLS preview is for the Railway U-Girder preset."""
+
+    return _active_section_preset_key_for_sls_material_routing() == "railway_u_girder"
+
+
+def _positive_float_or_default(value: object, default: float) -> float:
+    """Return a positive finite float, otherwise a safe default."""
+
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if math.isfinite(numeric) and numeric > 0.0:
+        return numeric
+    return float(default)
+
+
+def _stage_material_strength_values_for_sls_limit_preview(stage_label: str | None = None) -> dict[str, object]:
+    """Return stage-appropriate concrete strength values for Beam/Girder SLS limit previews.
+
+    SLS.MATERIAL.ROUTING1 makes the full-length SLS stress diagram consume
+    stage-specific material strengths instead of blindly using the primary
+    concrete f'c.  Railway U-Girder uses web f'ci at transfer/lifting, web f'c
+    for pre-composite construction, and web f'c for the current top/bottom
+    extreme-fiber service diagram while retaining slab f'c in the audit note.
+    Generic precast/composite girder transfer checks use the prestress/loss
+    f'ci setting when available, then fall back to 0.8 f'c.
+    """
+
+    stage = normalize_girder_sls_stage(_beam_sls_stage_default_code_limit_stage(stage_label or ""))
+    if stage not in DEFAULT_GIRDER_SLS_STAGES:
+        stage = normalize_girder_sls_stage(stage_label or "")
+    if stage not in DEFAULT_GIRDER_SLS_STAGES:
+        stage = STAGE_FINAL_SERVICE
 
     concrete_material = st.session_state.get("concrete_material")
-    try:
-        fc = float(getattr(concrete_material, "fc_MPa"))
-    except (TypeError, ValueError):
-        fc = 45.0
-    if not math.isfinite(fc) or fc <= 0.0:
-        fc = 45.0
-    return fc
+    base_fc = _positive_float_or_default(getattr(concrete_material, "fc_MPa", None), 45.0)
+
+    if _is_railway_u_girder_active_for_sls_material_routing():
+        rail_settings = st.session_state.get("railway_u_girder_stage_settings") or {}
+        if not isinstance(rail_settings, Mapping):
+            rail_settings = {}
+        web_fc = _positive_float_or_default(rail_settings.get("web_fc_MPa"), 45.0)
+        web_fci = _positive_float_or_default(rail_settings.get("web_fci_MPa"), 36.0)
+        slab_fc = _positive_float_or_default(rail_settings.get("slab_fc_MPa"), 35.0)
+        if stage == STAGE_TRANSFER:
+            return {
+                "strength_MPa": web_fci,
+                "strength_label": "web f'ci at transfer / release",
+                "audit_note": f"Railway U-Girder Transfer/Lifting uses precast web f'ci = {web_fci:.3f} MPa, not web final f'c = {web_fc:.3f} MPa.",
+            }
+        if stage == STAGE_DECK_CASTING:
+            return {
+                "strength_MPa": web_fc,
+                "strength_label": "web f'c for pre-composite construction",
+                "audit_note": f"Railway U-Girder wet slab/construction checks use precast web f'c = {web_fc:.3f} MPa; CIP slab f'c = {slab_fc:.3f} MPa is not the web-only stage strength.",
+            }
+        return {
+            "strength_MPa": web_fc,
+            "strength_label": "web f'c for full U extreme-fiber service",
+            "audit_note": f"Railway U-Girder full U top/bottom extreme-fiber service diagram uses web f'c = {web_fc:.3f} MPa. CIP slab f'c = {slab_fc:.3f} MPa remains a separate staged/material-basis review item for slab-fiber checks.",
+        }
+
+    if stage == STAGE_TRANSFER:
+        prestress_settings = st.session_state.get("girder_prestress_system_settings") or {}
+        if not isinstance(prestress_settings, Mapping):
+            prestress_settings = {}
+        fci = _positive_float_or_default(
+            st.session_state.get("girder_code_loss_fci_mpa"),
+            _positive_float_or_default(prestress_settings.get("fci_MPa"), 0.80 * base_fc),
+        )
+        return {
+            "strength_MPa": fci,
+            "strength_label": "f'ci at transfer / release",
+            "audit_note": f"Transfer-stage SLS limit preview uses f'ci = {fci:.3f} MPa from prestress/loss settings where available; primary f'c = {base_fc:.3f} MPa is final concrete strength.",
+        }
+
+    if stage == STAGE_DECK_CASTING:
+        return {
+            "strength_MPa": base_fc,
+            "strength_label": "precast f'c for pre-composite construction",
+            "audit_note": f"Construction/pre-composite SLS limit preview uses precast/primary f'c = {base_fc:.3f} MPa. Composite deck/topping strengths should be assigned in Section Builder and checked with the matching stage basis.",
+        }
+
+    return {
+        "strength_MPa": base_fc,
+        "strength_label": "service-stage concrete f'c",
+        "audit_note": f"Service-stage SLS limit preview uses the active section/service concrete f'c = {base_fc:.3f} MPa unless a preset-specific staged material basis overrides it.",
+    }
+
+
+def _girder_fc_for_sls_limit_preview(stage_label: str | None = None) -> float:
+    """Return the stage-appropriate concrete strength for Beam/Girder SLS limit preview."""
+
+    values = _stage_material_strength_values_for_sls_limit_preview(stage_label)
+    return float(values["strength_MPa"])
 
 
 def _girder_stress_limit_input_rows_from_dataframe(df: pd.DataFrame, stress_column: str) -> list[StressLimitInputRow]:
@@ -14023,7 +14125,7 @@ def _girder_sls_tension_limit_at_station(stage_label: str, station_m: float, *, 
     del compression_limit
     if not _diagram_uses_aci_transfer_end_zone_limit(stage_label):
         return float(tension_limit), profile_label
-    fc = _girder_fc_for_sls_limit_preview()
+    fc = _girder_fc_for_sls_limit_preview(stage_label)
     span = float(span_length_m or _girder_sls_span_length_from_session([]) or 0.0)
     end_length, _basis, _detail = _aci_transfer_end_zone_length_state(stage_label)
     trace = aci_transfer_tension_limit_trace(
@@ -14050,7 +14152,7 @@ def _girder_sls_tension_limit_trace_for_graph(stage_label: str, df: pd.DataFrame
         x_max += 0.5
     if not _diagram_uses_aci_transfer_end_zone_limit(stage_label):
         return [x_min, x_max], [float(tension_limit), float(tension_limit)], profile_label
-    fc = _girder_fc_for_sls_limit_preview()
+    fc = _girder_fc_for_sls_limit_preview(stage_label)
     end_length, _basis, _detail = _aci_transfer_end_zone_length_state(stage_label)
     trace = aci_transfer_tension_limit_trace(
         span_length_m=max(x_max - x_min, 1.0e-6),
@@ -14188,7 +14290,7 @@ def _render_girder_tension_limit_guidance(
 
     selected_profile_key = recommended_key if guide_enabled else str(st.session_state.get(profile_key, profile_key))
     selected_profile = build_girder_sls_limit_profile(code=code, stage=stage, limit_profile_key=selected_profile_key)
-    fc_for_formula = _girder_fc_for_sls_limit_preview()
+    fc_for_formula = _girder_fc_for_sls_limit_preview(stage)
     formula_summary = girder_sls_limit_formula_summary(profile=selected_profile, fc_MPa=float(fc_for_formula))
     _render_analysis_summary_strip(
         [
@@ -14316,7 +14418,7 @@ def _render_girder_code_limit_preview(
         "detailed formulas, basis notes, and stress rows stay in expanders."
     )
 
-    fc_default = _girder_fc_for_sls_limit_preview()
+    fc_default = _girder_fc_for_sls_limit_preview(locked_stage_label)
     stage_key = f"girder_code_limit_stage_{title}"
     locked_stage = None
     if locked_stage_label is not None:
@@ -14365,6 +14467,16 @@ def _render_girder_code_limit_preview(
     profile_options = girder_sls_limit_profile_options(code=code, stage=stage)
     profile_option_labels = {option.key: option.label for option in profile_options}
     profile_option_descriptions = {option.key: option.description for option in profile_options}
+    stage_strength_values = _stage_material_strength_values_for_sls_limit_preview(locked_stage_label or stage)
+    stage_strength_label = str(stage_strength_values.get("strength_label") or "Stage concrete strength")
+    stage_strength_note = str(stage_strength_values.get("audit_note") or "Stage concrete strength selected from current material routing.")
+    fc_default = float(stage_strength_values.get("strength_MPa", fc_default))
+    fc_input_key = f"girder_code_limit_fc_{title}"
+    if locked_stage_label is not None:
+        # Stage-specific SLS diagram checks must not reuse a stale service f'c
+        # for transfer/release f'ci.  Keep the locked-stage limit strength tied
+        # to the Section Builder / Prestress stage material source of truth.
+        st.session_state[fc_input_key] = fc_default
     profile_key = f"girder_code_limit_profile_key_{title}"
     if st.session_state.get(profile_key) not in profile_option_labels:
         st.session_state[profile_key] = profile_options[0].key
@@ -14396,13 +14508,13 @@ def _render_girder_code_limit_preview(
     default_profile = build_girder_sls_limit_profile(code=code, stage=stage, limit_profile_key=limit_profile_key)
     with controls[3]:
         fc = st.number_input(
-            f"{default_profile.concrete_strength_label} (MPa)",
+            f"{stage_strength_label} (MPa)",
             min_value=1.0,
-            value=float(st.session_state.get(f"girder_code_limit_fc_{title}", fc_default)),
+            value=float(st.session_state.get(fc_input_key, fc_default)),
             step=1.0,
             format="%.3f",
-            key=f"girder_code_limit_fc_{title}",
-            help="Use f'ci at transfer/release and f'c at service when they differ.",
+            key=fc_input_key,
+            help="Stage-routed value. Transfer/release uses f'ci; construction/service use the material basis assigned to the selected preset/stage.",
         )
     with controls[4]:
         enabled = st.checkbox(
@@ -14423,8 +14535,8 @@ def _render_girder_code_limit_preview(
                 },
                 {
                     "title": "Stage strength basis",
-                    "value": default_profile.concrete_strength_label,
-                    "detail": f"Entered value: {float(fc):.3f} MPa",
+                    "value": stage_strength_label,
+                    "detail": f"{stage_strength_note} · Routed value: {float(fc):.3f} MPa",
                     "status": "info",
                 },
                 {
