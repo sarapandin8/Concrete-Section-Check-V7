@@ -935,3 +935,9 @@ Adds a guarded Railway U-Girder ULS strength-check framework after the SLS close
 
 Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, Report / QA preview, docs, and regression tests. No SLS/ULS solver equations, prestress/debonding logic, section properties, PMM, shear, torsion, or load-combination equations were modified.
 
+
+### ULS.RAIL.UGIRDER2 — Railway U-Girder Flexure Calculation Evidence
+
+Adds guarded Railway U-Girder ULS flexure calculation evidence after the ULS framework milestone. The evidence consumes active ULS `Mux` station rows, maps station-based dedicated strand participation into the existing strain-compatibility PMM engine, and applies the Bridge/AASHTO LRFD prestressed flexure phi-routing layer. Report registry and Word export now include `Railway U-Girder ULS Flexure Calculation Evidence`.
+
+Decision wording is limited to `Engineering Review PASS` / `Engineering Review FAIL` / `REVIEW`. This milestone remains engineering-review evidence only; it is not final code-certified design and is not engineer certification. No SLS solver equations, ULS solver equations, prestress/debond participation logic, PMM solver equations, shear/torsion/V+T equations, load-combination equations, project schema, or geometry-generator logic were modified.

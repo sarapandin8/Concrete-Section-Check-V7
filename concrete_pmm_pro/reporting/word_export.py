@@ -359,6 +359,7 @@ def _add_railway_u_girder_uls_framework_section(
         ("ULS Closeout Boundary", package.closeout_boundary),
         ("ULS Code Basis", package.code_basis),
         ("ULS Demand Summary", package.demand_summary),
+        ("ULS Flexure Calculation Evidence", package.flexure_evidence),
         ("ULS Check Matrix", package.check_matrix),
         ("ULS Future Checks", package.future_checks),
     ]
