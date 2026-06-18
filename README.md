@@ -958,3 +958,9 @@ Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report regis
 
 Status wording remains guarded: Engineering Review PASS / FAIL for shear evidence only; not final code-certified design. Final certification still requires refined PSC Vci/Vcw/Vp, critical-section/end-region validation, development length, anchorage/end-zone checks, independent benchmarks, and Engineer-of-Record review.
 
+
+### REBAR.RAIL.UGIRDER2 — Auto Perimeter Apply Commit Hotfix
+
+Fixes a Streamlit rerun/widget-state bug where pressing `Apply generated perimeter layout to Rebar table` after generating Railway U-Girder ordinary perimeter bars could return to the normal Longitudinal Rebar page without the generated rows being committed to the editable Rebar table. The apply action now commits the generated table through a dedicated state helper, bumps the Rebar data-editor revision, clears stale `rebar_data_editor_*` widget states, returns the UI to `Manual table`, and shows an apply-success message so the generated rows are immediately visible and editable.
+
+Changed areas: `concrete_pmm_pro/ui/rebar_page.py`, docs, and regression tests. No SLS/ULS solver equations, prestress/debonding logic, geometry generator, section properties, report certification wording, or project schema were modified.

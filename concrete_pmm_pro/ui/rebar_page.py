@@ -398,6 +398,36 @@ def _ensure_rebar_table_columns(df: pd.DataFrame) -> pd.DataFrame:
     return table[REBAR_TABLE_COLUMNS]
 
 
+def apply_generated_perimeter_layout_state(session_state: Any, generated_table: pd.DataFrame) -> pd.DataFrame:
+    """Commit an auto-generated perimeter layout into the longitudinal Rebar table.
+
+    Streamlit data_editor keeps its own widget state by key.  A direct assignment
+    to ``rebar_table`` is therefore not enough when the previous editor widget
+    was already mounted with an empty table; the old widget payload can win on
+    the next rerun and make the Apply button appear to do nothing.  This helper
+    updates the source-of-truth table, bumps the editor key, clears stale editor
+    widget states, and returns the UI to the manual table where the applied rows
+    are immediately visible/editable.
+    """
+    applied_table = _ensure_rebar_table_columns(pd.DataFrame(generated_table)).reset_index(drop=True)
+    session_state["rebar_table"] = applied_table
+    session_state["rebar_editor_revision"] = int(session_state.get("rebar_editor_revision", 0) or 0) + 1
+    session_state["rebar_input_mode"] = "Manual table"
+    session_state["rebar_apply_status"] = f"Applied {len(applied_table):,} generated bar row(s) to the Longitudinal Rebar table."
+
+    for key in list(session_state.keys()):
+        if str(key).startswith("rebar_data_editor_"):
+            try:
+                del session_state[key]
+            except KeyError:
+                pass
+    return applied_table
+
+
+def _apply_generated_perimeter_layout_to_rebar_table(generated_table: pd.DataFrame) -> None:
+    apply_generated_perimeter_layout_state(st.session_state, generated_table)
+
+
 def _editor_cell_equal(left: Any, right: Any, numeric: bool = False, boolean: bool = False) -> bool:
     """Compare data_editor cells without false mismatches from type coercion.
 
@@ -850,10 +880,13 @@ def _render_auto_perimeter_controls(rebar_db: pd.DataFrame, geometry: SectionGeo
         metric_cols[1].metric("Actual spacing", f"{(result.actual_spacing_mm or 0.0):.1f} mm")
         metric_cols[2].metric("Offset", f"{edge_offset_mm:.1f} mm")
         st.dataframe(result.table, use_container_width=True, hide_index=True)
-        if st.button("Apply generated perimeter layout to Rebar table", type="primary", key="rebar_apply_perimeter_layout"):
-            st.session_state["rebar_table"] = _ensure_rebar_table_columns(result.table)
-            st.session_state["rebar_editor_revision"] = int(st.session_state.get("rebar_editor_revision", 0)) + 1
-            st.rerun()
+        st.button(
+            "Apply generated perimeter layout to Rebar table",
+            type="primary",
+            key="rebar_apply_perimeter_layout",
+            on_click=_apply_generated_perimeter_layout_to_rebar_table,
+            args=(_ensure_rebar_table_columns(result.table),),
+        )
     else:
         st.caption("No generated perimeter layout is available yet.")
 
@@ -2037,7 +2070,14 @@ def _render_longitudinal_rebar_tab(
             # normalized table from the current rerun instead of stale pre-edit
             # values.
             summary_slot = st.empty()
-            input_mode = st.selectbox("Rebar input mode", ["Manual table", "Auto perimeter layout"])
+            apply_status = st.session_state.pop("rebar_apply_status", None)
+            if apply_status:
+                st.success(str(apply_status))
+            input_mode = st.selectbox(
+                "Rebar input mode",
+                ["Manual table", "Auto perimeter layout"],
+                key="rebar_input_mode",
+            )
             st.markdown(
                 '<div class="cpmm-rebar-note">Selecting a database bar size fills Diameter and enforces the standard material/fy rule: DB10–DB28 = SD40, DB32 = SD50. Use Custom bar size for project-specific overrides.</div>',
                 unsafe_allow_html=True,
