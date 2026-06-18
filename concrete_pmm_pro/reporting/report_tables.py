@@ -159,6 +159,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
     )
     if railway_report.available:
         railway_table_titles = {
+            "railway_u_girder_closeout_status": "Railway U-Girder Closeout Status",
             "railway_u_girder_sls_scope": "Railway U-Girder SLS Report Scope",
             "railway_u_girder_geometry_summary": "Railway U-Girder Geometry Summary",
             "railway_u_girder_material_stage_settings": "Railway U-Girder Material and Stage Settings",

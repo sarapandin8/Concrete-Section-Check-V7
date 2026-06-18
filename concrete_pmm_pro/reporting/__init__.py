@@ -87,6 +87,8 @@ from concrete_pmm_pro.reporting.traceability import (
 from concrete_pmm_pro.reporting.units import UnitConvention, get_unit_conventions, unit_conventions_to_dataframe
 
 from concrete_pmm_pro.reporting.railway_u_girder_report import (
+    RAILWAY_UGIRDER_CLOSEOUT_SCOPE,
+    RAILWAY_UGIRDER_CLOSEOUT_STATUS,
     RAILWAY_UGIRDER_REPORT_CAPABILITY,
     RAILWAY_UGIRDER_REPORT_STATUS,
     RAILWAY_UGIRDER_REPORT_TABLE_KEYS,
@@ -117,6 +119,8 @@ __all__ = [
     "is_railway_u_girder_report_context",
     "build_railway_u_girder_sls_report_package",
     "RailwayUGirderSLSReportPackage",
+    "RAILWAY_UGIRDER_CLOSEOUT_SCOPE",
+    "RAILWAY_UGIRDER_CLOSEOUT_STATUS",
     "RAILWAY_UGIRDER_REPORT_TABLE_KEYS",
     "RAILWAY_UGIRDER_REPORT_STATUS",
     "RAILWAY_UGIRDER_REPORT_CAPABILITY",

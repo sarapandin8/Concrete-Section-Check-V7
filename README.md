@@ -1,3 +1,15 @@
+### CLOSEOUT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Closeout
+
+This milestone closes the current Railway U-Girder development slice as a guarded SLS engineering-review package. It adds an explicit closeout status table to the Railway U-Girder report package and Word report section while preserving the non-certification boundary:
+
+```text
+Railway U-Girder SLS Engineering Review Package - Closeout Ready
+```
+
+Closeout-ready means the accepted Railway U-Girder SLS preview workflow is report-ready with regression evidence, not that the workflow is a final design certification. Transfer/development length, anchorage/end-zone bursting, lifting hardware, creep/shrinkage redistribution, ULS Railway U-Girder coupling, and final certification checks remain future work.
+
+See `docs/design/closeout_rail_ugirder1.md`.
+
 ### QA.RAIL.UGIRDER1 — Railway U-Girder Workflow Regression Audit
 
 This milestone stabilizes the accepted `SLS.RAIL.UGIRDER8.RECOVERY` baseline before new feature work. It adds regression coverage for Railway U-Girder save/load preservation, symmetric debond station participation, stage material-strength routing, and guarded engineering-review wording. No solver equations, section properties, Pe/debond participation logic, ULS, anchorage, transfer-length, development-length, or report logic are changed.

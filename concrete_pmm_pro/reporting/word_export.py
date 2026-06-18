@@ -315,6 +315,7 @@ def _add_railway_u_girder_sls_report_section(
         document.add_paragraph(str(warning), style="List Bullet")
 
     table_sequence = [
+        ("Closeout Status", package.closeout_status),
         ("Scope and Guardrails", package.scope),
         ("Geometry Summary", package.geometry_summary),
         ("Material and Stage Settings", package.material_stage_settings),

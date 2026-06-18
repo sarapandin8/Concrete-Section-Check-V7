@@ -10,6 +10,7 @@ The section is intentionally guarded. It may be used for engineering review evid
 
 The report package exposes these tables when the active workflow is Railway U-Girder:
 
+- Railway U-Girder Closeout Status
 - Railway U-Girder SLS Report Scope
 - Railway U-Girder Geometry Summary
 - Railway U-Girder Material and Stage Settings

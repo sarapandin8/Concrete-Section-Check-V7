@@ -49,7 +49,15 @@ RAILWAY_UGIRDER_REPORT_EXCLUSIONS = [
     "final code-certified design checks",
 ]
 
+RAILWAY_UGIRDER_CLOSEOUT_STATUS = "Railway U-Girder SLS Engineering Review Package - Closeout Ready"
+RAILWAY_UGIRDER_CLOSEOUT_SCOPE = (
+    "Closeout-ready means the Railway U-Girder SLS engineering-review workflow has report tables, "
+    "Word export, QA guardrails, and regression evidence for the current preview scope. "
+    "It does not mean final code-certified design."
+)
+
 RAILWAY_UGIRDER_REPORT_TABLE_KEYS = [
+    "railway_u_girder_closeout_status",
     "railway_u_girder_sls_scope",
     "railway_u_girder_geometry_summary",
     "railway_u_girder_material_stage_settings",
@@ -237,6 +245,60 @@ def railway_u_girder_scope_dataframe(*, active_sls_count: int = 0) -> pd.DataFra
     return pd.DataFrame(rows, columns=["Item", "Value"])
 
 
+
+def railway_u_girder_closeout_status_dataframe(
+    *,
+    active_sls_count: int = 0,
+    warnings: Iterable[str] | None = None,
+) -> pd.DataFrame:
+    """Return the Railway U-Girder closeout status table.
+
+    CLOSEOUT.RAIL.UGIRDER1 is a project-delivery guard, not a design-strength
+    upgrade.  The table makes the closing state explicit in the report package
+    so reviewers cannot confuse "report-ready" with "code-certified".
+    """
+
+    warning_count = len(list(warnings or []))
+    rows = [
+        {
+            "Closeout Item": "Package status",
+            "Status": RAILWAY_UGIRDER_CLOSEOUT_STATUS,
+            "Evidence / Boundary": RAILWAY_UGIRDER_CLOSEOUT_SCOPE,
+        },
+        {
+            "Closeout Item": "Design certification status",
+            "Status": "NOT CERTIFIED",
+            "Evidence / Boundary": "Engineering-review evidence only; independent engineer review and project-specific code validation are still required.",
+        },
+        {
+            "Closeout Item": "Implemented Railway U-Girder scope",
+            "Status": "READY FOR ENGINEERING REVIEW",
+            "Evidence / Boundary": "Geometry, material/stage settings, strand/debonding handoff, staged SLS previews, service multi-fiber summary, Word report section, and report QA guards are present.",
+        },
+        {
+            "Closeout Item": "Allowed decision wording",
+            "Status": "GUARDED",
+            "Evidence / Boundary": "Use Preview PASS / REVIEW / not final code-certified. Do not use Final Design PASS or code-certified approval wording.",
+        },
+        {
+            "Closeout Item": "Active SLS service load cases",
+            "Status": "AVAILABLE" if int(active_sls_count) > 0 else "REVIEW",
+            "Evidence / Boundary": f"Active SLS load case count = {int(active_sls_count)}. Final service rows remain REVIEW when no active SLS service action is supplied.",
+        },
+        {
+            "Closeout Item": "Open report warnings",
+            "Status": "REVIEW" if warning_count else "NONE RECORDED",
+            "Evidence / Boundary": f"Report package warning count = {warning_count}.",
+        },
+        {
+            "Closeout Item": "Explicit exclusions",
+            "Status": "DISCLOSED",
+            "Evidence / Boundary": "; ".join(RAILWAY_UGIRDER_REPORT_EXCLUSIONS),
+        },
+    ]
+    return pd.DataFrame(rows, columns=["Closeout Item", "Status", "Evidence / Boundary"])
+
+
 def railway_u_girder_geometry_summary_dataframe(geometry: SectionGeometry | None) -> pd.DataFrame:
     params = railway_u_girder_parameter_snapshot_from_geometry(geometry)
     labels = {
@@ -385,6 +447,7 @@ class RailwayUGirderSLSReportPackage:
     available: bool
     status: str
     warnings: list[str] = field(default_factory=list)
+    closeout_status: pd.DataFrame = field(default_factory=pd.DataFrame)
     scope: pd.DataFrame = field(default_factory=pd.DataFrame)
     geometry_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
     material_stage_settings: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -398,6 +461,7 @@ class RailwayUGirderSLSReportPackage:
 
     def tables(self) -> dict[str, pd.DataFrame]:
         return {
+            "railway_u_girder_closeout_status": self.closeout_status,
             "railway_u_girder_sls_scope": self.scope,
             "railway_u_girder_geometry_summary": self.geometry_summary,
             "railway_u_girder_material_stage_settings": self.material_stage_settings,
@@ -468,6 +532,7 @@ def build_railway_u_girder_sls_report_package(session_state: Any) -> RailwayUGir
         True,
         RAILWAY_UGIRDER_REPORT_STATUS,
         warnings=warnings,
+        closeout_status=railway_u_girder_closeout_status_dataframe(active_sls_count=len(load_cases), warnings=warnings),
         scope=railway_u_girder_scope_dataframe(active_sls_count=len(load_cases)),
         geometry_summary=railway_u_girder_geometry_summary_dataframe(geometry),
         material_stage_settings=railway_u_girder_material_stage_settings_dataframe(settings),
