@@ -1,3 +1,11 @@
+### REBAR.RAIL.UGIRDER1 — Railway U-Girder Ordinary Rebar Enable Routing Hotfix
+
+This hotfix resolves a Railway U-Girder ordinary-rebar workflow issue where `Include ordinary rebar / longitudinal Al` could be enabled in Section Builder but the Rebar workspace could still remain in the disabled stored-preview state. Section Builder now synchronizes the steel-system checkbox state to project metadata on change, and the Longitudinal Rebar tab includes an in-page recovery action to enable ordinary rebar / longitudinal Al and open the editable input table on rerun.
+
+No solver equations, SLS/ULS calculations, prestress/debonding logic, geometry generation, project schema, or certification wording are changed.
+
+See `docs/design/rebar_rail_ugirder1.md`.
+
 ### CLOSEOUT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Closeout
 
 This milestone closes the current Railway U-Girder development slice as a guarded SLS engineering-review package. It adds an explicit closeout status table to the Railway U-Girder report package and Word report section while preserving the non-certification boundary:

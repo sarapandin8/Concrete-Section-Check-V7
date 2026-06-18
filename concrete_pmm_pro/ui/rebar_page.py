@@ -13,7 +13,12 @@ import streamlit as st
 from shapely.geometry import Point, Polygon
 
 from concrete_pmm_pro.core.models import Rebar, SectionGeometry
-from concrete_pmm_pro.core.reinforcement_system import ordinary_rebar_enabled, prestressing_steel_enabled
+from concrete_pmm_pro.core.reinforcement_system import (
+    ORDINARY_REBAR_FLAG_KEY,
+    REINFORCEMENT_FLAGS_PRESET_KEY,
+    ordinary_rebar_enabled,
+    prestressing_steel_enabled,
+)
 from concrete_pmm_pro.geometry.rebar_layout import PerimeterRebarLayoutResult, generate_perimeter_rebar_layout
 from concrete_pmm_pro.geometry.summary import to_shapely_polygon
 from concrete_pmm_pro.serviceability.girder_sls_load_components import BEAM_GIRDER_SYSTEM_SETTINGS_KEY, system_settings_from_mapping
@@ -90,6 +95,46 @@ REBAR_TABLE_COLUMNS = [
     "Note",
 ]
 
+
+
+
+def publish_ordinary_rebar_system_flag(session_state: Any, enabled: bool) -> None:
+    """Publish ordinary-rebar participation consistently across UI pages.
+
+    Section Builder owns the visible steel-system checkbox, but users can arrive
+    at the Rebar page with a stale top-level flag after project load, preset
+    switching, or a previous disabled preview.  This helper keeps the top-level
+    Streamlit state and project metadata mirror aligned so Rebar, Analysis,
+    Project save/load, and report builders read the same ordinary-rebar /
+    longitudinal-Al decision.
+    """
+
+    enabled_bool = bool(enabled)
+    session_state[ORDINARY_REBAR_FLAG_KEY] = enabled_bool
+    metadata = dict(session_state.get("project_metadata", {}) or {})
+    metadata[ORDINARY_REBAR_FLAG_KEY] = enabled_bool
+    preset_key = session_state.get("section_preset_key")
+    if preset_key is not None and str(preset_key).strip():
+        metadata[REINFORCEMENT_FLAGS_PRESET_KEY] = str(preset_key)
+        session_state[REINFORCEMENT_FLAGS_PRESET_KEY] = str(preset_key)
+    session_state["project_metadata"] = metadata
+
+
+def _render_enable_ordinary_rebar_action() -> None:
+    """Offer an in-page recovery path when ordinary rebar is disabled."""
+
+    st.markdown(
+        '<div class="cpmm-rebar-note">Need to define longitudinal bars or torsion Al for this girder? '
+        'Enable the ordinary rebar system here, then the editable longitudinal rebar table will be shown on the next rerun.</div>',
+        unsafe_allow_html=True,
+    )
+    if st.button(
+        "Enable ordinary rebar / longitudinal Al",
+        key="enable_ordinary_rebar_longitudinal_al_from_rebar_page",
+        help="Synchronizes the Section Builder ordinary-rebar switch and opens the Longitudinal Rebar input table.",
+    ):
+        publish_ordinary_rebar_system_flag(st.session_state, True)
+        st.rerun()
 
 @dataclass(frozen=True)
 class RebarParseResult:
@@ -1906,6 +1951,7 @@ def _render_longitudinal_rebar_tab(
                     '<div class="cpmm-rebar-panel-subtitle">Ordinary rebar is disabled in Section Builder. Stored Rebar table data is preserved for later use, but ordinary rebar and torsion Al are excluded from analysis until you enable it again.</div>',
                     unsafe_allow_html=True,
                 )
+                _render_enable_ordinary_rebar_action()
                 st.markdown(
                     _strip_html(
                         [

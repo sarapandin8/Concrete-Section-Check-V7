@@ -1441,6 +1441,7 @@ def _render_reinforcement_prestress_system_panel(preset: dict[str, Any]) -> None
                 "When disabled, stored ordinary Rebar rows are kept but ignored by PMM/SLS analysis. "
                 "Enable this for precast girders when mild longitudinal bars should participate in flexure/effective d or torsion Al review."
             ),
+            on_change=_store_reinforcement_flags_metadata,
         )
     with col2:
         st.checkbox(
@@ -1448,6 +1449,7 @@ def _render_reinforcement_prestress_system_panel(preset: dict[str, Any]) -> None
             value=prestressing_steel_enabled(st.session_state, default=default_prestress),
             key=PRESTRESSING_STEEL_FLAG_KEY,
             help="When disabled, stored Prestress rows/strand layout data are kept but ignored by analysis and hidden from the default section preview.",
+            on_change=_store_reinforcement_flags_metadata,
         )
 
     _store_reinforcement_flags_metadata()
