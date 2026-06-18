@@ -1,11 +1,3 @@
-### REBAR.RAIL.UGIRDER1 — Railway U-Girder Ordinary Rebar Enable Routing Hotfix
-
-This hotfix resolves a Railway U-Girder ordinary-rebar workflow issue where `Include ordinary rebar / longitudinal Al` could be enabled in Section Builder but the Rebar workspace could still remain in the disabled stored-preview state. Section Builder now synchronizes the steel-system checkbox state to project metadata on change, and the Longitudinal Rebar tab includes an in-page recovery action to enable ordinary rebar / longitudinal Al and open the editable input table on rerun.
-
-No solver equations, SLS/ULS calculations, prestress/debonding logic, geometry generation, project schema, or certification wording are changed.
-
-See `docs/design/rebar_rail_ugirder1.md`.
-
 ### CLOSEOUT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Closeout
 
 This milestone closes the current Railway U-Girder development slice as a guarded SLS engineering-review package. It adds an explicit closeout status table to the Railway U-Girder report package and Word report section while preserving the non-certification boundary:
@@ -17,6 +9,15 @@ Railway U-Girder SLS Engineering Review Package - Closeout Ready
 Closeout-ready means the accepted Railway U-Girder SLS preview workflow is report-ready with regression evidence, not that the workflow is a final design certification. Transfer/development length, anchorage/end-zone bursting, lifting hardware, creep/shrinkage redistribution, ULS Railway U-Girder coupling, and final certification checks remain future work.
 
 See `docs/design/closeout_rail_ugirder1.md`.
+
+### REBAR.RAIL.UGIRDER1 — Railway U-Girder Ordinary Rebar Enable Routing Hotfix
+
+This hotfix resolves a Railway U-Girder ordinary-rebar workflow issue where `Include ordinary rebar / longitudinal Al` could be enabled in Section Builder but the Rebar workspace could still remain in the disabled stored-preview state. Section Builder now synchronizes the steel-system checkbox state to project metadata on change, and the Longitudinal Rebar tab includes an in-page recovery action to enable ordinary rebar / longitudinal Al and open the editable input table on rerun.
+
+No solver equations, SLS/ULS calculations, prestress/debonding logic, geometry generation, project schema, or certification wording are changed.
+
+See `docs/design/rebar_rail_ugirder1.md`.
+
 
 ### QA.RAIL.UGIRDER1 — Railway U-Girder Workflow Regression Audit
 
@@ -971,3 +972,11 @@ Changed areas: `concrete_pmm_pro/ui/rebar_page.py`, docs, and regression tests. 
 - Rebar page now reconciles the active ordinary-rebar flag from the Section Builder mirror / project metadata before entering the disabled stored-row branch.
 - The manual `Enable ordinary rebar / longitudinal Al` button remains only as a stale-state recovery path and should not be required after enabling in Section Builder.
 - No solver, geometry, prestress, debond, ULS/SLS, project schema, or report certification logic changed.
+
+### ULS.RAIL.UGIRDER4 — Railway U-Girder Torsion / V+T Guard Evidence
+
+Added guarded Railway U-Girder ULS torsion and combined V+T guard evidence to the ULS framework. The route reads active ULS Tu/Vuy station-resultant rows, active closed-hoop transverse zones, ordinary longitudinal rebar as the Al source of truth, and produces an AASHTO LRFD-compatible engineering-review table with φTcr threshold screen, φTn, torsion D/C, shear D/C handoff, linear V+T review index, At/s, Al, spacing/detailing status, and blocked final-certification notes.
+
+Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, docs, and regression tests. No SLS solver equations, PMM solver equations, flexure/shear solver equations, prestress/debond participation logic, geometry generator, load-combination equation, project schema, or report certification wording were modified.
+
+Status wording remains guarded: Engineering Review PASS / FAIL for torsion/V+T guard evidence only; not final code-certified design. Final certification still requires dedicated Railway U-Girder closed torsion-cell calibration, refined PSC torsion effects, calibrated V+T code interaction, development length, anchorage/end-zone checks, independent benchmarks, and Engineer-of-Record review.

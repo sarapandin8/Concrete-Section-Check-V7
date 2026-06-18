@@ -94,12 +94,15 @@ from concrete_pmm_pro.analysis.railway_u_girder_uls import (
     RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING,
     RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_STATUS,
     RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING,
+    RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_STATUS,
+    RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING,
     RAILWAY_UGIRDER_ULS_TABLE_KEYS,
     RailwayUGirderULSFrameworkPackage,
     build_railway_u_girder_uls_framework_package,
     is_railway_u_girder_uls_context,
     railway_u_girder_uls_flexure_evidence_dataframe,
     railway_u_girder_uls_shear_evidence_dataframe,
+    railway_u_girder_uls_torsion_vt_guard_dataframe,
 )
 
 from concrete_pmm_pro.reporting.railway_u_girder_report import (
@@ -150,8 +153,11 @@ __all__ = [
     "RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_STATUS",
     "RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING",
     "RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_STATUS",
+    "RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING",
+    "RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_STATUS",
     "railway_u_girder_uls_flexure_evidence_dataframe",
     "railway_u_girder_uls_shear_evidence_dataframe",
+    "railway_u_girder_uls_torsion_vt_guard_dataframe",
     "build_result_traceability_snapshot",
     "build_report_manifest",
     "build_exportable_figure",

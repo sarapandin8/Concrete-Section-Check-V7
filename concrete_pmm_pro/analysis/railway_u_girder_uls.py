@@ -21,7 +21,7 @@ from concrete_pmm_pro.analysis.uls_flexure_code_basis import apply_flexure_code_
 from concrete_pmm_pro.analysis.uls_strength_routing import bridge_beam_girder_uls_strength_route
 from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisSettings
 from concrete_pmm_pro.core.models import ConcreteMaterial, LoadCase, PrestressElement, Rebar, RebarMaterial, SectionGeometry
-from concrete_pmm_pro.core.reinforcement_system import effective_prestress_for_analysis
+from concrete_pmm_pro.core.reinforcement_system import effective_prestress_for_analysis, effective_rebars_for_analysis, ordinary_rebar_enabled
 from concrete_pmm_pro.geometry.summary import to_shapely_polygon
 from concrete_pmm_pro.serviceability.girder_prestress_station import active_strand_groups_at_station
 from concrete_pmm_pro.serviceability.girder_sls_load_components import BEAM_GIRDER_SYSTEM_SETTINGS_KEY, system_settings_from_mapping
@@ -61,8 +61,17 @@ RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING = (
     "basis notes. It remains engineering-review evidence only because refined PSC Vci/Vcw/Vp, end-region, "
     "development length, anchorage, and benchmark validation are not completed."
 )
+RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_STATUS = "Railway U-Girder ULS Torsion / V+T Guard - Engineering Review Ready"
+RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING = (
+    "ULS.RAIL.UGIRDER4 adds a guarded Railway U-Girder torsion and combined V+T evidence gate using active Tu/Vuy "
+    "station demands, active closed-hoop transverse zones, ordinary longitudinal rebar as the Al source of truth, "
+    "and an explicit linear interaction review index. It remains engineering-review evidence only because Railway "
+    "U-Girder-specific multi-cell/closed-path calibration, refined PSC torsion effects, V+T code calibration, "
+    "development length, anchorage/end-zone, and benchmark validation are not completed."
+)
 RAILWAY_UGIRDER_ULS_MAX_FLEXURE_EVIDENCE_ROWS = 8
 RAILWAY_UGIRDER_ULS_MAX_SHEAR_EVIDENCE_ROWS = 12
+RAILWAY_UGIRDER_ULS_MAX_TORSION_VT_GUARD_ROWS = 16
 _GIRDER_STRAND_FPU_MPA_DEFAULT = 1860.0
 _GIRDER_STRAND_FPY_MPA_DEFAULT = 1670.0
 _GIRDER_STRAND_EP_MPA_DEFAULT = 195000.0
@@ -74,6 +83,7 @@ RAILWAY_UGIRDER_ULS_TABLE_KEYS = [
     "railway_u_girder_uls_demand_summary",
     "railway_u_girder_uls_flexure_evidence",
     "railway_u_girder_uls_shear_evidence",
+    "railway_u_girder_uls_torsion_vt_guard",
     "railway_u_girder_uls_check_matrix",
     "railway_u_girder_uls_future_checks",
 ]
@@ -90,6 +100,7 @@ class RailwayUGirderULSFrameworkPackage:
     demand_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
     flexure_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     shear_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
+    torsion_vt_guard: pd.DataFrame = field(default_factory=pd.DataFrame)
     check_matrix: pd.DataFrame = field(default_factory=pd.DataFrame)
     future_checks: pd.DataFrame = field(default_factory=pd.DataFrame)
     warnings: list[str] = field(default_factory=list)
@@ -101,6 +112,7 @@ class RailwayUGirderULSFrameworkPackage:
             "railway_u_girder_uls_demand_summary": self.demand_summary,
             "railway_u_girder_uls_flexure_evidence": self.flexure_evidence,
             "railway_u_girder_uls_shear_evidence": self.shear_evidence,
+            "railway_u_girder_uls_torsion_vt_guard": self.torsion_vt_guard,
             "railway_u_girder_uls_check_matrix": self.check_matrix,
             "railway_u_girder_uls_future_checks": self.future_checks,
         }
@@ -1086,6 +1098,488 @@ def railway_u_girder_uls_shear_evidence_dataframe(session_state: Any, active_uls
         })
     return pd.DataFrame(rows, columns=columns)
 
+
+def _railway_uls_outer_polygon_metrics(geometry: SectionGeometry) -> dict[str, Any]:
+    """Return outside concrete Acp/Pcp metrics for torsion threshold screens.
+
+    ULS.RAIL.UGIRDER4 intentionally keeps this as a visible guarded estimate.
+    Hollow/multi-cell U-Girder torsion still needs a dedicated calibrated closed
+    torsion-cell route before final certification.
+    """
+
+    try:
+        outer = to_shapely_polygon(SectionGeometry(name=geometry.name, outer_polygon=geometry.outer_polygon, holes=[]))
+    except Exception:
+        outer = None
+    if outer is None or outer.is_empty or outer.area <= 0.0 or not outer.is_valid:
+        return {"Acp mm2": float("nan"), "Pcp mm": float("nan"), "Note": "Outside polygon torsion metrics are not available."}
+    try:
+        pcp = float(outer.exterior.length)
+    except Exception:
+        pcp = float("nan")
+    return {
+        "Acp mm2": float(outer.area),
+        "Pcp mm": pcp,
+        "Note": "Acp/Pcp from outside concrete perimeter; Railway U-Girder multi-cell torsion calibration remains future work.",
+    }
+
+
+def _railway_uls_torsion_hoop_geometry(section_geometry: SectionGeometry, *, stirrup_diameter_mm: float) -> dict[str, Any]:
+    """Return guarded first-pass closed-hoop geometry for torsion evidence."""
+
+    metrics = _railway_uls_outer_polygon_metrics(section_geometry)
+    notes = [str(metrics.get("Note") or "")]
+    acp = _float_or_zero(metrics.get("Acp mm2"))
+    pcp = _float_or_zero(metrics.get("Pcp mm"))
+    try:
+        outer = to_shapely_polygon(SectionGeometry(name=section_geometry.name, outer_polygon=section_geometry.outer_polygon, holes=[]))
+    except Exception:
+        outer = None
+    if outer is None or outer.is_empty or outer.area <= 0.0 or not outer.is_valid:
+        return {
+            "Acp mm2": acp,
+            "Pcp mm": pcp,
+            "Aoh mm2": float("nan"),
+            "Ao mm2": float("nan"),
+            "ph mm": float("nan"),
+            "offset mm": float("nan"),
+            "Note": " ".join(note for note in notes if note) + " Closed-hoop centerline geometry could not be derived.",
+        }
+    minx, miny, maxx, maxy = outer.bounds
+    min_dim = min(float(maxx) - float(minx), float(maxy) - float(miny))
+    dia = float(stirrup_diameter_mm) if math.isfinite(float(stirrup_diameter_mm)) and float(stirrup_diameter_mm) > 0.0 else 12.0
+    offset = max(45.0 + 0.5 * dia, 0.04 * min_dim)
+    if math.isfinite(min_dim) and min_dim > 0.0:
+        offset = min(offset, 0.20 * min_dim)
+    try:
+        inset = outer.buffer(-float(offset), join_style=2)
+        if inset.is_empty or inset.area <= 0.0:
+            raise ValueError("empty inset")
+        if getattr(inset, "geoms", None):
+            inset = max(inset.geoms, key=lambda geom: float(geom.area))
+            notes.append("Inset closed-hoop path split into multiple regions; largest region used for guarded torsion geometry.")
+        aoh = float(inset.area)
+        ph = float(inset.exterior.length)
+        ao = 0.85 * aoh
+        notes.append(f"Aoh estimated from outside polygon offset {offset:.1f} mm to assumed closed hoop centerline; Ao = 0.85Aoh.")
+    except Exception:
+        aoh = float("nan")
+        ph = float("nan")
+        ao = float("nan")
+        notes.append("Closed-hoop centerline offset failed; define dedicated torsion hoop geometry before relying on torsion evidence.")
+    return {
+        "Acp mm2": acp,
+        "Pcp mm": pcp,
+        "Aoh mm2": aoh,
+        "Ao mm2": ao,
+        "ph mm": ph,
+        "offset mm": float(offset),
+        "Note": " ".join(note for note in notes if note),
+    }
+
+
+def _railway_uls_rebar_area_mm2(item: Any) -> float:
+    area = getattr(item, "area_mm2", None)
+    if area is not None:
+        area_value = _float_or_zero(area)
+        if math.isfinite(area_value) and area_value > 0.0:
+            return float(area_value)
+    diameter = getattr(item, "diameter_mm", None)
+    if diameter is None and isinstance(item, Mapping):
+        diameter = item.get("diameter_mm", item.get("Diameter_mm"))
+    diameter_value = _float_or_zero(diameter)
+    if not math.isfinite(diameter_value) or diameter_value <= 0.0:
+        return float("nan")
+    return math.pi * diameter_value * diameter_value / 4.0
+
+
+def _railway_uls_torsion_longitudinal_review(session_state: Any, al_req_mm2: float) -> dict[str, Any]:
+    if not math.isfinite(float(al_req_mm2)) or float(al_req_mm2) <= 0.0:
+        return {
+            "status": "NOT CHECKED",
+            "provided_mm2": float("nan"),
+            "utilization": float("nan"),
+            "description": "Longitudinal torsion reinforcement is not required by the current torsion row.",
+        }
+    if not ordinary_rebar_enabled(session_state, default=True):
+        return {
+            "status": "LAYOUT REQUIRED",
+            "provided_mm2": 0.0,
+            "utilization": float("nan"),
+            "description": "Enable ordinary rebar / longitudinal Al in Section Builder and define active Rebar rows for torsion Al review.",
+        }
+    raw_rebars = _railway_uls_model_list(_get(session_state, "rebars", []) or [], Rebar)
+    try:
+        effective = effective_rebars_for_analysis(raw_rebars, session_state)
+    except Exception:
+        effective = raw_rebars
+    provided = 0.0
+    counted = 0
+    for bar in effective:
+        area = _railway_uls_rebar_area_mm2(bar)
+        if math.isfinite(area) and area > 0.0:
+            provided += float(area)
+            counted += 1
+    if counted == 0 or provided <= 0.0:
+        return {
+            "status": "LAYOUT REQUIRED",
+            "provided_mm2": provided,
+            "utilization": float("nan"),
+            "description": "No active ordinary rebar rows are available for longitudinal torsion Al review; use the Rebar table as the single source of truth.",
+        }
+    utilization = float(al_req_mm2) / provided if provided > 0.0 else float("nan")
+    status = "PASS" if math.isfinite(utilization) and utilization <= 1.0 + 1.0e-9 else "FAIL"
+    return {
+        "status": status,
+        "provided_mm2": provided,
+        "utilization": utilization,
+        "description": (
+            f"Longitudinal torsion Al provided is taken from {counted} active ordinary rebar bar(s); "
+            f"Al,req/Al,prov = {utilization:.3f}. Verify these bars are detailed around the closed torsion path before final design."
+        ),
+    }
+
+
+def _railway_uls_torsion_detailing_gate(
+    *,
+    zone: Mapping[str, Any] | None,
+    x_m: float,
+    spacing_mm: float,
+    ph_mm: float,
+    at_per_s_mm2_per_mm: float,
+    at_req_mm2_per_mm: float,
+) -> dict[str, Any]:
+    notes: list[str] = []
+    if zone is None:
+        return {
+            "status": "LAYOUT REQUIRED",
+            "s_max_mm": float("nan"),
+            "spacing_dc": float("nan"),
+            "at_dc": float("nan"),
+            "dc": float("nan"),
+            "notes": "No active closed-hoop transverse reinforcement zone is available for torsion.",
+        }
+    x_start = _float_or_zero(zone.get("x_start_m"))
+    x_end = _float_or_zero(zone.get("x_end_m"))
+    covers = math.isfinite(float(x_m)) and x_start - 1.0e-9 <= float(x_m) <= x_end + 1.0e-9
+    if not covers:
+        notes.append("The active transverse zone does not cover this station; add/extend a closed-hoop torsion zone.")
+    if not all(math.isfinite(value) and value > 0.0 for value in [spacing_mm, ph_mm, at_per_s_mm2_per_mm]):
+        return {
+            "status": "LAYOUT REQUIRED",
+            "s_max_mm": float("nan"),
+            "spacing_dc": float("nan"),
+            "at_dc": float("nan"),
+            "dc": float("nan"),
+            "notes": "; ".join(notes + ["Torsion detailing needs finite spacing, ph, and At/s."]),
+        }
+    s_max = min(float(ph_mm) / 8.0, 300.0)
+    spacing_dc = float(spacing_mm) / float(s_max) if s_max > 0.0 else float("nan")
+    at_dc = float(at_req_mm2_per_mm) / float(at_per_s_mm2_per_mm) if math.isfinite(float(at_req_mm2_per_mm)) and float(at_per_s_mm2_per_mm) > 0.0 else float("nan")
+    finite_dcs = [value for value in [spacing_dc, at_dc] if math.isfinite(value)]
+    dc = max(finite_dcs) if finite_dcs else float("nan")
+    if not covers:
+        status = "LAYOUT REQUIRED"
+    elif math.isfinite(dc) and dc <= 1.0 + 1.0e-9:
+        status = "PASS"
+    else:
+        status = "FAIL"
+        if math.isfinite(spacing_dc) and spacing_dc > 1.0 + 1.0e-9:
+            notes.append("Closed-hoop spacing exceeds torsion spacing limit s <= min(ph/8, 300 mm).")
+        if math.isfinite(at_dc) and at_dc > 1.0 + 1.0e-9:
+            notes.append("Provided At/s is less than required torsion At/s.")
+    if not notes:
+        notes.append("Closed-hoop zone covers the station and passes At/s plus spacing guard.")
+    return {"status": status, "s_max_mm": s_max, "spacing_dc": spacing_dc, "at_dc": at_dc, "dc": dc, "notes": "; ".join(notes)}
+
+
+def _railway_uls_match_shear_evidence_row(shear_evidence: pd.DataFrame, *, case: str, station_m: float) -> Mapping[str, Any] | None:
+    if not isinstance(shear_evidence, pd.DataFrame) or shear_evidence.empty:
+        return None
+    df = shear_evidence.copy()
+    if "Case" in df.columns:
+        exact = df[df["Case"].astype(str) == str(case)]
+        if not exact.empty:
+            return exact.iloc[0].to_dict()
+    if "Governing x (m)" in df.columns:
+        df["__dx"] = pd.to_numeric(df["Governing x (m)"], errors="coerce").sub(float(station_m)).abs()
+        if df["__dx"].notna().any():
+            return df.sort_values("__dx").iloc[0].drop(labels=["__dx"], errors="ignore").to_dict()
+    return None
+
+
+def _railway_u_girder_uls_torsion_vt_guard_columns() -> list[str]:
+    return [
+        "Check",
+        "Status",
+        "Governing x (m)",
+        "Case",
+        "Demand Vuy (kN)",
+        "Demand Tu (kN-m)",
+        "φTn (kN-m)",
+        "φTcr (kN-m)",
+        "Torsion D/C",
+        "Shear D/C",
+        "V+T interaction index",
+        "Threshold status",
+        "Transverse status",
+        "Longitudinal Al status",
+        "Detailing status",
+        "Zone",
+        "Stirrup",
+        "Ao (mm2)",
+        "Aoh (mm2)",
+        "ph (mm)",
+        "At/s provided (mm2/m)",
+        "At/s required (mm2/m)",
+        "Al required (mm2)",
+        "Al provided (mm2)",
+        "Spacing D/C",
+        "φ",
+        "Code basis",
+        "Method",
+        "Evidence status",
+        "Blocked final claim",
+        "Notes",
+    ]
+
+
+def railway_u_girder_uls_torsion_vt_guard_dataframe(
+    session_state: Any,
+    active_uls: pd.DataFrame | None = None,
+    shear_evidence: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Return guarded torsion and combined V+T evidence for Railway U-Girder ULS.
+
+    ULS.RAIL.UGIRDER4 intentionally exposes engineering-review evidence only.
+    It must not be read as final torsion or combined shear/torsion certification.
+    """
+
+    columns = _railway_u_girder_uls_torsion_vt_guard_columns()
+    active = active_uls.copy() if isinstance(active_uls, pd.DataFrame) else active_railway_u_girder_uls_demand_dataframe(session_state)
+    if active.empty:
+        return pd.DataFrame(columns=columns)
+    active["__tu"] = pd.to_numeric(active.get("Tu", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+    active["__vuy"] = pd.to_numeric(active.get("Vuy", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+    candidates = active.loc[(active["__tu"].abs() > _ULS_DEMAND_TOL) | (active["__vuy"].abs() > _ULS_DEMAND_TOL)].copy()
+    if candidates.empty:
+        return pd.DataFrame(columns=columns)
+    if len(candidates.index) > RAILWAY_UGIRDER_ULS_MAX_TORSION_VT_GUARD_ROWS:
+        candidates = candidates.head(RAILWAY_UGIRDER_ULS_MAX_TORSION_VT_GUARD_ROWS).copy()
+    if shear_evidence is None:
+        shear_evidence = railway_u_girder_uls_shear_evidence_dataframe(session_state, active)
+    rows: list[dict[str, Any]] = []
+    for _, demand_row in candidates.iterrows():
+        case = str(demand_row.get("Case Name") or "ULS")
+        station = _float_or_zero(demand_row.get("Station x (m)"))
+        vu = abs(_float_or_zero(demand_row.get("Vuy")))
+        tu = abs(_float_or_zero(demand_row.get("Tu")))
+        analysis_input, input_messages = _railway_uls_analysis_input_for_station_row(session_state, row=demand_row)
+        zone = _railway_uls_active_shear_zone_for_station(session_state, station)
+        shear_row = _railway_uls_match_shear_evidence_row(shear_evidence, case=case, station_m=station)
+        shear_dc = _float_or_zero((shear_row or {}).get("Strength D/C", (shear_row or {}).get("D/C", float("nan")))) if shear_row is not None else float("nan")
+        shear_status = str((shear_row or {}).get("Strength status", (shear_row or {}).get("Status", "REVIEW"))) if shear_row is not None else "REVIEW"
+        phi = 0.90
+        base = {
+            "Governing x (m)": station,
+            "Case": case,
+            "Demand Vuy (kN)": vu,
+            "Demand Tu (kN-m)": tu,
+            "Evidence status": RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_STATUS,
+            "Blocked final claim": "No code-certified or engineer-certified PASS until torsion/V+T benchmarks, dedicated closed torsion-cell calibration, development length, and anchorage/end-zone checks are complete.",
+        }
+        if tu <= _ULS_DEMAND_TOL:
+            interaction = shear_dc if math.isfinite(shear_dc) else float("nan")
+            rows.append({
+                **base,
+                "Check": "Combined V+T guard",
+                "Status": "NO TORSION DEMAND" if vu <= _ULS_DEMAND_TOL else "SHEAR ONLY REVIEW",
+                "φTn (kN-m)": float("nan"),
+                "φTcr (kN-m)": float("nan"),
+                "Torsion D/C": 0.0,
+                "Shear D/C": shear_dc,
+                "V+T interaction index": interaction,
+                "Threshold status": "NO TORSION DEMAND",
+                "Transverse status": "NOT CHECKED",
+                "Longitudinal Al status": "NOT CHECKED",
+                "Detailing status": "NOT CHECKED",
+                "Zone": str((zone or {}).get("Zone") or "-"),
+                "Stirrup": "-",
+                "Ao (mm2)": float("nan"),
+                "Aoh (mm2)": float("nan"),
+                "ph (mm)": float("nan"),
+                "At/s provided (mm2/m)": float("nan"),
+                "At/s required (mm2/m)": float("nan"),
+                "Al required (mm2)": float("nan"),
+                "Al provided (mm2)": float("nan"),
+                "Spacing D/C": float("nan"),
+                "φ": phi,
+                "Code basis": "AASHTO LRFD-compatible V+T guard - not certified",
+                "Method": "No torsion demand; shear route governs this row if Vuy exists.",
+                "Notes": "; ".join([RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING, f"Source shear status: {shear_status}.", *input_messages]),
+            })
+            continue
+        if analysis_input is None:
+            rows.append({
+                **base,
+                "Check": "ULS torsion / V+T guard",
+                "Status": "REVIEW",
+                "φTn (kN-m)": float("nan"),
+                "φTcr (kN-m)": float("nan"),
+                "Torsion D/C": float("nan"),
+                "Shear D/C": shear_dc,
+                "V+T interaction index": float("nan"),
+                "Threshold status": "REVIEW",
+                "Transverse status": "NOT READY",
+                "Longitudinal Al status": "NOT CHECKED",
+                "Detailing status": "NOT READY",
+                "Zone": str((zone or {}).get("Zone") or "-"),
+                "Stirrup": "-",
+                "Ao (mm2)": float("nan"),
+                "Aoh (mm2)": float("nan"),
+                "ph (mm)": float("nan"),
+                "At/s provided (mm2/m)": float("nan"),
+                "At/s required (mm2/m)": float("nan"),
+                "Al required (mm2)": float("nan"),
+                "Al provided (mm2)": float("nan"),
+                "Spacing D/C": float("nan"),
+                "φ": phi,
+                "Code basis": "AASHTO LRFD-compatible torsion/V+T guard - not certified",
+                "Method": "Input not ready",
+                "Notes": "; ".join(input_messages) or "Section/material/strand input not ready for torsion/V+T guard.",
+            })
+            continue
+        concrete = analysis_input.concrete_material
+        fc = float(concrete.fc_MPa)
+        if zone is None:
+            stirrup_area = legs = spacing = fy = diameter = float("nan")
+        else:
+            stirrup_area = _railway_uls_stirrup_area_mm2(zone)
+            legs = _float_or_zero(zone.get("Legs"))
+            spacing = _float_or_zero(zone.get("Spacing_mm"))
+            fy = _float_or_zero(zone.get("fy_MPa"))
+            diameter = _float_or_zero(zone.get("Diameter_mm"))
+        geometry = _railway_uls_torsion_hoop_geometry(analysis_input.section_geometry, stirrup_diameter_mm=diameter)
+        acp = _float_or_zero(geometry.get("Acp mm2"))
+        pcp = _float_or_zero(geometry.get("Pcp mm"))
+        ao = _float_or_zero(geometry.get("Ao mm2"))
+        aoh = _float_or_zero(geometry.get("Aoh mm2"))
+        ph = _float_or_zero(geometry.get("ph mm"))
+        tcr = float("nan")
+        if all(math.isfinite(value) and value > 0.0 for value in [fc, acp, pcp]):
+            tcr = phi * (0.083 * math.sqrt(fc) * acp * acp / pcp) / 1.0e6
+        threshold_status = "BELOW THRESHOLD" if math.isfinite(tcr) and tu <= tcr + 1.0e-9 else "DESIGN REQUIRED"
+        code_basis = "AASHTO LRFD-compatible closed-hoop torsion/V+T guard - not certified"
+        method = "Closed-hoop torsion truss guard with ordinary rebar Al and linear V+T review index"
+        if not all(math.isfinite(value) and value > 0.0 for value in [stirrup_area, spacing, fy, ao, ph]) and threshold_status != "BELOW THRESHOLD":
+            rows.append({
+                **base,
+                "Check": "ULS torsion / V+T guard",
+                "Status": "LAYOUT REQUIRED",
+                "φTn (kN-m)": float("nan"),
+                "φTcr (kN-m)": tcr,
+                "Torsion D/C": float("nan"),
+                "Shear D/C": shear_dc,
+                "V+T interaction index": float("nan"),
+                "Threshold status": threshold_status,
+                "Transverse status": "LAYOUT REQUIRED",
+                "Longitudinal Al status": "NOT CHECKED",
+                "Detailing status": "LAYOUT REQUIRED",
+                "Zone": str((zone or {}).get("Zone") or "-"),
+                "Stirrup": "-" if zone is None else f"{zone.get('Bar Size') or '-'} closed hoop @ {spacing:.0f} mm",
+                "Ao (mm2)": ao,
+                "Aoh (mm2)": aoh,
+                "ph (mm)": ph,
+                "At/s provided (mm2/m)": float("nan"),
+                "At/s required (mm2/m)": float("nan"),
+                "Al required (mm2)": float("nan"),
+                "Al provided (mm2)": float("nan"),
+                "Spacing D/C": float("nan"),
+                "φ": phi,
+                "Code basis": code_basis,
+                "Method": method,
+                "Notes": "; ".join([RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING, str(geometry.get("Note") or ""), "Active closed-hoop transverse zone or torsion geometry is incomplete.", *input_messages]),
+            })
+            continue
+        at_per_s = float(stirrup_area) / float(spacing) if spacing > 0.0 and math.isfinite(stirrup_area) else float("nan")
+        phi_tn = float("nan")
+        torsion_dc = float("nan")
+        at_req = float("nan")
+        al_req = float("nan")
+        transverse_status = "THRESHOLD OK" if threshold_status == "BELOW THRESHOLD" else "REVIEW"
+        longitudinal_status = "NOT CHECKED"
+        detailing_status = "THRESHOLD OK" if threshold_status == "BELOW THRESHOLD" else "REVIEW"
+        al_review = {"provided_mm2": float("nan"), "utilization": float("nan"), "description": ""}
+        detail = {"spacing_dc": float("nan"), "dc": float("nan"), "notes": ""}
+        if threshold_status == "BELOW THRESHOLD":
+            torsion_dc = 0.0
+            status = "BELOW THRESHOLD" if vu <= _ULS_DEMAND_TOL else "SHEAR + TORSION THRESHOLD REVIEW"
+        else:
+            phi_tn = phi * (2.0 * float(ao) * float(at_per_s) * float(fy)) / 1.0e6
+            torsion_dc = tu / phi_tn if phi_tn > 0.0 else float("nan")
+            transverse_status = "PASS" if math.isfinite(torsion_dc) and torsion_dc <= 1.0 + 1.0e-9 else "FAIL" if math.isfinite(torsion_dc) else "REVIEW"
+            at_req = tu * 1.0e6 / (phi * 2.0 * float(ao) * float(fy)) if all(math.isfinite(value) and value > 0.0 for value in [ao, fy]) else float("nan")
+            al_req = at_per_s * float(ph) if math.isfinite(ph) and ph > 0.0 and math.isfinite(at_per_s) else float("nan")
+            al_review = _railway_uls_torsion_longitudinal_review(session_state, al_req)
+            longitudinal_status = str(al_review.get("status") or "LAYOUT REQUIRED")
+            detail = _railway_uls_torsion_detailing_gate(zone=zone, x_m=station, spacing_mm=float(spacing), ph_mm=float(ph), at_per_s_mm2_per_mm=float(at_per_s), at_req_mm2_per_mm=float(at_req))
+            detailing_status = str(detail.get("status") or "LAYOUT REQUIRED")
+            if "FAIL" in {transverse_status, longitudinal_status, detailing_status}:
+                status = "Engineering Review FAIL"
+            elif any(value in {"LAYOUT REQUIRED", "NOT CHECKED", "NOT READY"} for value in [longitudinal_status, detailing_status]):
+                status = "LAYOUT REQUIRED"
+            elif transverse_status == "PASS" and longitudinal_status == "PASS" and detailing_status == "PASS":
+                status = "Engineering Review PASS"
+            else:
+                status = "REVIEW"
+        interaction_terms = []
+        if math.isfinite(shear_dc) and vu > _ULS_DEMAND_TOL:
+            interaction_terms.append(shear_dc)
+        if math.isfinite(torsion_dc) and tu > _ULS_DEMAND_TOL:
+            interaction_terms.append(torsion_dc)
+        interaction_index = sum(interaction_terms) if interaction_terms else float("nan")
+        if tu > _ULS_DEMAND_TOL and vu > _ULS_DEMAND_TOL and status == "Engineering Review PASS" and shear_status in {"PASS", "Engineering Review PASS"}:
+            status = "Engineering Review PASS" if math.isfinite(interaction_index) and interaction_index <= 1.0 + 1.0e-9 else "Engineering Review FAIL"
+        notes = [
+            RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING,
+            str(geometry.get("Note") or ""),
+            f"Source shear status: {shear_status}.",
+            "Torsion At is taken as one closed-hoop bar area per spacing; shear leg count is not multiplied into At.",
+            "Combined V+T index is a guarded linear review index only; it is not final code-certified interaction design.",
+            str(al_review.get("description") or ""),
+            str(detail.get("notes") or ""),
+            *input_messages,
+        ]
+        rows.append({
+            **base,
+            "Check": "ULS torsion / V+T guard",
+            "Status": status,
+            "φTn (kN-m)": phi_tn,
+            "φTcr (kN-m)": tcr,
+            "Torsion D/C": torsion_dc,
+            "Shear D/C": shear_dc,
+            "V+T interaction index": interaction_index,
+            "Threshold status": threshold_status,
+            "Transverse status": transverse_status,
+            "Longitudinal Al status": longitudinal_status,
+            "Detailing status": detailing_status,
+            "Zone": str((zone or {}).get("Zone") or "-"),
+            "Stirrup": "-" if zone is None else f"{zone.get('Bar Size') or '-'} closed hoop @ {float(spacing):.0f} mm",
+            "Ao (mm2)": ao,
+            "Aoh (mm2)": aoh,
+            "ph (mm)": ph,
+            "At/s provided (mm2/m)": at_per_s * 1000.0 if math.isfinite(at_per_s) else float("nan"),
+            "At/s required (mm2/m)": at_req * 1000.0 if math.isfinite(at_req) else float("nan"),
+            "Al required (mm2)": al_req,
+            "Al provided (mm2)": al_review.get("provided_mm2", float("nan")),
+            "Spacing D/C": detail.get("spacing_dc", float("nan")),
+            "φ": phi,
+            "Code basis": code_basis,
+            "Method": method,
+            "Notes": "; ".join(str(item) for item in notes if str(item).strip()),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
 def railway_u_girder_uls_code_basis_dataframe() -> pd.DataFrame:
     route = bridge_beam_girder_uls_strength_route()
     rows = [
@@ -1095,7 +1589,7 @@ def railway_u_girder_uls_code_basis_dataframe() -> pd.DataFrame:
         {"Item": "Default strength combo label", "Value": route.default_combo_label, "Status": "REVIEW", "Evidence / Boundary": "Actual project load combinations must be reviewed before final design."},
         {"Item": "Flexure route", "Value": route.flexure_engine_label, "Status": "FRAMEWORK READY", "Evidence / Boundary": route.flexure_basis_note},
         {"Item": "Shear route", "Value": route.shear_engine_label, "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "ULS.RAIL.UGIRDER3 provides guarded PSC shear route evidence using active Vuy demands and provided stirrup zones; final Vci/Vcw/Vp/end-region certification remains future work."},
-        {"Item": "Torsion route", "Value": route.torsion_engine_label, "Status": "GUARDED PREVIEW", "Evidence / Boundary": "Railway U-Girder torsion and combined V+T calibration remain future work."},
+        {"Item": "Torsion route", "Value": route.torsion_engine_label, "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "ULS.RAIL.UGIRDER4 provides guarded torsion / V+T evidence using active Tu/Vuy demands, closed-hoop zones, and ordinary rebar Al; final multi-cell/PSC/V+T calibration remains future work."},
         {"Item": "Certification boundary", "Value": "Not engineer-certified", "Status": "NOT CERTIFIED", "Evidence / Boundary": RAILWAY_UGIRDER_ULS_CERTIFICATION_BOUNDARY},
     ]
     return pd.DataFrame(rows, columns=["Item", "Value", "Status", "Evidence / Boundary"])
@@ -1165,19 +1659,19 @@ def railway_u_girder_uls_check_matrix_dataframe(active_uls: pd.DataFrame) -> pd.
         },
         {
             "Check Area": "ULS torsion",
-            "Current Framework Status": "GUARDED PREVIEW",
+            "Current Framework Status": "ENGINEERING REVIEW READY" if has_loads else "INPUT REQUIRED",
             "Demand Source": demand_status,
-            "Capacity / Code Route": "Bridge torsion gate available; Railway U-Girder torsion calibration not final",
-            "Allowed Decision Wording": "Review / Guarded Preview",
-            "Blocked Final Claim": "No final torsion certification until section-type torsion route is validated.",
+            "Capacity / Code Route": "ULS.RAIL.UGIRDER4 uses an AASHTO LRFD-compatible closed-hoop torsion guard with active Tu demands, active transverse zones, threshold screen, ordinary rebar Al, and detailing gates; final Railway multi-cell/PSC torsion calibration remains future work",
+            "Allowed Decision Wording": "Engineering Review PASS / FAIL allowed for torsion guard evidence only; not Certified PASS",
+            "Blocked Final Claim": "No final torsion certification until section-type torsion route, closed torsion cell, PSC effects, development length, anchorage/end-zone, and benchmarks are validated.",
         },
         {
             "Check Area": "Combined V+T",
-            "Current Framework Status": "NOT CERTIFIED",
+            "Current Framework Status": "GUARDED PREVIEW" if has_loads else "INPUT REQUIRED",
             "Demand Source": demand_status,
-            "Capacity / Code Route": "Combined V+T must use validated shear and torsion routes together",
-            "Allowed Decision Wording": "Not certified / Future work",
-            "Blocked Final Claim": "Separate shear/torsion checks must not be read as final combined V+T PASS.",
+            "Capacity / Code Route": "ULS.RAIL.UGIRDER4 exposes a linear V+T review index from the guarded shear and torsion source rows; it is not final calibrated code interaction design",
+            "Allowed Decision Wording": "Engineering Review PASS / FAIL allowed for V+T guard evidence only; not Certified PASS",
+            "Blocked Final Claim": "Separate guarded shear/torsion/V+T rows must not be read as final combined V+T certification until calibrated code interaction and benchmarks are complete.",
         },
         {
             "Check Area": "Prestress development / anchorage",
@@ -1233,15 +1727,18 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
             warnings=["Railway U-Girder ULS framework package is only available for the Railway U-Girder preset."],
         )
     active_uls = active_railway_u_girder_uls_demand_dataframe(session_state)
-    warnings = [RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING, RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING]
+    warnings = [RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING, RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING]
     if active_uls.empty:
         warnings.append("No active ULS Loads rows were found; define Strength ULS station-resultant rows before running design checks.")
     flexure_evidence = railway_u_girder_uls_flexure_evidence_dataframe(session_state, active_uls)
     shear_evidence = railway_u_girder_uls_shear_evidence_dataframe(session_state, active_uls)
     if flexure_evidence.empty and not active_uls.empty:
         warnings.append("No nonzero Mux station rows were available for ULS.RAIL.UGIRDER2 flexure evidence.")
+    torsion_vt_guard = railway_u_girder_uls_torsion_vt_guard_dataframe(session_state, active_uls, shear_evidence)
     if shear_evidence.empty and not active_uls.empty:
         warnings.append("No nonzero Vuy station rows were available for ULS.RAIL.UGIRDER3 PSC shear route evidence.")
+    if torsion_vt_guard.empty and not active_uls.empty:
+        warnings.append("No nonzero Tu or Vuy station rows were available for ULS.RAIL.UGIRDER4 torsion / V+T guard evidence.")
     return RailwayUGirderULSFrameworkPackage(
         available=True,
         status=RAILWAY_UGIRDER_ULS_FRAMEWORK_STATUS,
@@ -1250,6 +1747,7 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
         demand_summary=railway_u_girder_uls_demand_summary_dataframe(active_uls),
         flexure_evidence=flexure_evidence,
         shear_evidence=shear_evidence,
+        torsion_vt_guard=torsion_vt_guard,
         check_matrix=railway_u_girder_uls_check_matrix_dataframe(active_uls),
         future_checks=railway_u_girder_uls_future_checks_dataframe(),
         warnings=warnings,
