@@ -988,3 +988,11 @@ Added guarded Railway U-Girder prestress transfer/development evidence after the
 Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, docs, and regression tests. No SLS solver equations, ULS flexure/shear/torsion equations, prestress/debond participation logic, geometry generator, section properties, load-combination equation, project schema, or report certification wording were modified.
 
 Status wording remains guarded: Engineering Review PASS / FAIL for transfer/development evidence only; not final code-certified design. Final certification still requires development benchmark validation, debonded anchorage detailing, anchorage/end-zone bursting/spalling checks, independent benchmarks, and Engineer-of-Record review.
+
+### ANCHORAGE.RAIL.UGIRDER1 — Railway U-Girder Anchorage / End-Zone Evidence
+
+Added guarded Railway U-Girder anchorage/end-zone bursting and spalling evidence after the transfer/development milestone. The route reads the active strand/debonding table, separates bonded end strands from debonded/sleeved strands, reports end-zone Pe transfer force, sleeve-termination force, bursting tie demand, required end-zone/sleeve As, concrete stress preview versus web f'ci, and guarded detailing notes.
+
+Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, docs, and regression tests. No SLS solver equations, ULS flexure/shear/torsion equations, prestress/debond station-participation logic, geometry generator, section properties, load-combination equation, project schema, or report certification wording were modified.
+
+Status wording remains guarded: anchorage/end-zone evidence is engineering-review only; not final code-certified design. Final certification still requires project-specific anchorage-zone reinforcement detailing, debonded strand sleeve-termination validation, end-region benchmarks, and Engineer-of-Record review.

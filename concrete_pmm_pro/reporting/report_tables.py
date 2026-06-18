@@ -195,6 +195,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
             "railway_u_girder_uls_shear_evidence": "Railway U-Girder ULS PSC Shear Route Evidence",
             "railway_u_girder_uls_torsion_vt_guard": "Railway U-Girder ULS Torsion / V+T Guard Evidence",
             "railway_u_girder_prestress_development_evidence": "Railway U-Girder Prestress Transfer / Development Evidence",
+            "railway_u_girder_anchorage_end_zone_evidence": "Railway U-Girder Anchorage / End-Zone Evidence",
             "railway_u_girder_uls_check_matrix": "Railway U-Girder ULS Check Matrix",
             "railway_u_girder_uls_future_checks": "Railway U-Girder ULS Future Checks",
         }

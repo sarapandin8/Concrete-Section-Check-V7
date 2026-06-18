@@ -46,7 +46,7 @@ RAILWAY_UGIRDER_ULS_REQUIRED_FUTURE_CHECKS = [
     "Railway U-Girder torsion and combined V+T interaction",
     "transfer length force ramp",
     "development length benchmark validation and debonded strand anchorage detailing beyond this guarded evidence table",
-    "anchorage / end-zone bursting and spalling",
+    "anchorage / end-zone bursting and spalling benchmark validation beyond guarded evidence",
     "lifting insert / local hardware check",
     "creep/shrinkage and time-dependent composite redistribution",
     "independent benchmark examples and final design report traceability",
@@ -80,6 +80,13 @@ RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_WARNING = (
     "It does not ramp prestress force in the SLS/ULS solvers, does not certify debonded strand development, "
     "and does not replace anchorage/end-zone bursting or Engineer-of-Record review."
 )
+RAILWAY_UGIRDER_ANCHORAGE_END_ZONE_STATUS = "Railway U-Girder Anchorage / End-Zone Evidence - Engineering Review Ready"
+RAILWAY_UGIRDER_ANCHORAGE_END_ZONE_WARNING = (
+    "ANCHORAGE.RAIL.UGIRDER1 adds guarded anchorage/end-zone bursting and spalling evidence for Railway U-Girder "
+    "pretensioned strand release zones using active strand/debonding rows, web f'ci, and visible end-zone force screens. "
+    "It does not design final anchorage-zone reinforcement, does not validate debonded strand termination detailing, "
+    "and does not replace project-specific end-region detailing or Engineer-of-Record review."
+)
 RAILWAY_UGIRDER_ULS_MAX_FLEXURE_EVIDENCE_ROWS = 8
 RAILWAY_UGIRDER_ULS_MAX_SHEAR_EVIDENCE_ROWS = 12
 RAILWAY_UGIRDER_ULS_MAX_TORSION_VT_GUARD_ROWS = 16
@@ -97,6 +104,7 @@ RAILWAY_UGIRDER_ULS_TABLE_KEYS = [
     "railway_u_girder_uls_shear_evidence",
     "railway_u_girder_uls_torsion_vt_guard",
     "railway_u_girder_prestress_development_evidence",
+    "railway_u_girder_anchorage_end_zone_evidence",
     "railway_u_girder_uls_check_matrix",
     "railway_u_girder_uls_future_checks",
 ]
@@ -115,6 +123,7 @@ class RailwayUGirderULSFrameworkPackage:
     shear_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     torsion_vt_guard: pd.DataFrame = field(default_factory=pd.DataFrame)
     prestress_development_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
+    anchorage_end_zone_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     check_matrix: pd.DataFrame = field(default_factory=pd.DataFrame)
     future_checks: pd.DataFrame = field(default_factory=pd.DataFrame)
     warnings: list[str] = field(default_factory=list)
@@ -128,6 +137,7 @@ class RailwayUGirderULSFrameworkPackage:
             "railway_u_girder_uls_shear_evidence": self.shear_evidence,
             "railway_u_girder_uls_torsion_vt_guard": self.torsion_vt_guard,
             "railway_u_girder_prestress_development_evidence": self.prestress_development_evidence,
+            "railway_u_girder_anchorage_end_zone_evidence": self.anchorage_end_zone_evidence,
             "railway_u_girder_uls_check_matrix": self.check_matrix,
             "railway_u_girder_uls_future_checks": self.future_checks,
         }
@@ -1772,6 +1782,224 @@ def railway_u_girder_prestress_development_evidence_dataframe(session_state: Any
         )
     return pd.DataFrame(rows, columns=columns)
 
+
+
+def _railway_anchorage_end_zone_columns() -> list[str]:
+    return [
+        "Check",
+        "Status",
+        "End",
+        "Effective end strands",
+        "Debonded / sleeved strands",
+        "End-zone Pe transfer (kN)",
+        "Sleeve termination Pe transfer (kN)",
+        "Bursting tie demand Tb (kN)",
+        "Sleeve termination tie demand (kN)",
+        "Required end-zone As (mm2)",
+        "Required sleeve As (mm2)",
+        "Assumed tie fy (MPa)",
+        "End-zone length (m)",
+        "Web fci (MPa)",
+        "Concrete stress preview (MPa)",
+        "Stress ratio vs 0.60fci",
+        "Concrete stress status",
+        "Reinforcement status",
+        "Sleeve termination status",
+        "Code basis",
+        "Method",
+        "Evidence status",
+        "Blocked final claim",
+        "Notes",
+    ]
+
+
+def _railway_web_fci_mpa_from_state(session_state: Any) -> float:
+    stage = _get(session_state, "railway_u_girder_stage_settings", {}) or {}
+    for key in ("web_fci_MPa", "web_fci_mpa", "web_fci", "Web fci MPa"):
+        value = _float_or_zero(_get(stage, key, 0.0))
+        if math.isfinite(value) and value > 0.0:
+            return float(value)
+    return 36.0
+
+
+def _railway_end_zone_tie_fy_mpa(session_state: Any) -> float:
+    # Use an explicit future setting when available; otherwise use common SD40 fy.
+    settings = _get(session_state, "railway_u_girder_anchorage_settings", {}) or {}
+    value = _float_or_zero(_get(settings, "tie_fy_MPa", 0.0))
+    if math.isfinite(value) and value > 0.0:
+        return float(value)
+    return 390.0
+
+
+def _railway_pe_transfer_per_strand_kN(row: Mapping[str, Any]) -> float:
+    for key in (
+        "Pe_eff_transfer/strand_kN",
+        "Pe_transfer/strand_kN",
+        "Pe_release/strand_kN",
+        "P_release/strand_kN",
+        "Pe_construction/strand_kN",
+    ):
+        value = _float_or_zero(row.get(key))
+        if math.isfinite(value) and value > 0.0:
+            return float(value)
+    final_value = _float_or_zero(row.get("Pe_eff_final/strand_kN"))
+    # Release/transfer force is normally higher than final effective force.  When
+    # only final Pe exists, use a visible review factor and disclose it in Notes.
+    return 1.15 * float(final_value) if math.isfinite(final_value) and final_value > 0.0 else 0.0
+
+
+def _railway_end_zone_geometry_basis(session_state: Any) -> dict[str, Any]:
+    geometry = _railway_uls_section_geometry_from_state(session_state)
+    if geometry is None:
+        return {
+            "h_mm": float("nan"),
+            "bv_mm": float("nan"),
+            "area_mm2": float("nan"),
+            "end_zone_length_m": float("nan"),
+            "note": "Section geometry is missing; end-zone stress preview is unavailable.",
+        }
+    try:
+        _, y_min, _, y_max = _railway_uls_section_bounds(geometry)
+        h_mm = max(0.0, float(y_max) - float(y_min))
+    except Exception:
+        h_mm = float("nan")
+    bv_mm, bv_note = _railway_uls_web_width_mm(geometry)
+    if bv_mm is None:
+        bv_mm = float("nan")
+    area = float(bv_mm) * float(h_mm) if math.isfinite(float(bv_mm)) and math.isfinite(float(h_mm)) and bv_mm > 0.0 and h_mm > 0.0 else float("nan")
+    end_zone_length = max(1.0, float(h_mm) / 1000.0) if math.isfinite(float(h_mm)) and h_mm > 0.0 else float("nan")
+    return {
+        "h_mm": float(h_mm),
+        "bv_mm": float(bv_mm),
+        "area_mm2": area,
+        "end_zone_length_m": float(end_zone_length),
+        "note": f"End-zone concrete area uses total web width times full section depth for a guarded stress screen. {bv_note}",
+    }
+
+
+def _railway_anchorage_end_aggregate(rows_in: list[Mapping[str, Any]], *, end: str, span_m: float) -> dict[str, Any]:
+    effective_strands = 0
+    sleeved_strands = 0
+    p_end = 0.0
+    p_sleeve = 0.0
+    sleeve_stations: list[float] = []
+    final_fallback_used = False
+    for source_row in rows_in:
+        total = int(max(0, round(_float_or_zero(source_row.get("No. Strands")))))
+        debonded = min(total, int(debonded_strand_count_for_row(source_row)))
+        if total <= 0:
+            continue
+        if end == "Left":
+            debond_length = min(max(_float_or_zero(source_row.get("Left debond m")), 0.0), span_m)
+            sleeve_station = debond_length
+        else:
+            debond_length = min(max(_float_or_zero(source_row.get("Right debond m")), 0.0), span_m)
+            sleeve_station = max(0.0, span_m - debond_length)
+        pe_transfer = _railway_pe_transfer_per_strand_kN(source_row)
+        if pe_transfer > 0.0 and _float_or_zero(source_row.get("Pe_eff_transfer/strand_kN")) <= 0.0 and _float_or_zero(source_row.get("Pe_transfer/strand_kN")) <= 0.0 and _float_or_zero(source_row.get("Pe_release/strand_kN")) <= 0.0:
+            final_fallback_used = True
+        sleeved = debonded if debond_length > 1.0e-9 else 0
+        bonded = max(0, total - sleeved)
+        effective_strands += bonded
+        sleeved_strands += sleeved
+        p_end += bonded * pe_transfer
+        if sleeved > 0:
+            p_sleeve += sleeved * pe_transfer
+            sleeve_stations.append(sleeve_station)
+    return {
+        "effective_strands": effective_strands,
+        "sleeved_strands": sleeved_strands,
+        "p_end_kN": p_end,
+        "p_sleeve_kN": p_sleeve,
+        "sleeve_stations": sleeve_stations,
+        "final_fallback_used": final_fallback_used,
+    }
+
+
+def railway_u_girder_anchorage_end_zone_evidence_dataframe(session_state: Any) -> pd.DataFrame:
+    """Return guarded anchorage/end-zone bursting/spalling evidence.
+
+    ANCHORAGE.RAIL.UGIRDER1 intentionally reports end-zone review evidence only.
+    It does not design final anchorage-zone reinforcement, does not validate
+    debonded strand termination detailing, and does not change force transfer in
+    the SLS/ULS solvers.
+    """
+
+    columns = _railway_anchorage_end_zone_columns()
+    span_m = _railway_uls_span_length_m(session_state)
+    rows_in = active_girder_strand_rows(_get(session_state, "girder_strand_layout_table", None))
+    if not rows_in:
+        return pd.DataFrame(columns=columns)
+    geometry = _railway_end_zone_geometry_basis(session_state)
+    fci = _railway_web_fci_mpa_from_state(session_state)
+    tie_fy = _railway_end_zone_tie_fy_mpa(session_state)
+    phi_tie = 0.90
+    rows: list[dict[str, Any]] = []
+    for end in ("Left", "Right"):
+        agg = _railway_anchorage_end_aggregate(rows_in, end=end, span_m=span_m)
+        p_end = float(agg["p_end_kN"])
+        p_sleeve = float(agg["p_sleeve_kN"])
+        tb = 0.25 * p_end
+        sleeve_tb = 0.25 * p_sleeve
+        as_req = tb * 1000.0 / (phi_tie * tie_fy) if tie_fy > 0.0 else float("nan")
+        as_sleeve = sleeve_tb * 1000.0 / (phi_tie * tie_fy) if tie_fy > 0.0 else float("nan")
+        area = _float_or_zero(geometry.get("area_mm2"))
+        stress = p_end * 1000.0 / area if area > 0.0 else float("nan")
+        stress_ratio = stress / (0.60 * fci) if math.isfinite(stress) and fci > 0.0 else float("nan")
+        if math.isfinite(stress_ratio) and stress_ratio > 1.0 + 1.0e-9:
+            concrete_status = "REVIEW — HIGH END-ZONE STRESS"
+            status = "Engineering Review FAIL"
+        elif math.isfinite(stress_ratio):
+            concrete_status = "SCREEN OK"
+            status = "REVIEW"
+        else:
+            concrete_status = "REVIEW"
+            status = "REVIEW"
+        reinforcement_status = "DEDICATED END-ZONE REINFORCEMENT LAYOUT REQUIRED" if p_end > 0.0 else "NO END FORCE"
+        if p_sleeve > 0.0:
+            sleeve_status = "SLEEVE TERMINATION DETAILING REQUIRED"
+        else:
+            sleeve_status = "NO DEBONDED SLEEVE TERMINATION FORCE"
+        notes = [
+            RAILWAY_UGIRDER_ANCHORAGE_END_ZONE_WARNING,
+            str(geometry.get("note") or ""),
+            "Bursting tie demand is a guarded screen Tb = 0.25P; it is not a final strut-and-tie or anchorage-zone reinforcement design.",
+            "Required As uses φ=0.90 and the displayed tie fy; define actual end-zone bars, confinement, splitting steel, and local bursting layout before final design.",
+            "Concrete stress preview uses end-face bonded strand transfer force divided by total web area; validate with project-specific end-region model.",
+        ]
+        if agg.get("final_fallback_used"):
+            notes.append("No explicit transfer/release Pe per strand was found for at least one row; transfer force used 1.15×final Pe as a visible review fallback.")
+        if p_sleeve > 0.0:
+            stations = ", ".join(f"{float(item):.3f}" for item in agg.get("sleeve_stations", []))
+            notes.append(f"Debonded/sleeved strand termination force is reported separately at station(s) {stations} m from the left end; local splitting reinforcement must be detailed there.")
+        rows.append({
+            "Check": "Anchorage / end-zone bursting evidence",
+            "Status": status,
+            "End": end,
+            "Effective end strands": int(agg["effective_strands"]),
+            "Debonded / sleeved strands": int(agg["sleeved_strands"]),
+            "End-zone Pe transfer (kN)": p_end,
+            "Sleeve termination Pe transfer (kN)": p_sleeve,
+            "Bursting tie demand Tb (kN)": tb,
+            "Sleeve termination tie demand (kN)": sleeve_tb,
+            "Required end-zone As (mm2)": as_req,
+            "Required sleeve As (mm2)": as_sleeve,
+            "Assumed tie fy (MPa)": tie_fy,
+            "End-zone length (m)": geometry.get("end_zone_length_m", float("nan")),
+            "Web fci (MPa)": fci,
+            "Concrete stress preview (MPa)": stress,
+            "Stress ratio vs 0.60fci": stress_ratio,
+            "Concrete stress status": concrete_status,
+            "Reinforcement status": reinforcement_status,
+            "Sleeve termination status": sleeve_status,
+            "Code basis": "AASHTO/ACI-compatible anchorage-zone bursting/spalling review screen - not certified",
+            "Method": "Pretensioned end-zone evidence: bonded end force P, Tb=0.25P, As=Tb/(φfy); debonded sleeve termination force reported separately; no solver force-ramp change.",
+            "Evidence status": RAILWAY_UGIRDER_ANCHORAGE_END_ZONE_STATUS,
+            "Blocked final claim": "No code-certified or engineer-certified PASS until project-specific anchorage-zone reinforcement, debonded strand termination detailing, end-region benchmarks, and Engineer-of-Record review are complete.",
+            "Notes": "; ".join(str(item) for item in notes if str(item).strip()),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
 def railway_u_girder_uls_code_basis_dataframe() -> pd.DataFrame:
     route = bridge_beam_girder_uls_strength_route()
     rows = [
@@ -1783,6 +2011,7 @@ def railway_u_girder_uls_code_basis_dataframe() -> pd.DataFrame:
         {"Item": "Shear route", "Value": route.shear_engine_label, "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "ULS.RAIL.UGIRDER3 provides guarded PSC shear route evidence using active Vuy demands and provided stirrup zones; final Vci/Vcw/Vp/end-region certification remains future work."},
         {"Item": "Torsion route", "Value": route.torsion_engine_label, "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "ULS.RAIL.UGIRDER4 provides guarded torsion / V+T evidence using active Tu/Vuy demands, closed-hoop zones, and ordinary rebar Al; final multi-cell/PSC/V+T calibration remains future work."},
         {"Item": "Prestress development route", "Value": "Transfer / development length evidence", "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "PRESTRESS.DEVELOPMENT1 provides guarded row-level transfer/development length evidence from the active strand/debonding table; it does not apply Pe force ramps or certify anchorage/end-zone detailing."},
+        {"Item": "Anchorage / end-zone route", "Value": "Bursting / spalling evidence", "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "ANCHORAGE.RAIL.UGIRDER1 provides guarded end-zone force, bursting tie demand, concrete stress, and debond sleeve-termination review evidence; final anchorage-zone reinforcement design and benchmark validation remain future work."},
         {"Item": "Certification boundary", "Value": "Not engineer-certified", "Status": "NOT CERTIFIED", "Evidence / Boundary": RAILWAY_UGIRDER_ULS_CERTIFICATION_BOUNDARY},
     ]
     return pd.DataFrame(rows, columns=["Item", "Value", "Status", "Evidence / Boundary"])
@@ -1876,11 +2105,19 @@ def railway_u_girder_uls_check_matrix_dataframe(active_uls: pd.DataFrame) -> pd.
         },
         {
             "Check Area": "Anchorage / end-zone",
+            "Current Framework Status": "ENGINEERING REVIEW READY",
+            "Demand Source": "Active strand/debonding table, stage web f'ci, and current Railway U-Girder geometry",
+            "Capacity / Code Route": "ANCHORAGE.RAIL.UGIRDER1 provides guarded end-zone bursting/spalling force screens, required tie-steel evidence, concrete stress ratio, and debond sleeve-termination review notes; final reinforcement layout design remains outside this milestone",
+            "Allowed Decision Wording": "Engineering Review / reinforcement layout required; not Certified PASS",
+            "Blocked Final Claim": "No final prestressed girder design without project-specific anchorage-zone reinforcement detailing, debonded strand termination validation, benchmarks, and Engineer-of-Record review.",
+        },
+        {
+            "Check Area": "Independent benchmark validation",
             "Current Framework Status": "FUTURE WORK",
-            "Demand Source": "Prestress/debonding input available from SLS workflow",
-            "Capacity / Code Route": "End-zone bursting/spalling and anchorage-zone reinforcement design are not implemented in PRESTRESS.DEVELOPMENT1",
+            "Demand Source": "Future published/reference examples and independent hand calculations",
+            "Capacity / Code Route": "Railway U-Girder flexure, shear, torsion/V+T, development, and anchorage/end-zone evidence still need independent benchmark validation before final certification wording",
             "Allowed Decision Wording": "Excluded from current framework",
-            "Blocked Final Claim": "No final prestressed girder design without anchorage/end-zone bursting and spalling checks.",
+            "Blocked Final Claim": "No final code-certified design claim without benchmark validation and Engineer-of-Record review.",
         },
         {
             "Check Area": "Final design certification",
@@ -1928,7 +2165,7 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
             warnings=["Railway U-Girder ULS framework package is only available for the Railway U-Girder preset."],
         )
     active_uls = active_railway_u_girder_uls_demand_dataframe(session_state)
-    warnings = [RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING, RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING, RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_WARNING]
+    warnings = [RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING, RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING, RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_WARNING, RAILWAY_UGIRDER_ANCHORAGE_END_ZONE_WARNING]
     if active_uls.empty:
         warnings.append("No active ULS Loads rows were found; define Strength ULS station-resultant rows before running design checks.")
     flexure_evidence = railway_u_girder_uls_flexure_evidence_dataframe(session_state, active_uls)
@@ -1937,12 +2174,15 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
         warnings.append("No nonzero Mux station rows were available for ULS.RAIL.UGIRDER2 flexure evidence.")
     torsion_vt_guard = railway_u_girder_uls_torsion_vt_guard_dataframe(session_state, active_uls, shear_evidence)
     prestress_development_evidence = railway_u_girder_prestress_development_evidence_dataframe(session_state)
+    anchorage_end_zone_evidence = railway_u_girder_anchorage_end_zone_evidence_dataframe(session_state)
     if shear_evidence.empty and not active_uls.empty:
         warnings.append("No nonzero Vuy station rows were available for ULS.RAIL.UGIRDER3 PSC shear route evidence.")
     if torsion_vt_guard.empty and not active_uls.empty:
         warnings.append("No nonzero Tu or Vuy station rows were available for ULS.RAIL.UGIRDER4 torsion / V+T guard evidence.")
     if prestress_development_evidence.empty:
         warnings.append("No active strand rows were available for PRESTRESS.DEVELOPMENT1 transfer/development evidence.")
+    if anchorage_end_zone_evidence.empty:
+        warnings.append("No active strand rows were available for ANCHORAGE.RAIL.UGIRDER1 anchorage/end-zone evidence.")
     return RailwayUGirderULSFrameworkPackage(
         available=True,
         status=RAILWAY_UGIRDER_ULS_FRAMEWORK_STATUS,
@@ -1953,6 +2193,7 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
         shear_evidence=shear_evidence,
         torsion_vt_guard=torsion_vt_guard,
         prestress_development_evidence=prestress_development_evidence,
+        anchorage_end_zone_evidence=anchorage_end_zone_evidence,
         check_matrix=railway_u_girder_uls_check_matrix_dataframe(active_uls),
         future_checks=railway_u_girder_uls_future_checks_dataframe(),
         warnings=warnings,
