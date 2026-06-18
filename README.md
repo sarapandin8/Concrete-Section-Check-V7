@@ -980,3 +980,11 @@ Added guarded Railway U-Girder ULS torsion and combined V+T guard evidence to th
 Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, docs, and regression tests. No SLS solver equations, PMM solver equations, flexure/shear solver equations, prestress/debond participation logic, geometry generator, load-combination equation, project schema, or report certification wording were modified.
 
 Status wording remains guarded: Engineering Review PASS / FAIL for torsion/V+T guard evidence only; not final code-certified design. Final certification still requires dedicated Railway U-Girder closed torsion-cell calibration, refined PSC torsion effects, calibrated V+T code interaction, development length, anchorage/end-zone checks, independent benchmarks, and Engineer-of-Record review.
+
+### PRESTRESS.DEVELOPMENT1 — Railway U-Girder Transfer / Development Length Evidence
+
+Added guarded Railway U-Girder prestress transfer/development evidence after the ULS torsion/V+T milestone. The route reads the active strand/debonding table and produces a report/Word-ready table with strand row data, fpe/fps basis, transfer length, development length, sleeve termination stations, bonded length to midspan, and left/right development D/C screens.
+
+Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, docs, and regression tests. No SLS solver equations, ULS flexure/shear/torsion equations, prestress/debond participation logic, geometry generator, section properties, load-combination equation, project schema, or report certification wording were modified.
+
+Status wording remains guarded: Engineering Review PASS / FAIL for transfer/development evidence only; not final code-certified design. Final certification still requires development benchmark validation, debonded anchorage detailing, anchorage/end-zone bursting/spalling checks, independent benchmarks, and Engineer-of-Record review.

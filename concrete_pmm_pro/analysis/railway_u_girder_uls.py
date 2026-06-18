@@ -23,7 +23,11 @@ from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisSettings
 from concrete_pmm_pro.core.models import ConcreteMaterial, LoadCase, PrestressElement, Rebar, RebarMaterial, SectionGeometry
 from concrete_pmm_pro.core.reinforcement_system import effective_prestress_for_analysis, effective_rebars_for_analysis, ordinary_rebar_enabled
 from concrete_pmm_pro.geometry.summary import to_shapely_polygon
-from concrete_pmm_pro.serviceability.girder_prestress_station import active_strand_groups_at_station
+from concrete_pmm_pro.serviceability.girder_prestress_station import (
+    active_girder_strand_rows,
+    active_strand_groups_at_station,
+    debonded_strand_count_for_row,
+)
 from concrete_pmm_pro.serviceability.girder_sls_load_components import BEAM_GIRDER_SYSTEM_SETTINGS_KEY, system_settings_from_mapping
 
 RAILWAY_UGIRDER_ULS_FRAMEWORK_STATUS = "Railway U-Girder ULS Strength Check Framework - Guarded Review Ready"
@@ -41,7 +45,7 @@ RAILWAY_UGIRDER_ULS_REQUIRED_FUTURE_CHECKS = [
     "PSC shear route including prestress effects, dv policy, and end-region checks",
     "Railway U-Girder torsion and combined V+T interaction",
     "transfer length force ramp",
-    "development length and debonded strand anchorage",
+    "development length benchmark validation and debonded strand anchorage detailing beyond this guarded evidence table",
     "anchorage / end-zone bursting and spalling",
     "lifting insert / local hardware check",
     "creep/shrinkage and time-dependent composite redistribution",
@@ -69,9 +73,17 @@ RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING = (
     "U-Girder-specific multi-cell/closed-path calibration, refined PSC torsion effects, V+T code calibration, "
     "development length, anchorage/end-zone, and benchmark validation are not completed."
 )
+RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_STATUS = "Railway U-Girder Prestress Transfer / Development Evidence - Engineering Review Ready"
+RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_WARNING = (
+    "PRESTRESS.DEVELOPMENT1 adds guarded transfer-length and development-length evidence for Railway U-Girder "
+    "strand rows using the active strand/debonding table and a visible AASHTO/ACI-compatible screening basis. "
+    "It does not ramp prestress force in the SLS/ULS solvers, does not certify debonded strand development, "
+    "and does not replace anchorage/end-zone bursting or Engineer-of-Record review."
+)
 RAILWAY_UGIRDER_ULS_MAX_FLEXURE_EVIDENCE_ROWS = 8
 RAILWAY_UGIRDER_ULS_MAX_SHEAR_EVIDENCE_ROWS = 12
 RAILWAY_UGIRDER_ULS_MAX_TORSION_VT_GUARD_ROWS = 16
+RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_MAX_ROWS = 24
 _GIRDER_STRAND_FPU_MPA_DEFAULT = 1860.0
 _GIRDER_STRAND_FPY_MPA_DEFAULT = 1670.0
 _GIRDER_STRAND_EP_MPA_DEFAULT = 195000.0
@@ -84,6 +96,7 @@ RAILWAY_UGIRDER_ULS_TABLE_KEYS = [
     "railway_u_girder_uls_flexure_evidence",
     "railway_u_girder_uls_shear_evidence",
     "railway_u_girder_uls_torsion_vt_guard",
+    "railway_u_girder_prestress_development_evidence",
     "railway_u_girder_uls_check_matrix",
     "railway_u_girder_uls_future_checks",
 ]
@@ -101,6 +114,7 @@ class RailwayUGirderULSFrameworkPackage:
     flexure_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     shear_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     torsion_vt_guard: pd.DataFrame = field(default_factory=pd.DataFrame)
+    prestress_development_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     check_matrix: pd.DataFrame = field(default_factory=pd.DataFrame)
     future_checks: pd.DataFrame = field(default_factory=pd.DataFrame)
     warnings: list[str] = field(default_factory=list)
@@ -113,6 +127,7 @@ class RailwayUGirderULSFrameworkPackage:
             "railway_u_girder_uls_flexure_evidence": self.flexure_evidence,
             "railway_u_girder_uls_shear_evidence": self.shear_evidence,
             "railway_u_girder_uls_torsion_vt_guard": self.torsion_vt_guard,
+            "railway_u_girder_prestress_development_evidence": self.prestress_development_evidence,
             "railway_u_girder_uls_check_matrix": self.check_matrix,
             "railway_u_girder_uls_future_checks": self.future_checks,
         }
@@ -1580,6 +1595,183 @@ def railway_u_girder_uls_torsion_vt_guard_dataframe(
         })
     return pd.DataFrame(rows, columns=columns)
 
+def _railway_prestress_development_columns() -> list[str]:
+    return [
+        "Check",
+        "Status",
+        "Group ID",
+        "Total strands",
+        "Debonded strands",
+        "Strand diameter (mm)",
+        "Area/strand (mm2)",
+        "fpe final (MPa)",
+        "fps review (MPa)",
+        "Left debond (m)",
+        "Right debond (m)",
+        "Transfer length lt (m)",
+        "Development length ld (m)",
+        "Left full-development station (m)",
+        "Right full-development station (m)",
+        "Available left bond to midspan (m)",
+        "Available right bond to midspan (m)",
+        "Left development D/C",
+        "Right development D/C",
+        "Development status",
+        "Transfer zone status",
+        "Code basis",
+        "Method",
+        "Evidence status",
+        "Blocked final claim",
+        "Notes",
+    ]
+
+
+def _railway_strand_diameter_mm_from_row(row: Mapping[str, Any]) -> float:
+    for key in ("Diameter_mm", "Strand Diameter_mm", "Strand diameter (mm)"):
+        value = _float_or_zero(row.get(key))
+        if math.isfinite(value) and value > 0.0:
+            return float(value)
+    text = str(row.get("Strand Size") or row.get("Product") or "")
+    import re
+    match = re.search(r"(\d+(?:\.\d+)?)", text)
+    if match:
+        try:
+            parsed = float(match.group(1))
+            if parsed > 0.0:
+                return parsed
+        except ValueError:
+            pass
+    return 12.7
+
+
+def _railway_strand_fpu_mpa_from_row(row: Mapping[str, Any]) -> float:
+    for key in ("fpu_MPa", "fpu", "Fpu_MPa"):
+        value = _float_or_zero(row.get(key))
+        if math.isfinite(value) and value > 0.0:
+            return float(value)
+    return _GIRDER_STRAND_FPU_MPA_DEFAULT
+
+
+def _railway_strand_fpy_mpa_from_row(row: Mapping[str, Any]) -> float:
+    for key in ("fpy_MPa", "fpy", "Fpy_MPa"):
+        value = _float_or_zero(row.get(key))
+        if math.isfinite(value) and value > 0.0:
+            return float(value)
+    return _GIRDER_STRAND_FPY_MPA_DEFAULT
+
+
+def _railway_development_lengths_for_row(row: Mapping[str, Any]) -> dict[str, float]:
+    diameter_mm = _railway_strand_diameter_mm_from_row(row)
+    aps_mm2 = _float_or_zero(row.get("Area/Strand_mm2"))
+    if not math.isfinite(aps_mm2) or aps_mm2 <= 0.0:
+        aps_mm2 = 98.7
+    pe_final_kN = _float_or_zero(row.get("Pe_eff_final/strand_kN"))
+    fpe_mpa = pe_final_kN * 1000.0 / aps_mm2 if aps_mm2 > 0.0 and pe_final_kN > 0.0 else 0.0
+    fpy_mpa = _railway_strand_fpy_mpa_from_row(row)
+    fpu_mpa = _railway_strand_fpu_mpa_from_row(row)
+    fps_review_mpa = min(float(fpy_mpa), 0.90 * float(fpu_mpa)) if fpy_mpa > 0.0 and fpu_mpa > 0.0 else _GIRDER_STRAND_FPY_MPA_DEFAULT
+    # Guarded code-compatible screen.  The stress term is converted from MPa to ksi
+    # because common strand development equations use ksi/in.  This table is an
+    # evidence gate only and does not ramp prestress force in the solvers.
+    ksi_per_mpa = 1.0 / 6.895
+    transfer_by_stress_mm = max(0.0, fpe_mpa * ksi_per_mpa * diameter_mm / 3.0)
+    transfer_60db_mm = 60.0 * diameter_mm
+    lt_mm = max(transfer_60db_mm, transfer_by_stress_mm)
+    ld_mm = max(lt_mm, max(0.0, (fps_review_mpa - 2.0 * fpe_mpa / 3.0) * ksi_per_mpa * diameter_mm))
+    return {
+        "diameter_mm": float(diameter_mm),
+        "aps_mm2": float(aps_mm2),
+        "fpe_mpa": float(fpe_mpa),
+        "fps_review_mpa": float(fps_review_mpa),
+        "lt_m": float(lt_mm) / 1000.0,
+        "ld_m": float(ld_mm) / 1000.0,
+    }
+
+
+def railway_u_girder_prestress_development_evidence_dataframe(session_state: Any) -> pd.DataFrame:
+    """Return guarded transfer/development evidence for Railway U-Girder strand rows.
+
+    PRESTRESS.DEVELOPMENT1 intentionally reports visible evidence only.  It does
+    not change the existing station-participation model, does not ramp Pe in the
+    SLS/ULS solvers, and does not certify debonded strand anchorage.
+    """
+
+    columns = _railway_prestress_development_columns()
+    span_m = _railway_uls_span_length_m(session_state)
+    rows_in = active_girder_strand_rows(_get(session_state, "girder_strand_layout_table", None))
+    if not rows_in:
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, Any]] = []
+    half_span = 0.5 * span_m
+    for source_row in rows_in[:RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_MAX_ROWS]:
+        group_id = str(source_row.get("Group ID") or "strand group")
+        total_strands = int(max(0, round(_float_or_zero(source_row.get("No. Strands")))))
+        debonded = int(debonded_strand_count_for_row(source_row))
+        left_debond = min(max(_float_or_zero(source_row.get("Left debond m")), 0.0), span_m)
+        right_debond = min(max(_float_or_zero(source_row.get("Right debond m")), 0.0), span_m)
+        lengths = _railway_development_lengths_for_row(source_row)
+        lt = float(lengths["lt_m"])
+        ld = float(lengths["ld_m"])
+        left_full = left_debond + ld
+        right_full = span_m - right_debond - ld
+        available_left = max(0.0, half_span - left_debond)
+        available_right = max(0.0, half_span - right_debond)
+        left_dc = ld / available_left if available_left > 0.0 else float("inf")
+        right_dc = ld / available_right if available_right > 0.0 else float("inf")
+        finite_dcs = [value for value in (left_dc, right_dc) if math.isfinite(value)]
+        governing_dc = max(finite_dcs) if finite_dcs else float("inf")
+        has_debond = debonded > 0 or left_debond > 1.0e-9 or right_debond > 1.0e-9
+        if total_strands <= 0:
+            status = "REVIEW"
+            development_status = "NO STRANDS"
+        elif math.isfinite(governing_dc) and governing_dc <= 1.0 + 1.0e-9:
+            status = "Engineering Review PASS"
+            development_status = "SCREEN OK"
+        else:
+            status = "Engineering Review FAIL"
+            development_status = "INSUFFICIENT BONDED LENGTH"
+        transfer_status = "TRANSFER ZONE VISIBLE" if lt > 0.0 else "REVIEW"
+        notes = [
+            RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_WARNING,
+            "Development D/C compares ld to bonded length from sleeve termination/end to midspan; project-specific critical sections must still be checked.",
+            "Existing SLS/ULS solvers still use the previous station participation handoff; no Pe force ramp is applied by this milestone.",
+        ]
+        if has_debond:
+            notes.append("Debonded/sleeved row detected; verify individual strand selection, stagger, and end-zone detailing before final design.")
+        else:
+            notes.append("Fully bonded row screen; transfer/development zones are reported for traceability.")
+        rows.append(
+            {
+                "Check": "Prestress transfer / development evidence",
+                "Status": status,
+                "Group ID": group_id,
+                "Total strands": total_strands,
+                "Debonded strands": debonded,
+                "Strand diameter (mm)": lengths["diameter_mm"],
+                "Area/strand (mm2)": lengths["aps_mm2"],
+                "fpe final (MPa)": lengths["fpe_mpa"],
+                "fps review (MPa)": lengths["fps_review_mpa"],
+                "Left debond (m)": left_debond,
+                "Right debond (m)": right_debond,
+                "Transfer length lt (m)": lt,
+                "Development length ld (m)": ld,
+                "Left full-development station (m)": left_full,
+                "Right full-development station (m)": right_full,
+                "Available left bond to midspan (m)": available_left,
+                "Available right bond to midspan (m)": available_right,
+                "Left development D/C": left_dc,
+                "Right development D/C": right_dc,
+                "Development status": development_status,
+                "Transfer zone status": transfer_status,
+                "Code basis": "AASHTO/ACI-compatible transfer/development length screen - not certified",
+                "Method": "lt = max(60db, fpe·db/3); ld = max(lt, (fps - 2/3 fpe)db), stress converted MPa→ksi; row-level guarded evidence",
+                "Evidence status": RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_STATUS,
+                "Blocked final claim": "No code-certified or engineer-certified PASS until development benchmark validation, debonded strand anchorage, end-zone bursting/spalling, and Engineer-of-Record review are complete.",
+                "Notes": "; ".join(notes),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
+
 def railway_u_girder_uls_code_basis_dataframe() -> pd.DataFrame:
     route = bridge_beam_girder_uls_strength_route()
     rows = [
@@ -1590,6 +1782,7 @@ def railway_u_girder_uls_code_basis_dataframe() -> pd.DataFrame:
         {"Item": "Flexure route", "Value": route.flexure_engine_label, "Status": "FRAMEWORK READY", "Evidence / Boundary": route.flexure_basis_note},
         {"Item": "Shear route", "Value": route.shear_engine_label, "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "ULS.RAIL.UGIRDER3 provides guarded PSC shear route evidence using active Vuy demands and provided stirrup zones; final Vci/Vcw/Vp/end-region certification remains future work."},
         {"Item": "Torsion route", "Value": route.torsion_engine_label, "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "ULS.RAIL.UGIRDER4 provides guarded torsion / V+T evidence using active Tu/Vuy demands, closed-hoop zones, and ordinary rebar Al; final multi-cell/PSC/V+T calibration remains future work."},
+        {"Item": "Prestress development route", "Value": "Transfer / development length evidence", "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "PRESTRESS.DEVELOPMENT1 provides guarded row-level transfer/development length evidence from the active strand/debonding table; it does not apply Pe force ramps or certify anchorage/end-zone detailing."},
         {"Item": "Certification boundary", "Value": "Not engineer-certified", "Status": "NOT CERTIFIED", "Evidence / Boundary": RAILWAY_UGIRDER_ULS_CERTIFICATION_BOUNDARY},
     ]
     return pd.DataFrame(rows, columns=["Item", "Value", "Status", "Evidence / Boundary"])
@@ -1674,12 +1867,20 @@ def railway_u_girder_uls_check_matrix_dataframe(active_uls: pd.DataFrame) -> pd.
             "Blocked Final Claim": "Separate guarded shear/torsion/V+T rows must not be read as final combined V+T certification until calibrated code interaction and benchmarks are complete.",
         },
         {
-            "Check Area": "Prestress development / anchorage",
+            "Check Area": "Prestress transfer / development",
+            "Current Framework Status": "ENGINEERING REVIEW READY",
+            "Demand Source": "Active strand/debonding table from the Prestress workflow",
+            "Capacity / Code Route": "PRESTRESS.DEVELOPMENT1 provides guarded transfer-length and development-length evidence; force ramping, anchorage/end-zone bursting, and benchmark certification remain outside this milestone",
+            "Allowed Decision Wording": "Engineering Review PASS / FAIL allowed for development evidence only; not Certified PASS",
+            "Blocked Final Claim": "No final prestressed girder design until development benchmark validation, debonded anchorage detailing, and end-zone checks are complete.",
+        },
+        {
+            "Check Area": "Anchorage / end-zone",
             "Current Framework Status": "FUTURE WORK",
             "Demand Source": "Prestress/debonding input available from SLS workflow",
-            "Capacity / Code Route": "Transfer length, development length, anchorage/end-zone bursting not implemented in ULS.RAIL.UGIRDER1",
+            "Capacity / Code Route": "End-zone bursting/spalling and anchorage-zone reinforcement design are not implemented in PRESTRESS.DEVELOPMENT1",
             "Allowed Decision Wording": "Excluded from current framework",
-            "Blocked Final Claim": "No final prestressed girder design without development and anchorage checks.",
+            "Blocked Final Claim": "No final prestressed girder design without anchorage/end-zone bursting and spalling checks.",
         },
         {
             "Check Area": "Final design certification",
@@ -1727,7 +1928,7 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
             warnings=["Railway U-Girder ULS framework package is only available for the Railway U-Girder preset."],
         )
     active_uls = active_railway_u_girder_uls_demand_dataframe(session_state)
-    warnings = [RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING, RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING]
+    warnings = [RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING, RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_TORSION_VT_GUARD_WARNING, RAILWAY_UGIRDER_PRESTRESS_DEVELOPMENT_WARNING]
     if active_uls.empty:
         warnings.append("No active ULS Loads rows were found; define Strength ULS station-resultant rows before running design checks.")
     flexure_evidence = railway_u_girder_uls_flexure_evidence_dataframe(session_state, active_uls)
@@ -1735,10 +1936,13 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
     if flexure_evidence.empty and not active_uls.empty:
         warnings.append("No nonzero Mux station rows were available for ULS.RAIL.UGIRDER2 flexure evidence.")
     torsion_vt_guard = railway_u_girder_uls_torsion_vt_guard_dataframe(session_state, active_uls, shear_evidence)
+    prestress_development_evidence = railway_u_girder_prestress_development_evidence_dataframe(session_state)
     if shear_evidence.empty and not active_uls.empty:
         warnings.append("No nonzero Vuy station rows were available for ULS.RAIL.UGIRDER3 PSC shear route evidence.")
     if torsion_vt_guard.empty and not active_uls.empty:
         warnings.append("No nonzero Tu or Vuy station rows were available for ULS.RAIL.UGIRDER4 torsion / V+T guard evidence.")
+    if prestress_development_evidence.empty:
+        warnings.append("No active strand rows were available for PRESTRESS.DEVELOPMENT1 transfer/development evidence.")
     return RailwayUGirderULSFrameworkPackage(
         available=True,
         status=RAILWAY_UGIRDER_ULS_FRAMEWORK_STATUS,
@@ -1748,6 +1952,7 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
         flexure_evidence=flexure_evidence,
         shear_evidence=shear_evidence,
         torsion_vt_guard=torsion_vt_guard,
+        prestress_development_evidence=prestress_development_evidence,
         check_matrix=railway_u_girder_uls_check_matrix_dataframe(active_uls),
         future_checks=railway_u_girder_uls_future_checks_dataframe(),
         warnings=warnings,
