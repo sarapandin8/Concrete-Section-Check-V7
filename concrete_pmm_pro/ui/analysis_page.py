@@ -95,6 +95,8 @@ from concrete_pmm_pro.reporting import (
     build_draft_word_report,
     build_exportable_figure,
     build_railway_u_girder_sls_report_package,
+    is_railway_u_girder_uls_context,
+    build_railway_u_girder_uls_framework_package,
     is_railway_u_girder_report_context,
     railway_u_girder_report_tables_to_dataframe,
     build_report_figure_context,
@@ -16071,6 +16073,41 @@ def _render_railway_u_girder_report_preview_panel() -> None:
     for key, dataframe in report_tables.items():
         title = key.replace("railway_u_girder_", "").replace("_", " ").title()
         with st.expander(f"Railway U-Girder · {title}", expanded=(key == "railway_u_girder_sls_decision_summary")):
+            st.dataframe(dataframe, use_container_width=True, hide_index=True)
+            st.download_button(
+                f"Download {title} CSV",
+                data=dataframe.to_csv(index=False),
+                file_name=f"{key}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key=f"ui_keys1_analysis_page_download_button_{key}",
+            )
+
+
+def _render_railway_u_girder_uls_framework_preview_panel() -> None:
+    """Render ULS.RAIL.UGIRDER1 guarded ULS framework tables in Report / QA."""
+
+    if not is_railway_u_girder_uls_context(st.session_state):
+        return
+    st.markdown("**Railway U-Girder ULS Strength Check Framework**")
+    st.info(
+        "ULS.RAIL.UGIRDER1 adds ULS demand traceability, code-basis guardrails, and a check-readiness matrix. "
+        "This is framework-ready evidence only; it is not final code-certified design."
+    )
+    package = build_railway_u_girder_uls_framework_package(st.session_state)
+    st.session_state["railway_u_girder_uls_framework_package_available"] = bool(package.available)
+    cols = st.columns(4)
+    cols[0].metric("ULS framework", "Available" if package.available else "Review")
+    cols[1].metric("ULS tables", f"{len(package.tables()):,}")
+    cols[2].metric("Warnings", f"{len(package.warnings):,}")
+    cols[3].metric("Certification", "Not certified")
+    for warning in package.warnings:
+        st.warning(warning)
+    if not package.available:
+        return
+    for key, dataframe in package.tables().items():
+        title = key.replace("railway_u_girder_uls_", "ULS ").replace("_", " ").title()
+        with st.expander(f"Railway U-Girder · {title}", expanded=(key == "railway_u_girder_uls_check_matrix")):
             st.dataframe(dataframe, use_container_width=True, hide_index=True)
             st.download_button(
                 f"Download {title} CSV",

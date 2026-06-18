@@ -928,3 +928,10 @@ Corrects the parametric plank-girder concrete outline to follow the user-confirm
 - Keeps decision wording limited to `Preview PASS` / `REVIEW` and explicitly states the output is not final code-certified design.
 - Adds a Railway U-Girder report-scope limitation so exported reports disclose excluded checks such as transfer/development length, anchorage/end-zone, lifting hardware, creep/shrinkage redistribution, ULS coupling, and final certified design checks.
 - No solver equation, prestress force, debond participation, geometry, section-property, ULS, or project-schema calculation logic changed.
+
+### ULS.RAIL.UGIRDER1 — Railway U-Girder ULS Strength Check Framework
+
+Adds a guarded Railway U-Girder ULS strength-check framework after the SLS closeout baseline. The milestone provides Railway U-Girder ULS context detection, active ULS demand summary, Bridge Beam/Girder AASHTO route guardrails, ULS check-readiness matrix, report table registry entries, Word report section, and Report / QA preview panel. This is framework-ready engineering-review evidence only; it is not final code-certified design and is not engineer certification.
+
+Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, Report / QA preview, docs, and regression tests. No SLS/ULS solver equations, prestress/debonding logic, section properties, PMM, shear, torsion, or load-combination equations were modified.
+

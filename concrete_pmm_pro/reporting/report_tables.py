@@ -13,6 +13,7 @@ from concrete_pmm_pro.reporting.terminology import terminology_to_dataframe
 from concrete_pmm_pro.reporting.traceability import build_result_traceability_snapshot, result_traceability_snapshot_to_dataframe
 from concrete_pmm_pro.reporting.units import unit_conventions_to_dataframe
 from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
+from concrete_pmm_pro.analysis.railway_u_girder_uls import build_railway_u_girder_uls_framework_package
 from concrete_pmm_pro.verification.column_pier_vt_benchmarks import benchmark_cases
 from concrete_pmm_pro.verification.pmm_published_benchmark_inventory import (
     summarize_pmm_published_benchmark_inventory,
@@ -59,6 +60,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
     limitations = collect_limitations_for_report(session_state, include_all=True)
     pmm_benchmark_inventory = summarize_pmm_published_benchmark_inventory()
     railway_report = build_railway_u_girder_sls_report_package(session_state)
+    railway_uls_report = build_railway_u_girder_uls_framework_package(session_state)
 
     standard_tables = [
         ReportTableInfo(
@@ -181,6 +183,27 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
                     "Railway U-Girder staged SLS engineering-review report table. Guarded preview only; not final code-certified.",
                     row_count=len(dataframe),
                     warning="Railway U-Girder report is engineering-review preview, not final code-certified design.",
+                )
+            )
+
+    if railway_uls_report.available:
+        railway_uls_table_titles = {
+            "railway_u_girder_uls_closeout_boundary": "Railway U-Girder ULS Closeout Boundary",
+            "railway_u_girder_uls_code_basis": "Railway U-Girder ULS Code Basis",
+            "railway_u_girder_uls_demand_summary": "Railway U-Girder ULS Demand Summary",
+            "railway_u_girder_uls_check_matrix": "Railway U-Girder ULS Check Matrix",
+            "railway_u_girder_uls_future_checks": "Railway U-Girder ULS Future Checks",
+        }
+        for table_key, dataframe in railway_uls_report.tables().items():
+            standard_tables.append(
+                ReportTableInfo(
+                    table_key,
+                    railway_uls_table_titles.get(table_key, table_key.replace("_", " ").title()),
+                    not dataframe.empty,
+                    "analysis.railway_u_girder_uls",
+                    "Railway U-Girder guarded ULS strength-check framework table. Framework-ready only; not final code-certified.",
+                    row_count=len(dataframe),
+                    warning="Railway U-Girder ULS framework is guarded engineering-review evidence, not final code-certified design.",
                 )
             )
     return standard_tables
