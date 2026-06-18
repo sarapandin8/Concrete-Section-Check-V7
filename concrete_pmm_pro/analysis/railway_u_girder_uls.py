@@ -9,9 +9,11 @@ current application to final code-certified design.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Any, Mapping
 
 import pandas as pd
+from shapely.geometry import LineString
 
 from concrete_pmm_pro.analysis.capacity_check import check_uls_demands_against_rc_pmm
 from concrete_pmm_pro.analysis.pmm_solver import run_rc_pmm_solver
@@ -52,7 +54,15 @@ RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING = (
     "evidence only because Railway U-Girder-specific benchmark validation, development length, anchorage/end-zone, "
     "and time-dependent composite redistribution are not completed."
 )
+RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_STATUS = "Railway U-Girder ULS PSC Shear Route Evidence - Engineering Review Ready"
+RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING = (
+    "ULS.RAIL.UGIRDER3 adds a guarded Railway U-Girder PSC shear route using the active ULS Vuy station "
+    "demand, active provided-stirrup zones, an AASHTO LRFD-compatible sectional shear gate, and explicit d/dv "
+    "basis notes. It remains engineering-review evidence only because refined PSC Vci/Vcw/Vp, end-region, "
+    "development length, anchorage, and benchmark validation are not completed."
+)
 RAILWAY_UGIRDER_ULS_MAX_FLEXURE_EVIDENCE_ROWS = 8
+RAILWAY_UGIRDER_ULS_MAX_SHEAR_EVIDENCE_ROWS = 12
 _GIRDER_STRAND_FPU_MPA_DEFAULT = 1860.0
 _GIRDER_STRAND_FPY_MPA_DEFAULT = 1670.0
 _GIRDER_STRAND_EP_MPA_DEFAULT = 195000.0
@@ -63,6 +73,7 @@ RAILWAY_UGIRDER_ULS_TABLE_KEYS = [
     "railway_u_girder_uls_code_basis",
     "railway_u_girder_uls_demand_summary",
     "railway_u_girder_uls_flexure_evidence",
+    "railway_u_girder_uls_shear_evidence",
     "railway_u_girder_uls_check_matrix",
     "railway_u_girder_uls_future_checks",
 ]
@@ -78,6 +89,7 @@ class RailwayUGirderULSFrameworkPackage:
     code_basis: pd.DataFrame = field(default_factory=pd.DataFrame)
     demand_summary: pd.DataFrame = field(default_factory=pd.DataFrame)
     flexure_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
+    shear_evidence: pd.DataFrame = field(default_factory=pd.DataFrame)
     check_matrix: pd.DataFrame = field(default_factory=pd.DataFrame)
     future_checks: pd.DataFrame = field(default_factory=pd.DataFrame)
     warnings: list[str] = field(default_factory=list)
@@ -88,6 +100,7 @@ class RailwayUGirderULSFrameworkPackage:
             "railway_u_girder_uls_code_basis": self.code_basis,
             "railway_u_girder_uls_demand_summary": self.demand_summary,
             "railway_u_girder_uls_flexure_evidence": self.flexure_evidence,
+            "railway_u_girder_uls_shear_evidence": self.shear_evidence,
             "railway_u_girder_uls_check_matrix": self.check_matrix,
             "railway_u_girder_uls_future_checks": self.future_checks,
         }
@@ -378,6 +391,67 @@ def _railway_uls_analysis_input_for_flexure_row(
     )
 
 
+
+def _railway_uls_analysis_input_for_station_row(
+    session_state: Any,
+    *,
+    row: Mapping[str, Any],
+) -> tuple[AnalysisInput | None, list[str]]:
+    """Return an AnalysisInput for non-PMM station evidence such as shear.
+
+    Unlike the flexure-specific builder, this helper intentionally allows zero
+    Mux rows because peak shear is normally near the supports where bending can
+    be small or zero in imported station resultants.
+    """
+
+    messages: list[str] = []
+    geometry = _railway_uls_section_geometry_from_state(session_state)
+    concrete = _railway_uls_concrete_material_from_state(session_state)
+    if geometry is None:
+        return None, ["Section geometry is missing."]
+    if concrete is None:
+        return None, ["Concrete material / web f'c stage setting is missing."]
+    settings = _railway_uls_analysis_settings_from_state(session_state)
+    rebars = _railway_uls_model_list(_get(session_state, "rebars", []) or [], Rebar)
+    rebar_materials = _railway_uls_model_list(_get(session_state, "rebar_materials", []) or [], RebarMaterial)
+    generic_prestress = _railway_uls_model_list(_get(session_state, "prestress_elements", []) or [], PrestressElement)
+    generic_prestress = effective_prestress_for_analysis(generic_prestress, session_state, settings)
+    span_m = _railway_uls_span_length_m(session_state)
+    station_m = _float_or_zero(row.get("Station x (m)"))
+    station_m = max(0.0, min(float(station_m), span_m))
+    strand_elements, strand_messages = _railway_uls_girder_strand_elements_for_station(
+        session_state,
+        geometry=geometry,
+        x_m=station_m,
+        span_length_m=span_m,
+    )
+    messages.extend(strand_messages)
+    prestress_elements = [*generic_prestress, *strand_elements]
+    if not rebars and not prestress_elements:
+        return None, messages + ["No active ordinary rebar or bonded prestress is available for station evidence."]
+    case = str(row.get("Case Name") or "ULS").strip() or "ULS"
+    load = LoadCase(
+        name=f"{case} @ x={station_m:.3f} m",
+        Pu_N=float(_float_or_zero(row.get("Nu"))) * 1000.0,
+        Mux_Nmm=float(_float_or_zero(row.get("Mux"))) * 1_000_000.0,
+        Muy_Nmm=float(_float_or_zero(row.get("Muy"))) * 1_000_000.0,
+        load_type="ULS",
+        active=True,
+    )
+    return (
+        AnalysisInput(
+            section_geometry=geometry,
+            concrete_material=concrete,
+            rebar_materials=rebar_materials,
+            prestress_materials=[],
+            rebars=rebars,
+            prestress_elements=prestress_elements,
+            load_cases=[load],
+            settings=settings,
+        ),
+        messages,
+    )
+
 def _railway_uls_nominal_flexure_capacity_nmm(analysis_input: AnalysisInput) -> tuple[float | None, list[str]]:
     messages: list[str] = []
     try:
@@ -551,6 +625,467 @@ def railway_u_girder_uls_flexure_evidence_dataframe(session_state: Any, active_u
         )
     return pd.DataFrame(rows, columns=columns)
 
+
+def _railway_uls_linework_length_mm(geometry: Any) -> float:
+    if geometry is None or getattr(geometry, "is_empty", True):
+        return 0.0
+    geom_type = getattr(geometry, "geom_type", "")
+    if geom_type in {"LineString", "LinearRing"}:
+        try:
+            return float(geometry.length)
+        except Exception:
+            return 0.0
+    if hasattr(geometry, "geoms"):
+        return sum(_railway_uls_linework_length_mm(item) for item in geometry.geoms)
+    return 0.0
+
+
+def _railway_uls_web_width_mm(geometry: SectionGeometry) -> tuple[float | None, str]:
+    """Estimate total vertical shear-web width for a Railway U-Girder polygon."""
+
+    try:
+        polygon = to_shapely_polygon(geometry)
+        minx, miny, maxx, maxy = polygon.bounds
+    except Exception:
+        return None, "Web width unavailable: section polygon could not be read."
+    h = float(maxy) - float(miny)
+    b = float(maxx) - float(minx)
+    if h <= 0.0 or b <= 0.0:
+        return None, "Web width unavailable: invalid section bounds."
+    widths: list[float] = []
+    # Avoid the bottom slab/flange and the open top; sample through the side-wall region.
+    for ratio in (0.40, 0.50, 0.60, 0.67, 0.75, 0.82):
+        y = float(miny) + ratio * h
+        line = LineString([(float(minx) - b, y), (float(maxx) + b, y)])
+        try:
+            width = _railway_uls_linework_length_mm(polygon.intersection(line))
+        except Exception:
+            width = 0.0
+        if width > 1.0:
+            widths.append(width)
+    if not widths:
+        return None, "Web width unavailable: no positive horizontal material width found through the side-wall region."
+    return float(min(widths)), "Total web width estimated from minimum material intercept through the Railway U-Girder side-wall region."
+
+
+def _railway_uls_reinforcement_y_centroid_for_face(analysis_input: AnalysisInput, *, tension_face: str) -> float | None:
+    try:
+        _, y_min, _, y_max = _railway_uls_section_bounds(analysis_input.section_geometry)
+    except Exception:
+        return None
+    h = float(y_max) - float(y_min)
+    if h <= 0.0:
+        return None
+    if tension_face == "top":
+        limit = float(y_min) + 0.55 * h
+        candidates = [(float(bar.y_mm), float(bar.area_mm2)) for bar in analysis_input.rebars if float(bar.y_mm) >= limit]
+        candidates.extend((float(ps.y_mm), float(ps.area_mm2) * int(ps.count)) for ps in analysis_input.prestress_elements if float(ps.y_mm) >= limit)
+    else:
+        limit = float(y_min) + 0.45 * h
+        candidates = [(float(bar.y_mm), float(bar.area_mm2)) for bar in analysis_input.rebars if float(bar.y_mm) <= limit]
+        candidates.extend((float(ps.y_mm), float(ps.area_mm2) * int(ps.count)) for ps in analysis_input.prestress_elements if float(ps.y_mm) <= limit)
+    area = sum(area for _, area in candidates if area > 0.0)
+    if area <= 0.0:
+        return None
+    return sum(y * area for y, area in candidates if area > 0.0) / area
+
+
+def _railway_uls_bridge_dv_from_depth_mm(d_eff_mm: float, h_mm: float) -> float:
+    if not all(math.isfinite(value) and value > 0.0 for value in [d_eff_mm, h_mm]):
+        return float("nan")
+    return max(0.72 * float(h_mm), min(0.90 * float(d_eff_mm), float(d_eff_mm)))
+
+
+def _railway_uls_effective_shear_depth_values_mm(
+    session_state: Any,
+    analysis_input: AnalysisInput,
+    *,
+    mux_kNm: float,
+) -> dict[str, Any]:
+    try:
+        _, y_min, _, y_max = _railway_uls_section_bounds(analysis_input.section_geometry)
+    except Exception:
+        return {"d_mm": float("nan"), "dv_mm": float("nan"), "h_mm": float("nan"), "tension_face": "-", "note": "Effective shear depth unavailable: section bounds could not be read."}
+    h = float(y_max) - float(y_min)
+    if h <= 0.0:
+        return {"d_mm": float("nan"), "dv_mm": float("nan"), "h_mm": float("nan"), "tension_face": "-", "note": "Effective shear depth unavailable: invalid section depth."}
+    tension = "top" if float(mux_kNm) < -_ULS_DEMAND_TOL else "bottom"
+    settings = _get(session_state, "beam_girder_shear_depth_settings", {}) or {}
+    d_manual = _float_or_zero(_get(settings, "d_mm", 0.0))
+    dv_manual = _float_or_zero(_get(settings, "dv_mm", 0.0))
+    notes: list[str] = []
+    if str(_get(settings, "mode", "") or "").strip() == "Manual d / dv" and 0.0 < d_manual <= 1.05 * h:
+        d_eff = float(d_manual)
+        notes.append("Effective d read from manual Beam/Girder shear-depth settings.")
+    else:
+        y_tension = _railway_uls_reinforcement_y_centroid_for_face(analysis_input, tension_face=tension)
+        if y_tension is None:
+            d_eff = 0.80 * h
+            notes.append("Effective d estimated as 0.80h because no active local tension reinforcement centroid was available.")
+        elif tension == "top":
+            d_eff = float(y_tension) - float(y_min)
+            notes.append("Effective d estimated from active reinforcement centroid at top tension face.")
+        else:
+            d_eff = float(y_max) - float(y_tension)
+            notes.append("Effective d estimated from active reinforcement centroid at bottom tension face.")
+        d_eff = min(max(float(d_eff), 0.50 * h), 0.95 * h)
+    if dv_manual > 0.0:
+        dv_eff = float(dv_manual)
+        notes.append("Effective dv read from manual Beam/Girder shear-depth settings.")
+    else:
+        dv_eff = _railway_uls_bridge_dv_from_depth_mm(float(d_eff), h)
+        notes.append("Effective dv derived from d and total section depth using the current AASHTO-compatible basis.")
+    if _get(settings, "note", ""):
+        notes.append(f"Basis note: {_get(settings, 'note')}")
+    return {"d_mm": float(d_eff), "dv_mm": float(dv_eff), "h_mm": h, "tension_face": f"{tension} face", "note": " ".join(notes)}
+
+
+def _railway_uls_shear_reinforcement_dataframe_from_state(session_state: Any) -> pd.DataFrame:
+    raw = _get(session_state, "beam_girder_shear_reinforcement_table", None)
+    if raw is None:
+        raw = (_get(session_state, "project_metadata", {}) or {}).get("beam_girder_shear_reinforcement_table")
+    columns = ["Active", "Zone", "x_start_m", "x_end_m", "Bar Size", "Diameter_mm", "Legs", "Spacing_mm", "fy_MPa", "Note"]
+    df = pd.DataFrame(raw if raw is not None else [], columns=columns)
+    for column in columns:
+        if column not in df.columns:
+            df[column] = None
+    df = df[columns].copy()
+    df["Active"] = df["Active"].map(lambda value: bool(value) if not isinstance(value, str) else value.strip().casefold() not in {"false", "0", "no", "n", "off", ""})
+    for column in ["x_start_m", "x_end_m", "Diameter_mm", "Legs", "Spacing_mm", "fy_MPa"]:
+        df[column] = pd.to_numeric(df[column], errors="coerce")
+    df["Zone"] = df["Zone"].map(lambda value: str(value or "").strip())
+    df["Bar Size"] = df["Bar Size"].map(lambda value: str(value or "").strip())
+    df["Note"] = df["Note"].map(lambda value: str(value or "").strip())
+    return df
+
+
+def _railway_uls_active_shear_zone_for_station(session_state: Any, x_m: float) -> dict[str, Any] | None:
+    zones = _railway_uls_shear_reinforcement_dataframe_from_state(session_state)
+    if zones.empty:
+        return None
+    active = zones[zones["Active"]].copy()
+    if active.empty:
+        return None
+    active = active[pd.to_numeric(active["x_start_m"], errors="coerce").notna() & pd.to_numeric(active["x_end_m"], errors="coerce").notna()]
+    if active.empty:
+        return None
+    active["__covers"] = active.apply(lambda row: float(row["x_start_m"]) - 1.0e-9 <= float(x_m) <= float(row["x_end_m"]) + 1.0e-9, axis=1)
+    covered = active[active["__covers"]].copy()
+    if covered.empty:
+        return None
+    return covered.sort_values(["x_start_m", "x_end_m"], kind="stable").iloc[0].to_dict()
+
+
+def _railway_uls_stirrup_area_mm2(zone: Mapping[str, Any]) -> float:
+    diameter = _float_or_zero(zone.get("Diameter_mm"))
+    if diameter <= 0.0:
+        text = str(zone.get("Bar Size") or "").strip().upper().replace("DB", "")
+        diameter = _float_or_zero(text)
+    if diameter <= 0.0:
+        return float("nan")
+    return math.pi * diameter * diameter / 4.0
+
+
+def _railway_uls_shear_detailing_guard(
+    *,
+    fc_MPa: float,
+    bv_mm: float,
+    d_eff_mm: float,
+    dv_mm: float,
+    spacing_mm: float,
+    avs_mm2_per_mm: float,
+    fy_MPa: float,
+) -> dict[str, Any]:
+    if not all(math.isfinite(value) and value > 0.0 for value in [fc_MPa, bv_mm, d_eff_mm, dv_mm, spacing_mm, avs_mm2_per_mm, fy_MPa]):
+        return {
+            "Detailing status": "REVIEW",
+            "Av/s required mm2/mm": float("nan"),
+            "Av/s required mm2/m": float("nan"),
+            "Av/s min D/C": float("nan"),
+            "s max mm": float("nan"),
+            "Spacing D/C": float("nan"),
+            "Detailing D/C value": float("nan"),
+            "Detailing notes": "Detailing guard needs finite f'c, bv, d, dv, spacing, Av/s, and fy.",
+        }
+    avs_required = 0.083 * math.sqrt(float(fc_MPa)) * float(bv_mm) / float(fy_MPa)
+    s_max = min(0.80 * float(dv_mm), 600.0)
+    avs_dc = float(avs_required) / float(avs_mm2_per_mm) if avs_mm2_per_mm > 0.0 else float("nan")
+    spacing_dc = float(spacing_mm) / float(s_max) if s_max > 0.0 else float("nan")
+    finite_dcs = [value for value in [avs_dc, spacing_dc] if math.isfinite(value)]
+    detailing_dc = max(finite_dcs) if finite_dcs else float("nan")
+    if not finite_dcs:
+        status = "REVIEW"
+        note = "Could not evaluate minimum Av/s or maximum spacing guard."
+    elif detailing_dc <= 1.0 + 1.0e-9:
+        status = "PASS"
+        note = "AASHTO-compatible shear detailing gate checks minimum Av/s and maximum spacing for the active provided zone."
+    else:
+        status = "FAIL"
+        note = "Provided stirrups do not satisfy the AASHTO-compatible minimum Av/s and/or maximum spacing gate."
+    return {
+        "Detailing status": status,
+        "Av/s required mm2/mm": float(avs_required),
+        "Av/s required mm2/m": float(avs_required) * 1000.0,
+        "Av/s min D/C": avs_dc,
+        "s max mm": float(s_max),
+        "Spacing D/C": spacing_dc,
+        "Detailing D/C value": detailing_dc,
+        "Detailing notes": note,
+    }
+
+
+def _railway_u_girder_uls_shear_evidence_columns() -> list[str]:
+    return [
+        "Check",
+        "Status",
+        "Strength status",
+        "Detailing status",
+        "Governing x (m)",
+        "Case",
+        "Demand Vuy (kN)",
+        "φVn (kN)",
+        "φVc (kN)",
+        "φVs (kN)",
+        "Vc (kN)",
+        "Vs (kN)",
+        "Vn (kN)",
+        "Vn limit (kN)",
+        "D/C",
+        "Strength D/C",
+        "Detailing D/C",
+        "Zone",
+        "Stirrup",
+        "Av/s provided (mm2/m)",
+        "Av/s required (mm2/m)",
+        "Spacing D/C",
+        "bv (mm)",
+        "d (mm)",
+        "dv (mm)",
+        "β",
+        "θ (deg)",
+        "φ",
+        "Tension face",
+        "Code basis",
+        "Method",
+        "PSC shear basis",
+        "Evidence status",
+        "Blocked final claim",
+        "Notes",
+    ]
+
+
+def railway_u_girder_uls_shear_evidence_dataframe(session_state: Any, active_uls: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Return guarded Railway U-Girder PSC shear route evidence.
+
+    ULS.RAIL.UGIRDER3 intentionally exposes a sectional shear route for
+    engineering review only.  It does not implement final PSC Vci/Vcw/Vp,
+    end-region, development-length, anchorage, or benchmark certification.
+    """
+
+    columns = _railway_u_girder_uls_shear_evidence_columns()
+    active = active_uls.copy() if isinstance(active_uls, pd.DataFrame) else active_railway_u_girder_uls_demand_dataframe(session_state)
+    if active.empty:
+        return pd.DataFrame(columns=columns)
+    active["__vuy"] = pd.to_numeric(active.get("Vuy", pd.Series(dtype=float)), errors="coerce").fillna(0.0)
+    candidates = active.loc[active["__vuy"].abs() > _ULS_DEMAND_TOL].copy()
+    if candidates.empty:
+        return pd.DataFrame(columns=columns)
+    if len(candidates.index) > RAILWAY_UGIRDER_ULS_MAX_SHEAR_EVIDENCE_ROWS:
+        candidates = candidates.head(RAILWAY_UGIRDER_ULS_MAX_SHEAR_EVIDENCE_ROWS).copy()
+    rows: list[dict[str, Any]] = []
+    for _, demand_row in candidates.iterrows():
+        station = _float_or_zero(demand_row.get("Station x (m)"))
+        case = str(demand_row.get("Case Name") or "ULS").strip() or "ULS"
+        vu_kN = _float_or_zero(demand_row.get("Vuy"))
+        mux_kNm = _float_or_zero(demand_row.get("Mux"))
+        zone = _railway_uls_active_shear_zone_for_station(session_state, station)
+        analysis_input, input_messages = _railway_uls_analysis_input_for_station_row(session_state, row=demand_row)
+        base = {
+            "Check": "ULS PSC shear",
+            "Governing x (m)": float(station),
+            "Case": case,
+            "Demand Vuy (kN)": float(vu_kN),
+            "Code basis": "AASHTO LRFD-compatible PSC shear route - guarded engineering review",
+            "Method": "AASHTO LRFD-compatible simplified sectional shear with provided stirrups",
+            "PSC shear basis": "Vp = 0 unless included in imported Vuy; refined Vci/Vcw/Vp and end-region route are future work.",
+            "Evidence status": RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_STATUS,
+            "Blocked final claim": "No code-certified or engineer-certified shear PASS until PSC shear benchmarks, Vci/Vcw/Vp, development length, anchorage/end-zone, and critical-section checks are complete.",
+        }
+        if zone is None:
+            rows.append({
+                **base,
+                "Status": "LAYOUT REQUIRED",
+                "Strength status": "REVIEW",
+                "Detailing status": "REVIEW",
+                "φVn (kN)": float("nan"),
+                "φVc (kN)": float("nan"),
+                "φVs (kN)": float("nan"),
+                "Vc (kN)": float("nan"),
+                "Vs (kN)": float("nan"),
+                "Vn (kN)": float("nan"),
+                "Vn limit (kN)": float("nan"),
+                "D/C": float("nan"),
+                "Strength D/C": float("nan"),
+                "Detailing D/C": float("nan"),
+                "Zone": "-",
+                "Stirrup": "-",
+                "Av/s provided (mm2/m)": float("nan"),
+                "Av/s required (mm2/m)": float("nan"),
+                "Spacing D/C": float("nan"),
+                "bv (mm)": float("nan"),
+                "d (mm)": float("nan"),
+                "dv (mm)": float("nan"),
+                "β": float("nan"),
+                "θ (deg)": float("nan"),
+                "φ": float("nan"),
+                "Tension face": "-",
+                "Notes": "No active shear reinforcement zone covers this ULS shear station. Define active provided-stirrup zones in Sections → Rebar before relying on shear evidence.",
+            })
+            continue
+        if analysis_input is None:
+            rows.append({
+                **base,
+                "Status": "REVIEW",
+                "Strength status": "REVIEW",
+                "Detailing status": "REVIEW",
+                "φVn (kN)": float("nan"),
+                "φVc (kN)": float("nan"),
+                "φVs (kN)": float("nan"),
+                "Vc (kN)": float("nan"),
+                "Vs (kN)": float("nan"),
+                "Vn (kN)": float("nan"),
+                "Vn limit (kN)": float("nan"),
+                "D/C": float("nan"),
+                "Strength D/C": float("nan"),
+                "Detailing D/C": float("nan"),
+                "Zone": str(zone.get("Zone") or "-"),
+                "Stirrup": "-",
+                "Av/s provided (mm2/m)": float("nan"),
+                "Av/s required (mm2/m)": float("nan"),
+                "Spacing D/C": float("nan"),
+                "bv (mm)": float("nan"),
+                "d (mm)": float("nan"),
+                "dv (mm)": float("nan"),
+                "β": float("nan"),
+                "θ (deg)": float("nan"),
+                "φ": float("nan"),
+                "Tension face": "-",
+                "Notes": "; ".join(input_messages) or "Section/material/strand input not ready for shear route evidence.",
+            })
+            continue
+        concrete = analysis_input.concrete_material
+        fc = float(concrete.fc_MPa)
+        bv_mm, bv_note = _railway_uls_web_width_mm(analysis_input.section_geometry)
+        depth = _railway_uls_effective_shear_depth_values_mm(session_state, analysis_input, mux_kNm=mux_kNm)
+        d_eff = float(depth.get("d_mm", float("nan")))
+        dv_eff = float(depth.get("dv_mm", float("nan")))
+        stirrup_area = _railway_uls_stirrup_area_mm2(zone)
+        legs = _float_or_zero(zone.get("Legs"))
+        spacing = _float_or_zero(zone.get("Spacing_mm"))
+        fy = _float_or_zero(zone.get("fy_MPa"))
+        if bv_mm is None or not all(math.isfinite(value) and value > 0.0 for value in [fc, bv_mm, d_eff, dv_eff, stirrup_area, legs, spacing, fy]):
+            rows.append({
+                **base,
+                "Status": "REVIEW",
+                "Strength status": "REVIEW",
+                "Detailing status": "REVIEW",
+                "φVn (kN)": float("nan"),
+                "φVc (kN)": float("nan"),
+                "φVs (kN)": float("nan"),
+                "Vc (kN)": float("nan"),
+                "Vs (kN)": float("nan"),
+                "Vn (kN)": float("nan"),
+                "Vn limit (kN)": float("nan"),
+                "D/C": float("nan"),
+                "Strength D/C": float("nan"),
+                "Detailing D/C": float("nan"),
+                "Zone": str(zone.get("Zone") or "-"),
+                "Stirrup": f"{zone.get('Bar Size') or '-'} × {int(legs) if legs > 0 else '-'} legs @ {spacing:.0f} mm" if spacing > 0.0 else str(zone.get("Bar Size") or "-"),
+                "Av/s provided (mm2/m)": float("nan"),
+                "Av/s required (mm2/m)": float("nan"),
+                "Spacing D/C": float("nan"),
+                "bv (mm)": float(bv_mm) if bv_mm is not None else float("nan"),
+                "d (mm)": d_eff,
+                "dv (mm)": dv_eff,
+                "β": float("nan"),
+                "θ (deg)": float("nan"),
+                "φ": float("nan"),
+                "Tension face": str(depth.get("tension_face") or "-"),
+                "Notes": "; ".join([bv_note, str(depth.get("note") or ""), "Active stirrup zone or concrete/geometry input is incomplete.", *input_messages]),
+            })
+            continue
+        avs = float(stirrup_area) * float(legs) / float(spacing)
+        phi = 0.90
+        beta = 2.0
+        theta = 45.0
+        cot_theta = 1.0
+        vc_n = 0.083 * beta * math.sqrt(fc) * float(bv_mm) * float(dv_eff)
+        vs_n = avs * float(fy) * float(dv_eff) * cot_theta
+        vn_uncapped_n = max(0.0, vc_n + vs_n)
+        vn_limit_n = 0.25 * fc * float(bv_mm) * float(dv_eff)
+        vn_n = min(vn_uncapped_n, vn_limit_n) if vn_limit_n > 0.0 else vn_uncapped_n
+        phi_vn_kN = phi * vn_n / 1000.0
+        strength_dc = abs(float(vu_kN)) / phi_vn_kN if phi_vn_kN > 0.0 else float("nan")
+        strength_status = "PASS" if math.isfinite(strength_dc) and strength_dc <= 1.0 else "FAIL" if math.isfinite(strength_dc) else "REVIEW"
+        detailing = _railway_uls_shear_detailing_guard(
+            fc_MPa=fc,
+            bv_mm=float(bv_mm),
+            d_eff_mm=float(d_eff),
+            dv_mm=float(dv_eff),
+            spacing_mm=float(spacing),
+            avs_mm2_per_mm=float(avs),
+            fy_MPa=float(fy),
+        )
+        detailing_status = str(detailing.get("Detailing status") or "REVIEW")
+        detailing_dc = _float_or_zero(detailing.get("Detailing D/C value"))
+        finite_dcs = [value for value in [strength_dc, detailing_dc] if math.isfinite(value)]
+        governing_dc = max(finite_dcs) if finite_dcs else float("nan")
+        if strength_status == "FAIL" or detailing_status == "FAIL":
+            status = "Engineering Review FAIL"
+        elif strength_status == "PASS" and detailing_status == "PASS":
+            status = "Engineering Review PASS"
+        else:
+            status = "REVIEW"
+        notes = [
+            RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING,
+            bv_note,
+            str(depth.get("note") or ""),
+            "AASHTO-compatible gate uses Vc = 0.083β√f'c bv dv with β=2.0 and θ=45°, plus provided Av/s, Vn capped at 0.25f'c bv dv.",
+            "Prestress vertical component Vp is treated as zero unless the engineer includes it in imported Vuy resultants.",
+            str(detailing.get("Detailing notes") or ""),
+            *input_messages,
+        ]
+        rows.append({
+            **base,
+            "Status": status,
+            "Strength status": strength_status,
+            "Detailing status": detailing_status,
+            "φVn (kN)": phi_vn_kN,
+            "φVc (kN)": phi * vc_n / 1000.0,
+            "φVs (kN)": phi * vs_n / 1000.0,
+            "Vc (kN)": vc_n / 1000.0,
+            "Vs (kN)": vs_n / 1000.0,
+            "Vn (kN)": vn_n / 1000.0,
+            "Vn limit (kN)": vn_limit_n / 1000.0,
+            "D/C": governing_dc,
+            "Strength D/C": strength_dc,
+            "Detailing D/C": detailing_dc,
+            "Zone": str(zone.get("Zone") or "Zone"),
+            "Stirrup": f"{zone.get('Bar Size') or '-'} × {int(float(legs))} legs @ {float(spacing):.0f} mm",
+            "Av/s provided (mm2/m)": avs * 1000.0,
+            "Av/s required (mm2/m)": detailing.get("Av/s required mm2/m", float("nan")),
+            "Spacing D/C": detailing.get("Spacing D/C", float("nan")),
+            "bv (mm)": float(bv_mm),
+            "d (mm)": float(d_eff),
+            "dv (mm)": float(dv_eff),
+            "β": beta,
+            "θ (deg)": theta,
+            "φ": phi,
+            "Tension face": str(depth.get("tension_face") or "-"),
+            "Notes": "; ".join(str(item) for item in notes if str(item).strip()),
+        })
+    return pd.DataFrame(rows, columns=columns)
+
 def railway_u_girder_uls_code_basis_dataframe() -> pd.DataFrame:
     route = bridge_beam_girder_uls_strength_route()
     rows = [
@@ -559,7 +1094,7 @@ def railway_u_girder_uls_code_basis_dataframe() -> pd.DataFrame:
         {"Item": "ULS load source", "Value": route.uls_load_source_label, "Status": "SOURCE OF TRUTH", "Evidence / Boundary": "Analysis consumes active station-resultant ULS rows from Loads."},
         {"Item": "Default strength combo label", "Value": route.default_combo_label, "Status": "REVIEW", "Evidence / Boundary": "Actual project load combinations must be reviewed before final design."},
         {"Item": "Flexure route", "Value": route.flexure_engine_label, "Status": "FRAMEWORK READY", "Evidence / Boundary": route.flexure_basis_note},
-        {"Item": "Shear route", "Value": route.shear_engine_label, "Status": "GUARDED PREVIEW", "Evidence / Boundary": "Railway U-Girder PSC shear and end-region certification remain future work."},
+        {"Item": "Shear route", "Value": route.shear_engine_label, "Status": "ENGINEERING REVIEW READY", "Evidence / Boundary": "ULS.RAIL.UGIRDER3 provides guarded PSC shear route evidence using active Vuy demands and provided stirrup zones; final Vci/Vcw/Vp/end-region certification remains future work."},
         {"Item": "Torsion route", "Value": route.torsion_engine_label, "Status": "GUARDED PREVIEW", "Evidence / Boundary": "Railway U-Girder torsion and combined V+T calibration remain future work."},
         {"Item": "Certification boundary", "Value": "Not engineer-certified", "Status": "NOT CERTIFIED", "Evidence / Boundary": RAILWAY_UGIRDER_ULS_CERTIFICATION_BOUNDARY},
     ]
@@ -622,11 +1157,11 @@ def railway_u_girder_uls_check_matrix_dataframe(active_uls: pd.DataFrame) -> pd.
         },
         {
             "Check Area": "ULS shear",
-            "Current Framework Status": "GUARDED PREVIEW",
+            "Current Framework Status": "ENGINEERING REVIEW READY" if has_loads else "INPUT REQUIRED",
             "Demand Source": demand_status,
-            "Capacity / Code Route": "Bridge shear gate available; PSC shear, prestress effects, dv/end-region route not final",
-            "Allowed Decision Wording": "Review / Guarded Preview",
-            "Blocked Final Claim": "No final shear certification until PSC shear + end-region benchmarks pass.",
+            "Capacity / Code Route": "ULS.RAIL.UGIRDER3 uses an AASHTO LRFD-compatible PSC shear route with active Vuy demands, provided stirrups, explicit bv/dv basis, φVc/φVs, detailing guard, and Vn cap; refined Vci/Vcw/Vp and end-region route remain future work",
+            "Allowed Decision Wording": "Engineering Review PASS / FAIL allowed for shear route evidence only; not Certified PASS",
+            "Blocked Final Claim": "No final shear certification until PSC shear benchmarks, refined Vci/Vcw/Vp, development length, anchorage/end-zone, and critical-section checks pass.",
         },
         {
             "Check Area": "ULS torsion",
@@ -698,12 +1233,15 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
             warnings=["Railway U-Girder ULS framework package is only available for the Railway U-Girder preset."],
         )
     active_uls = active_railway_u_girder_uls_demand_dataframe(session_state)
-    warnings = [RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING, RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING]
+    warnings = [RAILWAY_UGIRDER_ULS_FRAMEWORK_WARNING, RAILWAY_UGIRDER_ULS_FLEXURE_EVIDENCE_WARNING, RAILWAY_UGIRDER_ULS_SHEAR_EVIDENCE_WARNING]
     if active_uls.empty:
         warnings.append("No active ULS Loads rows were found; define Strength ULS station-resultant rows before running design checks.")
     flexure_evidence = railway_u_girder_uls_flexure_evidence_dataframe(session_state, active_uls)
+    shear_evidence = railway_u_girder_uls_shear_evidence_dataframe(session_state, active_uls)
     if flexure_evidence.empty and not active_uls.empty:
         warnings.append("No nonzero Mux station rows were available for ULS.RAIL.UGIRDER2 flexure evidence.")
+    if shear_evidence.empty and not active_uls.empty:
+        warnings.append("No nonzero Vuy station rows were available for ULS.RAIL.UGIRDER3 PSC shear route evidence.")
     return RailwayUGirderULSFrameworkPackage(
         available=True,
         status=RAILWAY_UGIRDER_ULS_FRAMEWORK_STATUS,
@@ -711,6 +1249,7 @@ def build_railway_u_girder_uls_framework_package(session_state: Any) -> RailwayU
         code_basis=railway_u_girder_uls_code_basis_dataframe(),
         demand_summary=railway_u_girder_uls_demand_summary_dataframe(active_uls),
         flexure_evidence=flexure_evidence,
+        shear_evidence=shear_evidence,
         check_matrix=railway_u_girder_uls_check_matrix_dataframe(active_uls),
         future_checks=railway_u_girder_uls_future_checks_dataframe(),
         warnings=warnings,

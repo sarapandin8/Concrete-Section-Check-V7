@@ -941,3 +941,12 @@ Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report regis
 Adds guarded Railway U-Girder ULS flexure calculation evidence after the ULS framework milestone. The evidence consumes active ULS `Mux` station rows, maps station-based dedicated strand participation into the existing strain-compatibility PMM engine, and applies the Bridge/AASHTO LRFD prestressed flexure phi-routing layer. Report registry and Word export now include `Railway U-Girder ULS Flexure Calculation Evidence`.
 
 Decision wording is limited to `Engineering Review PASS` / `Engineering Review FAIL` / `REVIEW`. This milestone remains engineering-review evidence only; it is not final code-certified design and is not engineer certification. No SLS solver equations, ULS solver equations, prestress/debond participation logic, PMM solver equations, shear/torsion/V+T equations, load-combination equations, project schema, or geometry-generator logic were modified.
+
+### ULS.RAIL.UGIRDER3 — Railway U-Girder PSC Shear Route Evidence
+
+Added guarded Railway U-Girder PSC shear route evidence to the ULS framework. The route reads active ULS Vuy station-resultant rows and active provided-stirrup zones, estimates Railway U-Girder bv/d/dv basis, computes an AASHTO LRFD-compatible sectional shear evidence row with φVc, φVs, φVn, D/C, Av/s/spacing detailing guard, and exports the evidence to report registry and Word report.
+
+Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, docs, and regression tests. No SLS solver equations, PMM solver equations, prestress/debond participation logic, geometry generator, torsion equation, V+T equation, load-combination equation, or project schema were modified.
+
+Status wording remains guarded: Engineering Review PASS / FAIL for shear evidence only; not final code-certified design. Final certification still requires refined PSC Vci/Vcw/Vp, critical-section/end-region validation, development length, anchorage/end-zone checks, independent benchmarks, and Engineer-of-Record review.
+

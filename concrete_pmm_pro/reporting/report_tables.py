@@ -192,6 +192,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
             "railway_u_girder_uls_code_basis": "Railway U-Girder ULS Code Basis",
             "railway_u_girder_uls_demand_summary": "Railway U-Girder ULS Demand Summary",
             "railway_u_girder_uls_flexure_evidence": "Railway U-Girder ULS Flexure Calculation Evidence",
+            "railway_u_girder_uls_shear_evidence": "Railway U-Girder ULS PSC Shear Route Evidence",
             "railway_u_girder_uls_check_matrix": "Railway U-Girder ULS Check Matrix",
             "railway_u_girder_uls_future_checks": "Railway U-Girder ULS Future Checks",
         }
