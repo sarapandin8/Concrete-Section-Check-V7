@@ -95,6 +95,14 @@ REBAR_TABLE_COLUMNS = [
     "Note",
 ]
 
+# Non-widget mirrors written by Section Builder.  Rebar reads these before
+# deciding whether to show the disabled/stored branch so a checkbox selection in
+# Section Builder opens the longitudinal rebar workspace immediately instead of
+# requiring a second Enable click on this page.
+SECTION_BUILDER_ORDINARY_REBAR_SYNC_KEY = "section_builder_ordinary_rebar_enabled"
+SECTION_BUILDER_PRESTRESS_SYNC_KEY = "section_builder_prestressing_steel_enabled"
+SECTION_BUILDER_STEEL_SYSTEMS_PRESET_KEY = "section_builder_steel_systems_preset_key"
+
 
 
 
@@ -118,6 +126,77 @@ def publish_ordinary_rebar_system_flag(session_state: Any, enabled: bool) -> Non
         metadata[REINFORCEMENT_FLAGS_PRESET_KEY] = str(preset_key)
         session_state[REINFORCEMENT_FLAGS_PRESET_KEY] = str(preset_key)
     session_state["project_metadata"] = metadata
+
+
+def _to_optional_bool(value: Any) -> bool | None:
+    """Return a bool for common UI/metadata values, or None when absent."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().casefold()
+    if text in {"1", "true", "yes", "y", "on", "enabled"}:
+        return True
+    if text in {"0", "false", "no", "n", "off", "disabled"}:
+        return False
+    return bool(value)
+
+
+def _active_preset_key(session_state: Any) -> str:
+    if hasattr(session_state, "get"):
+        return str(session_state.get("section_preset_key") or "").strip()
+    return str(getattr(session_state, "section_preset_key", "") or "").strip()
+
+
+def _metadata_mapping(session_state: Any) -> dict[str, Any]:
+    metadata = session_state.get("project_metadata", {}) if hasattr(session_state, "get") else getattr(session_state, "project_metadata", {})
+    return dict(metadata or {}) if isinstance(metadata, dict) else {}
+
+
+def _preset_matches_active(active_preset: str, source_preset: str) -> bool:
+    # Empty source preset is tolerated for old sessions because the marker is
+    # still a same-session Section Builder signal.  A non-empty mismatch is
+    # ignored to avoid carrying a stale ON/OFF decision across preset changes.
+    return not source_preset or not active_preset or source_preset == active_preset
+
+
+def reconcile_ordinary_rebar_system_flag_for_rebar_page(session_state: Any, *, default: bool = True) -> bool:
+    """Synchronize the Rebar page with the Section Builder steel-system switch.
+
+    The Section Builder checkbox is the user-facing source of truth.  In some
+    Streamlit navigation/rerun paths the top-level widget key can remain stale
+    on the Rebar page even though Section Builder already shows ordinary rebar
+    as enabled.  This reconciliation reads the non-widget Section Builder mirror
+    and project metadata, updates the shared flags once, and returns the value
+    that should drive the Longitudinal Rebar workspace.
+    """
+
+    active_preset = _active_preset_key(session_state)
+    metadata = _metadata_mapping(session_state)
+
+    builder_preset = str(
+        session_state.get(SECTION_BUILDER_STEEL_SYSTEMS_PRESET_KEY, "")
+        if hasattr(session_state, "get")
+        else getattr(session_state, SECTION_BUILDER_STEEL_SYSTEMS_PRESET_KEY, "")
+    ).strip()
+    builder_value = (
+        session_state.get(SECTION_BUILDER_ORDINARY_REBAR_SYNC_KEY, None)
+        if hasattr(session_state, "get")
+        else getattr(session_state, SECTION_BUILDER_ORDINARY_REBAR_SYNC_KEY, None)
+    )
+    builder_bool = _to_optional_bool(builder_value)
+    if builder_bool is not None and _preset_matches_active(active_preset, builder_preset):
+        publish_ordinary_rebar_system_flag(session_state, builder_bool)
+        return builder_bool
+
+    metadata_preset = str(metadata.get(REINFORCEMENT_FLAGS_PRESET_KEY, "") or "").strip()
+    metadata_bool = _to_optional_bool(metadata.get(ORDINARY_REBAR_FLAG_KEY))
+    if metadata_bool is True and _preset_matches_active(active_preset, metadata_preset):
+        publish_ordinary_rebar_system_flag(session_state, True)
+        return True
+
+    return ordinary_rebar_enabled(session_state, default=default)
 
 
 def _render_enable_ordinary_rebar_action() -> None:
@@ -1963,7 +2042,8 @@ def _render_longitudinal_rebar_tab(
             "Ordinary longitudinal reinforcement used by PMM / SLS / flexure checks. "
             "For Beam/Girder torsion, active ordinary bars are also the review-only Al source; do not duplicate Al in a separate table."
         )
-    if not ordinary_rebar_enabled(st.session_state, default=True):
+    ordinary_rebar_system_enabled = reconcile_ordinary_rebar_system_flag_for_rebar_page(st.session_state, default=True)
+    if not ordinary_rebar_system_enabled:
         table = st.session_state.get("rebar_table")
         stored_df = _ensure_rebar_table_columns(pd.DataFrame(table)) if table is not None else pd.DataFrame(columns=REBAR_TABLE_COLUMNS)
         result = rebars_from_dataframe(stored_df, rebar_db) if table is not None else RebarParseResult([], [], [], [])

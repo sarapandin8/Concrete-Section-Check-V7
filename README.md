@@ -964,3 +964,10 @@ Status wording remains guarded: Engineering Review PASS / FAIL for shear evidenc
 Fixes a Streamlit rerun/widget-state bug where pressing `Apply generated perimeter layout to Rebar table` after generating Railway U-Girder ordinary perimeter bars could return to the normal Longitudinal Rebar page without the generated rows being committed to the editable Rebar table. The apply action now commits the generated table through a dedicated state helper, bumps the Rebar data-editor revision, clears stale `rebar_data_editor_*` widget states, returns the UI to `Manual table`, and shows an apply-success message so the generated rows are immediately visible and editable.
 
 Changed areas: `concrete_pmm_pro/ui/rebar_page.py`, docs, and regression tests. No SLS/ULS solver equations, prestress/debonding logic, geometry generator, section properties, report certification wording, or project schema were modified.
+
+### REBAR.RAIL.UGIRDER3 — Railway U-Girder Section Builder to Rebar Immediate UI Sync
+
+- Added non-widget steel-system mirrors from Section Builder so `Include ordinary rebar / longitudinal Al` opens the Rebar workspace immediately.
+- Rebar page now reconciles the active ordinary-rebar flag from the Section Builder mirror / project metadata before entering the disabled stored-row branch.
+- The manual `Enable ordinary rebar / longitudinal Al` button remains only as a stale-state recovery path and should not be required after enabling in Section Builder.
+- No solver, geometry, prestress, debond, ULS/SLS, project schema, or report certification logic changed.

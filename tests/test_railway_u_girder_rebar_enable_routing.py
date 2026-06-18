@@ -21,7 +21,7 @@ def test_rebar_enable1_section_builder_checkbox_synchronizes_metadata_on_change(
 
 def test_rebar_enable1_rebar_page_has_in_page_enable_recovery_action() -> None:
     source = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "rebar_page.py").read_text(encoding="utf-8")
-    disabled_branch_start = source.index("if not ordinary_rebar_enabled(st.session_state, default=True):")
+    disabled_branch_start = source.index("if not ordinary_rebar_system_enabled:")
     disabled_branch_end = source.index('    if "rebar_table" not in st.session_state:', disabled_branch_start)
     disabled_branch = source[disabled_branch_start:disabled_branch_end]
 

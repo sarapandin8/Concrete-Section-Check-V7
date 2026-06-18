@@ -56,6 +56,9 @@ from concrete_pmm_pro.visualization import create_section_preview
 
 RAILWAY_U_GIRDER_PRESET_KEY = "railway_u_girder"
 RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY = "railway_u_girder_stage_settings"
+SECTION_BUILDER_ORDINARY_REBAR_SYNC_KEY = "section_builder_ordinary_rebar_enabled"
+SECTION_BUILDER_PRESTRESS_SYNC_KEY = "section_builder_prestressing_steel_enabled"
+SECTION_BUILDER_STEEL_SYSTEMS_PRESET_KEY = "section_builder_steel_systems_preset_key"
 RAILWAY_U_GIRDER_DEFAULT_WEB_FC_MPA = 45.0
 RAILWAY_U_GIRDER_DEFAULT_WEB_FCI_MPA = 36.0
 RAILWAY_U_GIRDER_DEFAULT_SLAB_FC_MPA = 35.0
@@ -1406,15 +1409,28 @@ def _ensure_reinforcement_flags_for_preset(preset: dict[str, Any]) -> None:
 def _store_reinforcement_flags_metadata() -> None:
     """Mirror section-level steel-system switches into project metadata.
 
-    The checkbox widget keys remain owned by Streamlit.  This helper only copies
-    their current values so save/load round-trip and downstream pages see the
-    same include-rebar/include-prestress decision immediately.
+    The checkbox widget keys remain owned by Streamlit.  This helper copies
+    their current values into durable metadata and non-widget mirror keys so
+    downstream pages see the same include-rebar/include-prestress decision
+    immediately after leaving Section Builder.
     """
 
     metadata = dict(st.session_state.get("project_metadata", {}) or {})
     for flag_name in (ORDINARY_REBAR_FLAG_KEY, PRESTRESSING_STEEL_FLAG_KEY, REINFORCEMENT_FLAGS_PRESET_KEY):
         if flag_name in st.session_state:
             metadata[flag_name] = st.session_state[flag_name]
+
+    preset_key = str(st.session_state.get(REINFORCEMENT_FLAGS_PRESET_KEY) or st.session_state.get("section_preset_key") or "").strip()
+    ordinary_enabled = bool(st.session_state.get(ORDINARY_REBAR_FLAG_KEY, False))
+    prestress_enabled = bool(st.session_state.get(PRESTRESSING_STEEL_FLAG_KEY, False))
+
+    st.session_state[SECTION_BUILDER_ORDINARY_REBAR_SYNC_KEY] = ordinary_enabled
+    st.session_state[SECTION_BUILDER_PRESTRESS_SYNC_KEY] = prestress_enabled
+    st.session_state[SECTION_BUILDER_STEEL_SYSTEMS_PRESET_KEY] = preset_key
+
+    metadata[SECTION_BUILDER_ORDINARY_REBAR_SYNC_KEY] = ordinary_enabled
+    metadata[SECTION_BUILDER_PRESTRESS_SYNC_KEY] = prestress_enabled
+    metadata[SECTION_BUILDER_STEEL_SYSTEMS_PRESET_KEY] = preset_key
     st.session_state["project_metadata"] = metadata
 
 

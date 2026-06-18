@@ -122,7 +122,7 @@ def test_inclusion4_explicit_checkbox_state_remains_source_of_truth_for_visual_s
 
 
 def test_inclusion4_rebar_page_disabled_visual_state_preserves_stored_rows_and_publishes_zero_active_rows() -> None:
-    disabled_branch_start = REBAR_PAGE_SOURCE.index("if not ordinary_rebar_enabled(st.session_state, default=True):")
+    disabled_branch_start = REBAR_PAGE_SOURCE.index("if not ordinary_rebar_system_enabled:")
     disabled_branch_end = REBAR_PAGE_SOURCE.index('    if "rebar_table" not in st.session_state:', disabled_branch_start)
     disabled_branch = REBAR_PAGE_SOURCE[disabled_branch_start:disabled_branch_end]
 
