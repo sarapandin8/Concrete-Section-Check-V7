@@ -1046,3 +1046,9 @@ This is not legal Engineer-of-Record certification and must not be represented a
 ```
 
 No SLS solver equations, ULS equations, prestress/debond logic, geometry generation, load combinations, project schema, or Streamlit UI panels were changed by this milestone.
+### SHEAR.STATUS2 — Shear Numeric Gate Status Hotfix
+
+- Prioritizes finite shear strength/detailing D/C evidence over stale text status fields in the Beam/Girder compact ULS shear summary.
+- Prevents `Shear = FAIL` when the visible shear card and diagram show Strength PASS, Detailing PASS, and D/C values below 1.0.
+- No shear equations or solver equations were changed.
+

@@ -2241,3 +2241,86 @@ def test_shear_status1_source_gate_clear_when_explicit_shear_gates_pass() -> Non
 
     assert gate["value"] == "CLEAR"
     assert gate["has_blocker"] is False
+
+
+def test_shear_status2_numeric_gates_override_stale_text_failures() -> None:
+    """Finite D/C evidence below 1.0 must override stale FAIL strings.
+
+    This reproduces the UI condition where the shear card and diagram show PASS
+    but the compact table still displayed FAIL because cached textual status
+    fields were stale.
+    """
+
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",  # stale aggregate text
+                "Strength status": "FAIL",  # stale text from source row
+                "Detailing status": "FAIL",  # stale text from source row
+                "Vn limit status": "PASS",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Support side": "Right",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand": "1,355.74 kN",
+                "Demand kN": 1355.74,
+                "Abs demand kN": 1355.74,
+                "Capacity": "φVn = 2,506.72 kN",
+                "Utilization": "0.541 / det 0.757",
+                "D/C value": 0.541,
+                "Strength D/C value": 0.541,
+                "Detailing D/C value": 0.757,
+                "Governing D/C value": 0.757,
+            }
+        ]
+    )
+    active = pd.DataFrame(
+        [
+            {
+                "Active": True,
+                "Station x (m)": 10.0,
+                "Case Name": "Strength I",
+                "Mux": 0.0,
+                "Vuy": 1644.35,
+                "Tu": 0.0,
+                "Muy": 0.0,
+                "Vux": 0.0,
+                "Nu": 0.0,
+                "Note": "support demand only",
+            }
+        ]
+    )
+
+    table = _beam_uls_check_table(active, shear_check_df=shear)
+    shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
+
+    assert _beam_uls_shear_overall_status(shear) == "PASS"
+    assert shear_row["Status"] == "PASS"
+    assert shear_row["Governing x"] == "9.000 m"
+    assert shear_row["Utilization"] == "0.541 / det 0.757"
+
+
+def test_shear_status2_numeric_gate_failure_still_controls_over_stale_pass_text() -> None:
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "PASS",
+                "Strength status": "PASS",
+                "Detailing status": "PASS",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand kN": 3000.0,
+                "Abs demand kN": 3000.0,
+                "φVn kN": 2506.72,
+                "D/C value": 1.197,
+                "Strength D/C value": 1.197,
+                "Detailing D/C value": 0.757,
+                "Governing D/C value": 1.197,
+            }
+        ]
+    )
+
+    assert _beam_uls_shear_overall_status(shear) == "FAIL"

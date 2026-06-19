@@ -6501,24 +6501,31 @@ def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
             saw_review = True
             continue
 
-        explicit_strength_fail = strength_status == "FAIL" or (math.isfinite(strength_dc) and strength_dc > 1.0 + 1.0e-9)
-        explicit_detailing_fail = detailing_status == "FAIL" or (math.isfinite(detailing_dc) and detailing_dc > 1.0 + 1.0e-9)
-        if explicit_strength_fail or explicit_detailing_fail:
+        # SHEAR.STATUS2: numeric gate evidence is the source of truth when it is
+        # finite.  Cached rows from earlier UI passes can still carry text such
+        # as ``Status = FAIL`` or even ``Strength status = FAIL`` after the
+        # visible D/C values have been recalculated and are clearly below 1.0.
+        # Do not let stale text override finite strength/detailing utilization.
+        strength_dc_is_finite = math.isfinite(strength_dc)
+        detailing_dc_is_finite = math.isfinite(detailing_dc)
+        numeric_strength_fail = strength_dc_is_finite and strength_dc > 1.0 + 1.0e-9
+        numeric_detailing_fail = detailing_dc_is_finite and detailing_dc > 1.0 + 1.0e-9
+        textual_strength_fail = strength_status == "FAIL" and not strength_dc_is_finite
+        textual_detailing_fail = detailing_status == "FAIL" and not detailing_dc_is_finite
+        if numeric_strength_fail or numeric_detailing_fail or textual_strength_fail or textual_detailing_fail:
             return "FAIL"
+
+        explicit_gates_present = bool(strength_status or detailing_status or strength_dc_is_finite or detailing_dc_is_finite)
+        if explicit_gates_present:
+            strength_clear = (not strength_dc_is_finite or strength_dc <= 1.0 + 1.0e-9) and strength_status not in {"DATA REQUIRED", "NOT READY", "INCOMPLETE"}
+            detailing_clear = (not detailing_dc_is_finite or detailing_dc <= 1.0 + 1.0e-9) and detailing_status not in {"DATA REQUIRED", "NOT READY", "INCOMPLETE"}
+            if strength_clear and detailing_clear:
+                saw_pass = True
+                continue
 
         if strength_status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or detailing_status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or vn_limit_status == "REVIEW":
             saw_review = True
             continue
-
-        # If the explicit gate columns are present and pass, do not let a stale
-        # aggregate Status string override the actual displayed shear evidence.
-        explicit_gates_present = bool(strength_status or detailing_status or math.isfinite(strength_dc) or math.isfinite(detailing_dc))
-        if explicit_gates_present:
-            strength_clear = strength_status in {"", "PASS", "BOUNDARY"} and (not math.isfinite(strength_dc) or strength_dc <= 1.0 + 1.0e-9)
-            detailing_clear = detailing_status in {"", "PASS"} and (not math.isfinite(detailing_dc) or detailing_dc <= 1.0 + 1.0e-9)
-            if strength_clear and detailing_clear:
-                saw_pass = True
-                continue
 
         if status == "FAIL":
             return "FAIL"
