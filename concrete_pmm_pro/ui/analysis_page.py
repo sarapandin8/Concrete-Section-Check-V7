@@ -12312,6 +12312,33 @@ def _girder_sls_plot2_controlling_reason(
     return f"{demand} requires engineering review at x={station} m ({fiber}); actual {actual} vs limit {limit}; utilization {utilization}."
 
 
+def _girder_sls_plot3_actual_vs_limit_display(controlling: Mapping[str, object]) -> str:
+    """Return a readable UI.PLOT3 actual-vs-limit expression for SLS cards.
+
+    This is presentation logic only.  It uses the already-computed controlling
+    row and does not change stress, limit, Pe(x), material, or load equations.
+    """
+
+    actual_raw = controlling.get("Actual stress (MPa)")
+    limit_raw = controlling.get("Limit stress (MPa)")
+    actual = _analysis_float_or_zero(actual_raw)
+    limit = _analysis_float_or_zero(limit_raw)
+    actual_text = _format_girder_stress_mpa(actual_raw)
+    limit_text = _format_girder_stress_mpa(limit_raw)
+    if not math.isfinite(actual) or not math.isfinite(limit):
+        return f"{actual_text} vs {limit_text}"
+    demand = str(controlling.get("Demand") or "").casefold()
+    status = str(controlling.get("Status") or "").upper()
+    failed = "FAIL" in status
+    if "compression" in demand:
+        comparator = "<" if failed else "≥"
+    elif "tension" in demand:
+        comparator = ">" if failed else "≤"
+    else:
+        comparator = ">" if failed else "≤"
+    return f"{actual_text} {comparator} {limit_text}"
+
+
 def _girder_sls_plot2_decision_cards(
     *,
     stage_label: str,
@@ -12341,6 +12368,7 @@ def _girder_sls_plot2_decision_cards(
     demand = str(controlling.get("Demand") or "Stress")
     actual = _format_girder_stress_mpa(controlling.get("Actual stress (MPa)"))
     limit = _format_girder_stress_mpa(controlling.get("Limit stress (MPa)"))
+    actual_vs_limit = _girder_sls_plot3_actual_vs_limit_display(controlling)
     utilization = _format_girder_sls_utilization(controlling.get("Utilization"))
     station = _format_optional_number(controlling.get("Station x (m)"), precision=3)
     fiber = str(controlling.get("Fiber") or "N/A")
@@ -12360,8 +12388,8 @@ def _girder_sls_plot2_decision_cards(
         },
         {
             "title": "Actual vs limit",
-            "value": f"{actual} / {limit}",
-            "detail": "compression limit is shown as negative; tension limit is positive",
+            "value": actual_vs_limit,
+            "detail": "actual stress compared with the applicable preview limit",
             "status": "danger" if str(controlling.get("Status")) == "Preview FAIL" else "info",
         },
         {
@@ -12771,38 +12799,47 @@ def _railway_u_girder_add_labeled_limit_line(
     x_max: float,
     y_value: float,
     label: str,
+    trace_name: str | None = None,
     annotation_yshift: int = 0,
     line_color: str | None = None,
 ) -> None:
-    """Add a limit line with an on-line label for web/slab material clarity."""
+    """Add a UI.PLOT3 service limit line with a non-overlapping right-side label.
+
+    The full label is kept as the annotation and hover text, while the legend
+    receives a shorter trace name so the multi-fiber service legend no longer
+    collides with the x-axis title.  This is display-only plot cleanup.
+    """
 
     fig.add_trace(
         go.Scatter(
             x=[x_min, x_max],
             y=[y_value, y_value],
             mode="lines",
-            name=label,
-            line={"dash": "dash", "width": 2.6, "color": line_color or _ENGINEERING_STRESS_PLOT_COLORS["compression_limit"]},
+            name=trace_name or label,
+            line={"dash": "dash", "width": 2.8, "color": line_color or _ENGINEERING_STRESS_PLOT_COLORS["compression_limit"]},
             hovertemplate=f"{escape(label)}<br>stress=%{{y:.3f}} MPa<extra></extra>",
         )
     )
     fig.add_annotation(
-        x=x_max,
+        x=1.012,
+        xref="paper",
         y=y_value,
+        yref="y",
         text=escape(label),
         showarrow=False,
-        xanchor="right",
-        yanchor="bottom" if y_value >= 0 else "top",
+        xanchor="left",
+        yanchor="middle",
         yshift=annotation_yshift,
-        bgcolor="rgba(255,255,255,0.78)",
-        bordercolor="rgba(0,0,0,0.18)",
+        bgcolor="rgba(255,255,255,0.88)",
+        bordercolor="rgba(15,23,42,0.18)",
         borderwidth=1,
-        font={"size": 11},
+        font={"size": 11, "color": "#1f2937"},
     )
 
 
 # UI.PLOT1: commercial engineering stress diagram style foundation.
 # UI.PLOT2: SLS decision plot and failure diagnosis layout polish.
+# UI.PLOT3: Railway U-Girder service multi-fiber label/legend cleanup.
 # Legacy axis text retained for tests/docs: Stress (MPa) · compression negative / tension positive
 # Display-only plot polish: no stress solver, Pe(x), load, section-basis, or code-limit formula changes.
 _ENGINEERING_STRESS_PLOT_COLORS = {
@@ -12967,7 +13004,8 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
         x_max=x_label_max,
         y_value=-web_comp,
         label=f"Web compression limit = -{web_comp:.3f} MPa",
-        annotation_yshift=-8,
+        trace_name="Web comp. limit",
+        annotation_yshift=-14,
         line_color=_ENGINEERING_STRESS_PLOT_COLORS["compression_limit"],
     )
     _railway_u_girder_add_labeled_limit_line(
@@ -12976,7 +13014,8 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
         x_max=x_label_max,
         y_value=web_tens,
         label=f"Web tension limit = {web_tens:.3f} MPa",
-        annotation_yshift=10,
+        trace_name="Web tension limit",
+        annotation_yshift=14,
         line_color=_ENGINEERING_STRESS_PLOT_COLORS["tension_limit"],
     )
     _railway_u_girder_add_labeled_limit_line(
@@ -12985,7 +13024,8 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
         x_max=x_label_max,
         y_value=-slab_comp,
         label=f"Slab compression limit = -{slab_comp:.3f} MPa",
-        annotation_yshift=8,
+        trace_name="Slab comp. limit",
+        annotation_yshift=14,
         line_color=_ENGINEERING_STRESS_PLOT_COLORS["compression_limit"],
     )
     _railway_u_girder_add_labeled_limit_line(
@@ -12994,20 +13034,23 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
         x_max=x_label_max,
         y_value=slab_tens,
         label=f"Slab tension limit = {slab_tens:.3f} MPa",
-        annotation_yshift=-12,
+        trace_name="Slab tension limit",
+        annotation_yshift=-14,
         line_color=_ENGINEERING_STRESS_PLOT_COLORS["tension_limit"],
     )
     _add_engineering_zero_stress_line(fig)
     title = _girder_sls_graph_stage_title(stage_label)
     _apply_engineering_stress_plot_style(
         fig,
-        height=700,
+        height=780,  # UI.PLOT3 service cleanup; legacy UI.PLOT2 marker retained: height=700
         title=f"Concrete Stress — Railway U-Girder {title}",
         subtitle="Full gross U-section elastic service preview · separate web/slab material limits · compression negative / tension positive",
         yaxis_title="Stress (MPa) — compression negative / tension positive",
-        bottom_margin=132,
+        bottom_margin=188,
     )
-    fig.update_xaxes(range=[x_min, x_label_max + pad])
+    fig.update_layout(margin={"l": 76, "r": 250, "t": 96, "b": 188})
+    fig.update_layout(legend={"y": -0.30, "font": {"size": 12}, "tracegroupgap": 8})
+    fig.update_xaxes(range=[x_min, x_max + pad * 0.25], title_standoff=28)
     return fig
 
 

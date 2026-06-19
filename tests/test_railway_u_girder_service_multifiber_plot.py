@@ -120,3 +120,46 @@ def test_railway_u_girder_service_multifiber_figure_has_labeled_web_slab_limits(
         assert "Slab compression limit" in annotation_text
     finally:
         _restore_session_state(backup)
+
+
+def test_ui_plot3_service_multifiber_legend_and_limit_labels_do_not_overlap_plot() -> None:
+    backup = _with_session_state(
+        {
+            "section_preset_key": "railway_u_girder",
+            "section_parameters": {
+                "depth_mm": 1600.0,
+                "h2_bottom_opening_mm": 305.0,
+                "h4_floor_center_thickness_mm": 450.0,
+            },
+            "concrete_material": ConcreteMaterial(name="C45_PRECAST", fc_MPa=45.0, density_kg_m3=2400.0),
+            "railway_u_girder_stage_settings": {
+                "web_fc_MPa": 45.0,
+                "web_fci_MPa": 36.0,
+                "slab_fc_MPa": 35.0,
+                "construction_method": "Case B - wet slab carried by precast webs",
+            },
+        }
+    )
+    try:
+        df = pd.DataFrame(
+            {
+                "Station x (m)": [0.0, 5.0, 10.0],
+                "Top total (MPa)": [3.8, 2.5, 3.2],
+                "Bottom total (MPa)": [-5.0, -4.0, -5.0],
+            }
+        )
+        fig = analysis_page._make_girder_full_length_sls_figure(df, stage_label="Service stage")
+        assert fig.layout.height >= 760
+        assert fig.layout.margin.r >= 220
+        assert fig.layout.margin.b >= 170
+        assert fig.layout.legend.y <= -0.28
+        names = {trace.name for trace in fig.data}
+        assert "Web comp. limit" in names
+        assert "Slab comp. limit" in names
+        assert "Web compression limit = -27.000 MPa" not in names
+        limit_annotations = [annotation for annotation in fig.layout.annotations if "limit" in str(annotation.text)]
+        assert limit_annotations
+        assert all(getattr(annotation, "xref", None) == "paper" for annotation in limit_annotations)
+        assert all(float(getattr(annotation, "x", 0.0)) > 1.0 for annotation in limit_annotations)
+    finally:
+        _restore_session_state(backup)

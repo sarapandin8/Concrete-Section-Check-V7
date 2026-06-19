@@ -1092,3 +1092,8 @@ No SLS solver equations, ULS equations, prestress/debond logic, geometry generat
 ## UI.PLOT2 — SLS Decision Plot and Failure Diagnosis Layout
 
 This milestone adds a decision-first SLS stress diagram panel with PASS/FAIL/REVIEW status, controlling stress demand, actual-versus-limit value, utilization, and direct failure/review diagnosis. It also collapses the tensile-limit guide by default and increases plot readability. This is display and diagnostic polish only; it does not change stress equations, Pe(x), material routing, load routing, project schema, or ULS/SLS solver logic.
+
+
+## UI.PLOT3 — Railway U-Girder Service Multi-Fiber Plot Label Cleanup
+
+Polished the Railway U-Girder service-stage multi-fiber SLS plot so the legend no longer crowds the x-axis label and right-side web/slab limit labels sit outside the plot area. Actual-vs-limit decision cards now use clear comparison symbols where possible. This is display-only UI polish; SLS stress equations, limits, load routing, prestress/debonding logic, and ULS checks are unchanged.

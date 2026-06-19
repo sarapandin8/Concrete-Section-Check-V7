@@ -352,3 +352,22 @@ def test_ui_plot1_governing_markers_and_limit_lines_are_report_style() -> None:
     assert '"governing_compression"' in SOURCE
     assert 'legend={\n            "orientation": "h"' in SOURCE
     assert 'mirror=True' in SOURCE
+
+
+def test_ui_plot3_actual_vs_limit_card_uses_comparison_symbol() -> None:
+    from concrete_pmm_pro.ui import analysis_page
+
+    row = {
+        "Demand": "Tension",
+        "Actual stress (MPa)": 3.791,
+        "Limit stress (MPa)": 3.354,
+        "Status": "Preview FAIL",
+    }
+    assert analysis_page._girder_sls_plot3_actual_vs_limit_display(row) == "3.791 MPa > 3.354 MPa"
+    row = {
+        "Demand": "Compression",
+        "Actual stress (MPa)": -6.239,
+        "Limit stress (MPa)": -27.0,
+        "Status": "Preview PASS",
+    }
+    assert analysis_page._girder_sls_plot3_actual_vs_limit_display(row) == "-6.239 MPa ≥ -27.000 MPa"
