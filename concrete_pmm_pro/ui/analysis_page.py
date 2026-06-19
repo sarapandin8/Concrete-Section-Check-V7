@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 from collections.abc import Mapping
 from datetime import datetime
 from html import escape
@@ -2980,6 +2981,31 @@ def _beam_uls_float(value: object) -> float:
     except (TypeError, ValueError):
         return float("nan")
     return numeric if math.isfinite(numeric) else float("nan")
+
+
+def _beam_uls_shear_utilization_parts(value: object) -> tuple[float, float]:
+    """Parse formatted shear utilization text into strength/detailing D/C values.
+
+    SHEAR.STATUS3 uses this as a display-layer recovery path for cached or
+    externally reconstructed shear rows that may preserve ``Utilization`` text
+    such as ``0.541 / det 0.757`` while losing one or both numeric D/C columns.
+    Numeric columns remain the preferred source of truth.
+    """
+
+    text = str(value or "").strip().replace(",", "")
+    if not text or text in {"-", "—"}:
+        return float("nan"), float("nan")
+    strength = float("nan")
+    detailing = float("nan")
+    lowered = text.lower()
+    # First number before any separator is the strength utilization.
+    match = re.search(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", lowered)
+    if match:
+        strength = _beam_uls_float(match.group(0))
+    det_match = re.search(r"\bdet\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", lowered)
+    if det_match:
+        detailing = _beam_uls_float(det_match.group(1))
+    return strength, detailing
 
 
 def _beam_uls_demand_dataframe_from_session(state: Mapping[str, object]) -> pd.DataFrame:
@@ -6463,17 +6489,10 @@ def _beam_uls_shear_design_rows_for_governing(shear_df: pd.DataFrame | None) -> 
 def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
     """Summarize overall shear status from non-boundary design rows.
 
-    SHEAR.STATUS1 deliberately derives the status from the explicit strength and
-    detailing gates instead of trusting the row-level ``Status`` string alone.
-    Older cached/source rows could carry ``Status = FAIL`` even when the visible
-    gate evidence said ``Strength status = PASS``, ``Detailing status = PASS``,
-    ``Strength D/C <= 1.0``, and ``Detailing D/C <= 1.0``.  That produced the
-    misleading UI state where the shear diagram was entirely below φVn and the
-    shear workspace card showed PASS, while the compact summary still reported
-    FAIL.
-
-    The overall shear result should fail only when an explicit strength,
-    detailing, zone-coverage, or data-readiness gate fails/requires layout.
+    The compact ULS table must agree with the actual shear evidence shown in
+    the shear workspace.  SHEAR.STATUS3 makes finite numeric gates the source of
+    truth and treats bare/stale ``FAIL`` text without numeric evidence as stale
+    review metadata, not as a controlling failure.
     """
 
     df = _beam_uls_shear_design_rows_for_governing(shear_df)
@@ -6485,12 +6504,26 @@ def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
     saw_review = False
 
     for _, row in df.iterrows():
-        status = str(row.get("Status") or "").upper()
-        strength_status = str(row.get("Strength status") or "").upper()
-        detailing_status = str(row.get("Detailing status") or "").upper()
-        vn_limit_status = str(row.get("Vn limit status") or "").upper()
-        strength_dc = _beam_uls_float(row.get("Strength D/C value", row.get("D/C value")))
+        status = str(row.get("Status") or "").strip().upper()
+        strength_status = str(row.get("Strength status") or "").strip().upper()
+        detailing_status = str(row.get("Detailing status") or "").strip().upper()
+        vn_limit_status = str(row.get("Vn limit status") or "").strip().upper()
+
+        strength_dc = _beam_uls_float(row.get("Strength D/C value"))
+        if not math.isfinite(strength_dc):
+            strength_dc = _beam_uls_float(row.get("D/C value"))
         detailing_dc = _beam_uls_float(row.get("Detailing D/C value"))
+        if not math.isfinite(strength_dc) or not math.isfinite(detailing_dc):
+            util_strength, util_detailing = _beam_uls_shear_utilization_parts(row.get("Utilization"))
+            if not math.isfinite(strength_dc):
+                strength_dc = util_strength
+            if not math.isfinite(detailing_dc):
+                detailing_dc = util_detailing
+        if not math.isfinite(strength_dc):
+            demand = abs(_beam_uls_float(row.get("Abs demand kN", row.get("Demand kN"))))
+            phi_vn = _beam_uls_float(row.get("φVn kN"))
+            if math.isfinite(demand) and math.isfinite(phi_vn) and phi_vn > 0.0:
+                strength_dc = demand / phi_vn
 
         if status in {"NO DEMAND", "NOT APPLICABLE"}:
             saw_no_demand = True
@@ -6501,25 +6534,22 @@ def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
             saw_review = True
             continue
 
-        # SHEAR.STATUS2: numeric gate evidence is the source of truth when it is
-        # finite.  Cached rows from earlier UI passes can still carry text such
-        # as ``Status = FAIL`` or even ``Strength status = FAIL`` after the
-        # visible D/C values have been recalculated and are clearly below 1.0.
-        # Do not let stale text override finite strength/detailing utilization.
         strength_dc_is_finite = math.isfinite(strength_dc)
         detailing_dc_is_finite = math.isfinite(detailing_dc)
         numeric_strength_fail = strength_dc_is_finite and strength_dc > 1.0 + 1.0e-9
         numeric_detailing_fail = detailing_dc_is_finite and detailing_dc > 1.0 + 1.0e-9
-        textual_strength_fail = strength_status == "FAIL" and not strength_dc_is_finite
-        textual_detailing_fail = detailing_status == "FAIL" and not detailing_dc_is_finite
-        if numeric_strength_fail or numeric_detailing_fail or textual_strength_fail or textual_detailing_fail:
+        if numeric_strength_fail or numeric_detailing_fail:
             return "FAIL"
 
-        explicit_gates_present = bool(strength_status or detailing_status or strength_dc_is_finite or detailing_dc_is_finite)
-        if explicit_gates_present:
-            strength_clear = (not strength_dc_is_finite or strength_dc <= 1.0 + 1.0e-9) and strength_status not in {"DATA REQUIRED", "NOT READY", "INCOMPLETE"}
-            detailing_clear = (not detailing_dc_is_finite or detailing_dc <= 1.0 + 1.0e-9) and detailing_status not in {"DATA REQUIRED", "NOT READY", "INCOMPLETE"}
+        finite_gate_present = strength_dc_is_finite or detailing_dc_is_finite
+        if finite_gate_present:
+            strength_clear = (not strength_dc_is_finite) or strength_dc <= 1.0 + 1.0e-9
+            detailing_clear = (not detailing_dc_is_finite) or detailing_dc <= 1.0 + 1.0e-9
             if strength_clear and detailing_clear:
+                # Finite current D/C values override stale text copied from an
+                # older row cache.  This is the exact condition seen when the
+                # shear card/diagram shows PASS but the compact table still
+                # displayed FAIL.
                 saw_pass = True
                 continue
 
@@ -6527,21 +6557,24 @@ def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
             saw_review = True
             continue
 
-        if status == "FAIL":
-            return "FAIL"
-        if status == "PASS":
+        if status == "FAIL" or strength_status == "FAIL" or detailing_status == "FAIL":
+            # A FAIL label without finite numeric evidence is not trustworthy
+            # enough to control the compact table.  Keep it out of PASS/FAIL
+            # and allow calculated numeric rows to control the displayed result.
+            saw_review = True
+            continue
+        if status == "PASS" or strength_status == "PASS" or detailing_status == "PASS":
             saw_pass = True
         elif status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or not status:
             saw_review = True
 
-    if saw_review:
-        return "REVIEW"
     if saw_pass:
         return "PASS"
+    if saw_review:
+        return "REVIEW"
     if saw_no_demand:
         return "NO DEMAND"
     return "REVIEW"
-
 
 def _beam_uls_governing_shear_row(shear_df: pd.DataFrame | None) -> dict[str, object] | None:
     if shear_df is None or shear_df.empty:

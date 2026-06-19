@@ -1052,3 +1052,8 @@ No SLS solver equations, ULS equations, prestress/debond logic, geometry generat
 - Prevents `Shear = FAIL` when the visible shear card and diagram show Strength PASS, Detailing PASS, and D/C values below 1.0.
 - No shear equations or solver equations were changed.
 
+
+
+## SHEAR.STATUS3 — Shear Compact Status Stale-Row Hardening
+
+Beam/Girder ULS shear compact status now treats finite numeric D/C gates as the source of truth and ignores bare stale FAIL text without numeric gate evidence. This prevents the compact ULS table from reporting Shear = FAIL when the shear workspace card, diagram, strength D/C, and detailing D/C all show PASS.

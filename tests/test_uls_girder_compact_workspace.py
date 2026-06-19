@@ -2324,3 +2324,69 @@ def test_shear_status2_numeric_gate_failure_still_controls_over_stale_pass_text(
     )
 
     assert _beam_uls_shear_overall_status(shear) == "FAIL"
+
+
+def test_shear_status3_ignores_bare_stale_fail_when_numeric_design_rows_pass() -> None:
+    """A stale FAIL-only row must not control over finite current PASS evidence."""
+
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "PASS",
+                "Strength status": "PASS",
+                "Detailing status": "PASS",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand": "1,355.74 kN",
+                "Demand kN": 1355.74,
+                "Abs demand kN": 1355.74,
+                "Capacity": "φVn = 2,506.72 kN",
+                "Utilization": "0.541 / det 0.757",
+                "D/C value": 0.541,
+                "Strength D/C value": 0.541,
+                "Detailing D/C value": 0.757,
+                "Governing D/C value": 0.757,
+            },
+            {
+                "Check": "Shear",
+                "Status": "FAIL",  # stale row text without any current gate evidence
+                "Strength status": "FAIL",
+                "Detailing status": "FAIL",
+                "Station type": "LOAD STATION",
+                "Governing x": "10.000 m",
+                "Case": "Strength I",
+                "Demand": "-",
+                "Capacity": "-",
+                "Utilization": "-",
+                "D/C value": float("nan"),
+                "Strength D/C value": float("nan"),
+                "Detailing D/C value": float("nan"),
+                "Governing D/C value": float("nan"),
+            },
+        ]
+    )
+
+    assert _beam_uls_shear_overall_status(shear) == "PASS"
+
+
+def test_shear_status3_parses_utilization_text_when_numeric_columns_are_missing() -> None:
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",  # stale text
+                "Strength status": "FAIL",
+                "Detailing status": "FAIL",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand": "1,355.74 kN",
+                "Capacity": "φVn = 2,506.72 kN",
+                "Utilization": "0.541 / det 0.757",
+            }
+        ]
+    )
+
+    assert _beam_uls_shear_overall_status(shear) == "PASS"
