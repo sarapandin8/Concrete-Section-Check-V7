@@ -1053,7 +1053,10 @@ No SLS solver equations, ULS equations, prestress/debond logic, geometry generat
 - No shear equations or solver equations were changed.
 
 
+## SHEAR.STATUS4 — Support-Row Status Hardening Hotfix
 
-## SHEAR.STATUS3 — Shear Compact Status Stale-Row Hardening
+- Fixed a remaining Beam/Girder ULS shear compact-summary mismatch for Railway U-Girder.
+- When inserted critical shear sections exist, exact support `LOAD STATION` rows are treated as diagram/support-demand rows only and no longer override passing critical-section shear evidence.
+- Preserves true failures for eligible critical/interior design rows with D/C > 1.0.
+- Added regression tests for Railway-style support rows that previously kept the compact shear row at `FAIL` while the shear workspace card showed `PASS`.
 
-Beam/Girder ULS shear compact status now treats finite numeric D/C gates as the source of truth and ignores bare stale FAIL text without numeric gate evidence. This prevents the compact ULS table from reporting Shear = FAIL when the shear workspace card, diagram, strength D/C, and detailing D/C all show PASS.

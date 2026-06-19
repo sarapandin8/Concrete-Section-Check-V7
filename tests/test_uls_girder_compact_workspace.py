@@ -2390,3 +2390,120 @@ def test_shear_status3_parses_utilization_text_when_numeric_columns_are_missing(
     )
 
     assert _beam_uls_shear_overall_status(shear) == "PASS"
+
+
+def test_shear_status4_railway_support_load_rows_do_not_override_passing_critical_sections() -> None:
+    """Railway U-Girder may include exact support demand rows for the diagram.
+
+    When critical shear sections are inserted, exact support LOAD STATION rows
+    are diagram/support-demand rows only.  They must not keep the compact shear
+    status at FAIL when the critical section strength/detailing gates pass.
+    """
+
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "FAIL",
+                "Detailing status": "REVIEW",
+                "Station type": "LOAD STATION",
+                "Governing x": "0.000 m",
+                "Case": "Strength I",
+                "Demand": "-700.00 kN",
+                "Capacity": "-",
+                "Utilization": "-",
+                "Demand kN": -700.0,
+                "Strength D/C value": float("nan"),
+                "Detailing D/C value": float("nan"),
+                "Notes": "Exact support load-row coverage is not used for final shear acceptance.",
+            },
+            {
+                "Check": "Shear",
+                "Status": "PASS",
+                "Strength status": "PASS",
+                "Detailing status": "PASS",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Governing x": "1.000 m",
+                "Case": "Strength I",
+                "Demand": "-500.00 kN",
+                "Capacity": "φVn = 2,000.00 kN",
+                "Utilization": "0.250 / det 0.500",
+                "Demand kN": -500.0,
+                "Strength D/C value": 0.25,
+                "Detailing D/C value": 0.50,
+            },
+            {
+                "Check": "Shear",
+                "Status": "PASS",
+                "Strength status": "PASS",
+                "Detailing status": "PASS",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand": "1,355.74 kN",
+                "Capacity": "φVn = 2,506.72 kN",
+                "Utilization": "0.541 / det 0.757",
+                "Demand kN": 1355.74,
+                "Strength D/C value": 0.541,
+                "Detailing D/C value": 0.757,
+            },
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "FAIL",
+                "Detailing status": "REVIEW",
+                "Station type": "LOAD STATION",
+                "Governing x": "10.000 m",
+                "Case": "Strength I",
+                "Demand": "1,644.35 kN",
+                "Capacity": "-",
+                "Utilization": "-",
+                "Demand kN": 1644.35,
+                "Strength D/C value": float("nan"),
+                "Detailing D/C value": float("nan"),
+                "Notes": "Exact support load-row coverage is not used for final shear acceptance.",
+            },
+        ]
+    )
+    active = pd.DataFrame(
+        [
+            {"Active": True, "Station x (m)": 0.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": -700.0, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": "support"},
+            {"Active": True, "Station x (m)": 10.0, "Case Name": "Strength I", "Mux": 3805.24, "Vuy": 1644.35, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": "support"},
+        ]
+    )
+
+    assert _beam_uls_shear_overall_status(shear) == "PASS"
+    governing = _beam_uls_governing_shear_row(shear)
+    assert governing is not None
+    assert governing["Governing x"] == "9.000 m"
+
+    table = _beam_uls_check_table(active, shear_check_df=shear)
+    shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
+    assert shear_row["Status"] == "PASS"
+    assert shear_row["Governing x"] == "9.000 m"
+    assert shear_row["Utilization"] == "0.541 / det 0.757"
+
+
+def test_shear_status4_support_rows_still_control_when_no_critical_sections_exist() -> None:
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "FAIL",
+                "Detailing status": "PASS",
+                "Station type": "LOAD STATION",
+                "Governing x": "0.000 m",
+                "Case": "Strength I",
+                "Demand": "1,200.00 kN",
+                "Capacity": "φVn = 1,000.00 kN",
+                "Utilization": "1.200 / det 0.500",
+                "Demand kN": 1200.0,
+                "Strength D/C value": 1.20,
+                "Detailing D/C value": 0.50,
+            }
+        ]
+    )
+
+    assert _beam_uls_shear_overall_status(shear) == "FAIL"

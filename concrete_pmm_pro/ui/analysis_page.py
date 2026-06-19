@@ -6460,29 +6460,85 @@ def _beam_uls_torsion_diagram_boundary_dataframe(
     return pd.DataFrame(rows, columns=columns)
 
 
+def _beam_uls_shear_row_x_m(row: Mapping[str, object]) -> float:
+    """Return a numeric x-location from a shear result row when available."""
+
+    for key in ("Station x (m)", "x_m"):
+        value = _beam_uls_float(row.get(key))
+        if math.isfinite(value):
+            return float(value)
+    text = str(row.get("Governing x") or "").replace("m", "").strip()
+    return _beam_uls_float(text)
+
+
 def _beam_uls_shear_design_rows_for_governing(shear_df: pd.DataFrame | None) -> pd.DataFrame:
     """Return rows eligible for the displayed governing shear station.
 
     The displayed governing shear station must be a strength-demand station, not
     an arbitrary row selected only because a zone-wide detailing gate failed.
-    SHEAR.GOVERNING1 separates two ideas that the previous implementation mixed:
-
-    * governing shear location/diagram marker = maximum sectional strength D/C
-      or maximum |Vu| when strength D/C is not available;
-    * overall shear acceptance = any strength/detailing gate failure in the
-      calculated rows.
-
-    This keeps the compact table and chart aligned with the shear diagram while
-    still allowing minimum Av/s or spacing failures to fail the overall check.
+    SHEAR.STATUS4 adds the missing bridge-girder support-row rule: when inserted
+    critical shear sections exist, exact support load rows are treated as
+    demand-diagram rows only and must not fail the compact shear summary.
     """
 
     if shear_df is None or shear_df.empty:
         return pd.DataFrame()
     df = shear_df.copy()
-    if "Station type" in df.columns:
-        df = df[df["Station type"].astype(str) != "DIAGRAM BOUNDARY"].copy()
+
+    station_type = df.get("Station type", pd.Series(index=df.index, dtype=object)).astype(str).str.upper()
+    status_text = df.get("Status", pd.Series(index=df.index, dtype=object)).astype(str).str.upper()
+    notes_text = df.get("Notes", pd.Series(index=df.index, dtype=object)).astype(str).str.upper()
+
+    # Exclude plot/capacity-only boundary rows regardless of the exact wording
+    # used by older cached results.  These rows are for graph continuity, not
+    # ULS acceptance.
+    boundary_mask = (
+        station_type.str.contains("BOUNDARY", na=False)
+        | status_text.str.contains("BOUNDARY", na=False)
+        | notes_text.str.contains("CAPACITY DIAGRAM BOUNDARY", na=False)
+    )
+    df = df[~boundary_mask].copy()
+    if df.empty:
+        return df
+
     if "Status" in df.columns:
         df = df[~df["Status"].astype(str).isin(["DIAGRAM BOUNDARY", "NO DEMAND", "BOUNDARY SKIPPED"])].copy()
+    if df.empty:
+        return df
+
+    # If the shear workflow inserted critical sections, exact end support rows
+    # from the Loads diagram should remain visible in the peak-demand card but
+    # should not decide the sectional shear pass/fail.  This matches the UI text
+    # "diagram/support demand only" and prevents Railway U-Girder support rows
+    # with no explicit end-zone coverage from overriding a passing critical
+    # section check.
+    station_type = df.get("Station type", pd.Series(index=df.index, dtype=object)).astype(str).str.upper()
+    has_critical = station_type.eq("CRITICAL SHEAR SECTION").any()
+    if has_critical:
+        work = df.copy()
+        work["__x_m"] = work.apply(lambda row: _beam_uls_shear_row_x_m(row), axis=1)
+        if "Case" in work.columns:
+            case_series = work["Case"].astype(str)
+        elif "Case Name" in work.columns:
+            case_series = work["Case Name"].astype(str)
+        else:
+            case_series = pd.Series(["-"] * len(work), index=work.index)
+        work["__case"] = case_series
+        support_indices: set[object] = set()
+        for case_name, case_df in work.groupby("__case", dropna=False):
+            finite_x = pd.to_numeric(case_df["__x_m"], errors="coerce").dropna()
+            if len(finite_x) < 2:
+                continue
+            x_min = float(finite_x.min())
+            x_max = float(finite_x.max())
+            if not math.isfinite(x_min) or not math.isfinite(x_max) or abs(x_max - x_min) <= 1.0e-9:
+                continue
+            case_station_type = case_df.get("Station type", pd.Series(index=case_df.index, dtype=object)).astype(str).str.upper()
+            is_load_station = case_station_type.eq("LOAD STATION") | case_station_type.eq("-") | case_station_type.eq("")
+            at_support = case_df["__x_m"].map(lambda x: math.isfinite(_beam_uls_float(x)) and (abs(float(x) - x_min) <= 1.0e-8 or abs(float(x) - x_max) <= 1.0e-8))
+            support_indices.update(case_df[is_load_station & at_support].index.tolist())
+        if support_indices:
+            df = work.drop(index=list(support_indices), errors="ignore").drop(columns=["__x_m", "__case"], errors="ignore")
     return df
 
 
