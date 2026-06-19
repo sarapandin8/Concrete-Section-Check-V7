@@ -1,3 +1,11 @@
+### UI.PLOT1 — Engineering Stress Diagram Plot Style
+
+Added a display-only engineering stress diagram style layer for full-length SLS stress plots. The updated plots use report-style title/subtitle typography, stronger top/bottom stress curves, explicit compression/tension limit colors, a visible 0 MPa reference line, bottom legend box, framed axes, and clearer governing tension/compression markers. This milestone applies first to Beam/Girder SLS full-length stress diagrams and Railway U-Girder service multi-fiber stress diagrams.
+
+No stress solver, Pe(x), load, section-basis, code-limit formula, data editor, widget key, project schema, geometry, prestress/debonding, or ULS logic was changed.
+
+See `docs/design/ui_plot1.md`.
+
 ### UI.THEME1 — Commercial Engineering Theme Foundation
 
 Added a visual-only commercial engineering theme foundation inspired by the user's preferred dark-navy engineering tool UI. The theme improves the app background, dark navy section/expander bars, sidebar foundation, metric cards, table/editor chrome, plot panels, existing custom cards, alerts, and input borders while preserving the current workspace/page structure.

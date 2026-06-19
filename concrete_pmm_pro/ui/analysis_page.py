@@ -12653,6 +12653,7 @@ def _railway_u_girder_add_labeled_limit_line(
     y_value: float,
     label: str,
     annotation_yshift: int = 0,
+    line_color: str | None = None,
 ) -> None:
     """Add a limit line with an on-line label for web/slab material clarity."""
 
@@ -12662,7 +12663,7 @@ def _railway_u_girder_add_labeled_limit_line(
             y=[y_value, y_value],
             mode="lines",
             name=label,
-            line={"dash": "dash", "width": 2},
+            line={"dash": "dash", "width": 2.6, "color": line_color or _ENGINEERING_STRESS_PLOT_COLORS["compression_limit"]},
             hovertemplate=f"{escape(label)}<br>stress=%{{y:.3f}} MPa<extra></extra>",
         )
     )
@@ -12678,6 +12679,119 @@ def _railway_u_girder_add_labeled_limit_line(
         bordercolor="rgba(0,0,0,0.18)",
         borderwidth=1,
         font={"size": 11},
+    )
+
+
+# UI.PLOT1: commercial engineering stress diagram style foundation.
+# Legacy axis text retained for tests/docs: Stress (MPa) · compression negative / tension positive
+# Display-only plot polish: no stress solver, Pe(x), load, section-basis, or code-limit formula changes.
+_ENGINEERING_STRESS_PLOT_COLORS = {
+    "top": "#1565c0",
+    "bottom": "#64b5f6",
+    "web_top": "#0d47a1",
+    "web_bottom": "#42a5f5",
+    "slab_top": "#7e57c2",
+    "slab_bottom": "#26a69a",
+    "compression_limit": "#e53935",
+    "tension_limit": "#ff8ab3",
+    "zero": "#4a4a4a",
+    "governing_tension": "#2e7d32",
+    "governing_compression": "#00897b",
+}
+
+
+def _engineering_stress_plot_color_for_fiber(fiber: object) -> str:
+    """Return stable UI.PLOT1 colors for SLS stress diagram fiber names."""
+
+    name = str(fiber).strip().lower()
+    if "slab" in name and "top" in name:
+        return _ENGINEERING_STRESS_PLOT_COLORS["slab_top"]
+    if "slab" in name and "bottom" in name:
+        return _ENGINEERING_STRESS_PLOT_COLORS["slab_bottom"]
+    if "web" in name and "top" in name:
+        return _ENGINEERING_STRESS_PLOT_COLORS["web_top"]
+    if "web" in name and "bottom" in name:
+        return _ENGINEERING_STRESS_PLOT_COLORS["web_bottom"]
+    if "top" in name:
+        return _ENGINEERING_STRESS_PLOT_COLORS["top"]
+    if "bottom" in name:
+        return _ENGINEERING_STRESS_PLOT_COLORS["bottom"]
+    return _ENGINEERING_STRESS_PLOT_COLORS["top"]
+
+
+def _apply_engineering_stress_plot_style(
+    fig: go.Figure,
+    *,
+    height: int,
+    title: str,
+    subtitle: str,
+    yaxis_title: str = "Stress (MPa) — compression negative / tension positive",
+    bottom_margin: int = 128,
+) -> None:
+    """Apply report-style SLS stress diagram chrome without changing calculated data."""
+
+    fig.update_layout(
+        height=height,
+        margin={"l": 72, "r": 44, "t": 92, "b": bottom_margin},
+        title={
+            "text": f"<b>{escape(title)}</b><br><sup>{escape(subtitle)}</sup>",
+            "x": 0.5,
+            "xanchor": "center",
+            "font": {"size": 24, "color": "#111827"},
+        },
+        xaxis_title="Distance from left end of member (m)",
+        yaxis_title=yaxis_title,
+        legend={
+            "orientation": "h",
+            "yanchor": "top",
+            "y": -0.22,
+            "xanchor": "center",
+            "x": 0.5,
+            "bgcolor": "rgba(255,255,255,0.92)",
+            "bordercolor": "rgba(15,23,42,0.16)",
+            "borderwidth": 1,
+        },
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+        hovermode="x unified",
+        font={"family": "Arial, sans-serif", "size": 13, "color": "#1f2937"},
+    )
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(15,23,42,0.08)",
+        zeroline=False,
+        showline=True,
+        linecolor="rgba(15,23,42,0.75)",
+        mirror=True,
+        ticks="outside",
+        tickfont={"size": 12},
+        title_font={"size": 16},
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="rgba(15,23,42,0.10)",
+        zeroline=False,
+        showline=True,
+        linecolor="rgba(15,23,42,0.75)",
+        mirror=True,
+        ticks="outside",
+        tickfont={"size": 12},
+        title_font={"size": 16},
+    )
+
+
+def _add_engineering_zero_stress_line(fig: go.Figure) -> None:
+    """Add the visible 0 MPa reference line used by UI.PLOT1 stress diagrams."""
+
+    fig.add_hline(
+        y=0.0,
+        line_dash="dot",
+        line_color=_ENGINEERING_STRESS_PLOT_COLORS["zero"],
+        line_width=2,
+        annotation_text="0 MPa",
+        annotation_position="top left",
+        annotation_font_size=12,
+        annotation_font_color="#374151",
     )
 
 
@@ -12703,6 +12817,8 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
                 y=group["Total stress (MPa)"],
                 mode="lines+markers",
                 name=str(fiber),
+                marker={"size": 8, "symbol": "cross", "color": _engineering_stress_plot_color_for_fiber(fiber)},
+                line={"width": 3, "color": _engineering_stress_plot_color_for_fiber(fiber)},
                 hovertemplate=(
                     f"{escape(str(fiber))}<br>"
                     "x=%{x:.3f} m<br>stress=%{y:.3f} MPa<br>"
@@ -12730,6 +12846,7 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
         y_value=-web_comp,
         label=f"Web compression limit = -{web_comp:.3f} MPa",
         annotation_yshift=-8,
+        line_color=_ENGINEERING_STRESS_PLOT_COLORS["compression_limit"],
     )
     _railway_u_girder_add_labeled_limit_line(
         fig,
@@ -12738,6 +12855,7 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
         y_value=web_tens,
         label=f"Web tension limit = {web_tens:.3f} MPa",
         annotation_yshift=10,
+        line_color=_ENGINEERING_STRESS_PLOT_COLORS["tension_limit"],
     )
     _railway_u_girder_add_labeled_limit_line(
         fig,
@@ -12746,6 +12864,7 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
         y_value=-slab_comp,
         label=f"Slab compression limit = -{slab_comp:.3f} MPa",
         annotation_yshift=8,
+        line_color=_ENGINEERING_STRESS_PLOT_COLORS["compression_limit"],
     )
     _railway_u_girder_add_labeled_limit_line(
         fig,
@@ -12754,41 +12873,19 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
         y_value=slab_tens,
         label=f"Slab tension limit = {slab_tens:.3f} MPa",
         annotation_yshift=-12,
+        line_color=_ENGINEERING_STRESS_PLOT_COLORS["tension_limit"],
     )
-    fig.add_hline(y=0.0, line_dash="dot", annotation_text="0 MPa", annotation_position="top left")
+    _add_engineering_zero_stress_line(fig)
     title = _girder_sls_graph_stage_title(stage_label)
-    fig.update_layout(
-        height=600,
-        margin={"l": 34, "r": 42, "t": 92, "b": 120},
-        title={
-            "text": (
-                f"<b>Concrete Stress — Railway U-Girder {escape(title)}</b><br>"
-                "<sup>Full gross U-section elastic service preview · separate web/slab material limits · compression negative / tension positive</sup>"
-            ),
-            "x": 0.5,
-            "xanchor": "center",
-        },
-        xaxis_title="Distance from left end of member (m)",
-        yaxis_title="Stress (MPa) · compression negative / tension positive",
-        legend={"orientation": "h", "yanchor": "top", "y": -0.22, "xanchor": "center", "x": 0.5},
-        plot_bgcolor="white",
-        hovermode="x unified",
+    _apply_engineering_stress_plot_style(
+        fig,
+        height=620,
+        title=f"Concrete Stress — Railway U-Girder {title}",
+        subtitle="Full gross U-section elastic service preview · separate web/slab material limits · compression negative / tension positive",
+        yaxis_title="Stress (MPa) — compression negative / tension positive",
+        bottom_margin=132,
     )
-    fig.update_xaxes(
-        range=[x_min, x_label_max + pad],
-        showgrid=True,
-        gridcolor="rgba(0,0,0,0.14)",
-        zeroline=True,
-        zerolinecolor="rgba(0,0,0,0.22)",
-        ticks="outside",
-    )
-    fig.update_yaxes(
-        showgrid=True,
-        gridcolor="rgba(0,0,0,0.14)",
-        zeroline=True,
-        zerolinecolor="rgba(0,0,0,0.28)",
-        ticks="outside",
-    )
+    fig.update_xaxes(range=[x_min, x_label_max + pad])
     return fig
 
 
@@ -12810,15 +12907,18 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
             return rail_fig
     x = envelope["Station x (m)"]
 
-    def add_trace(*, y_col: str, name: str, marker_symbol: str, dash: str | None = None) -> None:
+    def add_trace(*, y_col: str, name: str, marker_symbol: str, color: str, dash: str | None = None) -> None:
+        line_style = {"width": 3, "color": color}
+        if dash:
+            line_style["dash"] = dash
         fig.add_trace(
             go.Scatter(
                 x=x,
                 y=envelope[y_col],
                 mode="lines+markers",
                 name=name,
-                marker={"symbol": marker_symbol, "size": 8},
-                line={"dash": dash} if dash else {},
+                marker={"symbol": marker_symbol, "size": 9, "color": color},
+                line=line_style,
                 hovertemplate=f"x=%{{x:.3f}} m<br>{escape(name)}=%{{y:.3f}} MPa<extra></extra>",
             )
         )
@@ -12828,15 +12928,15 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
     # to avoid visual clutter.  The legacy strings "Top total stress" and "Bottom total stress"
     # remain in source/tests as the single-case labels.
     if _girder_sls_graph_series_is_distinct(envelope, "Top maximum (MPa)", "Top minimum (MPa)"):
-        add_trace(y_col="Top maximum (MPa)", name="Maximum stress at top of member", marker_symbol="cross")
-        add_trace(y_col="Top minimum (MPa)", name="Minimum stress at top of member", marker_symbol="x", dash="dot")
+        add_trace(y_col="Top maximum (MPa)", name="Maximum stress at top of member", marker_symbol="cross", color=_ENGINEERING_STRESS_PLOT_COLORS["top"])
+        add_trace(y_col="Top minimum (MPa)", name="Minimum stress at top of member", marker_symbol="x", color=_ENGINEERING_STRESS_PLOT_COLORS["top"], dash="dot")
     else:
-        add_trace(y_col="Top maximum (MPa)", name="Top total stress", marker_symbol="cross")
+        add_trace(y_col="Top maximum (MPa)", name="Top total stress", marker_symbol="cross", color=_ENGINEERING_STRESS_PLOT_COLORS["top"])
     if _girder_sls_graph_series_is_distinct(envelope, "Bottom maximum (MPa)", "Bottom minimum (MPa)"):
-        add_trace(y_col="Bottom maximum (MPa)", name="Maximum stress at bottom of member", marker_symbol="triangle-up")
-        add_trace(y_col="Bottom minimum (MPa)", name="Minimum stress at bottom of member", marker_symbol="circle", dash="dot")
+        add_trace(y_col="Bottom maximum (MPa)", name="Maximum stress at bottom of member", marker_symbol="cross", color=_ENGINEERING_STRESS_PLOT_COLORS["bottom"])
+        add_trace(y_col="Bottom minimum (MPa)", name="Minimum stress at bottom of member", marker_symbol="circle", color=_ENGINEERING_STRESS_PLOT_COLORS["bottom"], dash="dot")
     else:
-        add_trace(y_col="Bottom minimum (MPa)", name="Bottom total stress", marker_symbol="circle")
+        add_trace(y_col="Bottom minimum (MPa)", name="Bottom total stress", marker_symbol="cross", color=_ENGINEERING_STRESS_PLOT_COLORS["bottom"])
 
     compression_limit, tension_limit, profile_label = _girder_sls_diagram_limit_summary(stage_label)
     x_min = float(x.min())
@@ -12850,7 +12950,7 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
             y=[-compression_limit, -compression_limit],
             mode="lines",
             name="Compression limit",  # legacy string: Compression preview limit
-            line={"dash": "dash", "width": 2},
+            line={"dash": "dash", "width": 2.6, "color": _ENGINEERING_STRESS_PLOT_COLORS["compression_limit"]},
             hovertemplate=f"Compression limit = -{compression_limit:.3f} MPa<br>{escape(profile_label)}<extra></extra>",
         )
     )
@@ -12862,7 +12962,7 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
                 y=tension_y,
                 mode="lines",
                 name="Tension limit",  # legacy string: Tension preview limit
-                line={"dash": "dash", "width": 2},
+                line={"dash": "dash", "width": 2.6, "color": _ENGINEERING_STRESS_PLOT_COLORS["tension_limit"]},
                 hovertemplate=(
                     "x=%{x:.3f} m<br>"
                     "Tension limit=%{y:.3f} MPa<br>"
@@ -12886,7 +12986,12 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
                 y=[actual],
                 mode="markers+text",
                 name=f"Governing {demand.lower()}",
-                marker={"size": 14, "symbol": "diamond-open" if demand == "Tension" else "circle-open", "line": {"width": 2}},
+                marker={
+                    "size": 16,
+                    "symbol": "circle-open",
+                    "color": _ENGINEERING_STRESS_PLOT_COLORS["governing_tension"] if demand == "Tension" else _ENGINEERING_STRESS_PLOT_COLORS["governing_compression"],
+                    "line": {"width": 3},
+                },
                 text=[f"Gov. {demand}"],
                 textposition="top center" if demand == "Tension" else "bottom center",
                 hovertemplate=(
@@ -12899,36 +13004,16 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
                 ),
             )
         )
-    fig.add_hline(y=0.0, line_dash="dot", annotation_text="0 MPa", annotation_position="top left")
+    _add_engineering_zero_stress_line(fig)
     title = _girder_sls_graph_stage_title(stage_label)
     subtitle = _girder_sls_graph_subtitle(stage_label)
-    fig.update_layout(
-        height=540,
-        margin={"l": 28, "r": 28, "t": 86, "b": 108},
-        title={
-            "text": f"<b>Concrete Stress — {escape(title)}</b><br><sup>{escape(subtitle)}</sup>",
-            "x": 0.5,
-            "xanchor": "center",
-        },
-        xaxis_title="Distance from left end of member (m)",
-        yaxis_title="Stress (MPa) · compression negative / tension positive",
-        legend={"orientation": "h", "yanchor": "top", "y": -0.22, "xanchor": "center", "x": 0.5},
-        plot_bgcolor="white",
-        hovermode="x unified",
-    )
-    fig.update_xaxes(
-        showgrid=True,
-        gridcolor="rgba(0,0,0,0.14)",
-        zeroline=True,
-        zerolinecolor="rgba(0,0,0,0.22)",
-        ticks="outside",
-    )
-    fig.update_yaxes(
-        showgrid=True,
-        gridcolor="rgba(0,0,0,0.14)",
-        zeroline=True,
-        zerolinecolor="rgba(0,0,0,0.28)",
-        ticks="outside",
+    _apply_engineering_stress_plot_style(
+        fig,
+        height=600,
+        title=f"Concrete Stress — {title}",
+        subtitle=subtitle,
+        yaxis_title="Stress (MPa) — compression negative / tension positive",
+        bottom_margin=126,
     )
     return fig
 

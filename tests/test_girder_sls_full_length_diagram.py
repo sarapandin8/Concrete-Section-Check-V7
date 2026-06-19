@@ -318,3 +318,25 @@ def test_uls_girder1_uses_primary_actions_only_in_default_decision_display() -> 
     assert '"Check": "Torsion"' in SOURCE
     assert '"Status": "PLANNED"' in SOURCE
     assert "Secondary actions Muy, Vux, and Nu are kept here for audit" in SOURCE
+
+
+def test_ui_plot1_engineering_stress_diagram_style_helper_is_display_only() -> None:
+    assert "UI.PLOT1: commercial engineering stress diagram style foundation" in SOURCE
+    assert "_apply_engineering_stress_plot_style" in SOURCE
+    assert "_add_engineering_zero_stress_line" in SOURCE
+    assert "_ENGINEERING_STRESS_PLOT_COLORS" in SOURCE
+    assert "#1565c0" in SOURCE
+    assert "#64b5f6" in SOURCE
+    assert "#e53935" in SOURCE
+    assert "#ff8ab3" in SOURCE
+    assert "Display-only plot polish: no stress solver, Pe(x), load, section-basis, or code-limit formula changes" in SOURCE
+
+
+def test_ui_plot1_governing_markers_and_limit_lines_are_report_style() -> None:
+    assert 'line={"dash": "dash", "width": 2.6, "color": _ENGINEERING_STRESS_PLOT_COLORS["compression_limit"]}' in SOURCE
+    assert 'line={"dash": "dash", "width": 2.6, "color": _ENGINEERING_STRESS_PLOT_COLORS["tension_limit"]}' in SOURCE
+    assert '"symbol": "circle-open"' in SOURCE
+    assert '"governing_tension"' in SOURCE
+    assert '"governing_compression"' in SOURCE
+    assert 'legend={\n            "orientation": "h"' in SOURCE
+    assert 'mirror=True' in SOURCE
