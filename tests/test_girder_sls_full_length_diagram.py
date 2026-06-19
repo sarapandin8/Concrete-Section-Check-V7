@@ -110,6 +110,18 @@ def test_sls_graph1_has_commercial_style_stress_diagram_polish() -> None:
     assert "legend={\"orientation\": \"h\"" in SOURCE
 
 
+
+def test_sls_plot2_adds_decision_diagnosis_layout_without_solver_changes() -> None:
+    assert "UI.PLOT2" in SOURCE
+    assert "SLS decision summary" in SOURCE
+    assert "Failure diagnosis" in SOURCE
+    assert "Decision check" in SOURCE
+    assert "Governing stress summary" in SOURCE
+    assert "demand / applicable preview limit" in SOURCE
+    assert "does not change stress equations, Pe(x), material routing, or code-limit formulas" in SOURCE
+    assert "height=690" in SOURCE
+    assert "height=700" in SOURCE
+
 def test_sls_graph1_preserves_internal_sign_convention() -> None:
     assert "keeps the internal app convention" in SOURCE
     assert "compression is negative and tension is positive" in SOURCE
@@ -137,7 +149,7 @@ def test_sls_tension_default1_defaults_to_verified_bonded_reinforcement() -> Non
 def test_sls_limit4_1_tensile_limit_guide_is_visible_in_full_length_diagram() -> None:
     assert "CODE.SLS.LIMIT4.1" in SOURCE
     assert "_render_girder_sls_diagram_tensile_limit_guide" in SOURCE
-    assert "expanded=True" in SOURCE
+    assert "expanded=False" in SOURCE
     assert "Selected by the visible tensile stress limit guide" in SOURCE
     assert "graph limit lines and stage PASS/FAIL preview update from this profile" in SOURCE
 

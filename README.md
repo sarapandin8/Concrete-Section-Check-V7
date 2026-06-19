@@ -1087,3 +1087,8 @@ No SLS solver equations, ULS equations, prestress/debond logic, geometry generat
 - Prevents `Shear = FAIL` when the visible shear card and diagram show Strength PASS, Detailing PASS, and D/C values below 1.0.
 - No shear equations or solver equations were changed.
 
+
+
+## UI.PLOT2 — SLS Decision Plot and Failure Diagnosis Layout
+
+This milestone adds a decision-first SLS stress diagram panel with PASS/FAIL/REVIEW status, controlling stress demand, actual-versus-limit value, utilization, and direct failure/review diagnosis. It also collapses the tensile-limit guide by default and increases plot readability. This is display and diagnostic polish only; it does not change stress equations, Pe(x), material routing, load routing, project schema, or ULS/SLS solver logic.

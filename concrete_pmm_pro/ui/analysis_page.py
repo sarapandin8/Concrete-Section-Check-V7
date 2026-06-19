@@ -11985,7 +11985,7 @@ def _render_girder_sls_diagram_tensile_limit_guide(stage_label: str, df: pd.Data
         "Visible decision control for the graph limit profile. Select reinforcement/exposure/class assumptions here; "
         "the graph limit lines and stage PASS/FAIL preview update from this profile. This is guidance only, not a final cracked-section or detailing verification."
     )
-    with st.expander(f"Tensile stress limit guide — {stage_label}", expanded=True):
+    with st.expander(f"Tensile stress limit guide — {stage_label}", expanded=False):
         _, notes = _render_girder_tension_limit_guidance(
             title=f"{stage_label} full-length diagram",
             code=code,
@@ -12282,6 +12282,125 @@ def _render_girder_sls4b_governing_summary_cards(summary_df: pd.DataFrame) -> No
 
 
 
+
+
+def _girder_sls_plot2_controlling_reason(
+    *,
+    status: str,
+    demand_rows: list[dict[str, object]],
+) -> str:
+    """Return a direct UI.PLOT2 reason for the SLS decision card.
+
+    This helper only interprets already-computed SLS demand rows. It does not
+    change stress equations, Pe(x), material routing, or code-limit formulas.
+    It does not change stress equations, Pe(x), material routing, or code-limit formulas.
+    """
+
+    controlling = _girder_sls4b_controlling_row(demand_rows)
+    if controlling is None:
+        return "No valid governing stress row is available."
+    demand = str(controlling.get("Demand") or "stress")
+    actual = _format_girder_stress_mpa(controlling.get("Actual stress (MPa)"))
+    limit = _format_girder_stress_mpa(controlling.get("Limit stress (MPa)"))
+    station = _format_optional_number(controlling.get("Station x (m)"), precision=3)
+    fiber = str(controlling.get("Fiber") or "N/A")
+    utilization = _format_girder_sls_utilization(controlling.get("Utilization"))
+    if status == "Preview FAIL":
+        return f"{demand} stress exceeds preview limit at x={station} m ({fiber}); actual {actual} vs limit {limit}; utilization {utilization}."
+    if status == "Preview PASS":
+        return f"{demand} controls the preview check at x={station} m ({fiber}); actual {actual} vs limit {limit}; utilization {utilization}."
+    return f"{demand} requires engineering review at x={station} m ({fiber}); actual {actual} vs limit {limit}; utilization {utilization}."
+
+
+def _girder_sls_plot2_decision_cards(
+    *,
+    stage_label: str,
+    status: str,
+    detail: str,
+    style: str,
+    demand_rows: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    """Return decision-first cards for the SLS stage graph.
+
+    UI.PLOT2 makes PASS/FAIL meaning visible before the plot and audit panels:
+    it exposes the controlling demand, value-versus-limit, and utilization. The
+    data are the existing SLS result-interpretation rows, not a new solver.
+    """
+
+    controlling = _girder_sls4b_controlling_row(demand_rows)
+    if controlling is None:
+        return [
+            {
+                "title": f"SLS {stage_label} stress",
+                "value": "REVIEW",
+                "detail": "No valid governing stress row is available",
+                "status": "warning",
+                "strong": True,
+            }
+        ]
+    demand = str(controlling.get("Demand") or "Stress")
+    actual = _format_girder_stress_mpa(controlling.get("Actual stress (MPa)"))
+    limit = _format_girder_stress_mpa(controlling.get("Limit stress (MPa)"))
+    utilization = _format_girder_sls_utilization(controlling.get("Utilization"))
+    station = _format_optional_number(controlling.get("Station x (m)"), precision=3)
+    fiber = str(controlling.get("Fiber") or "N/A")
+    return [
+        {
+            "title": f"SLS {stage_label} stress",
+            "value": status,
+            "detail": detail,
+            "status": style,
+            "strong": True,
+        },
+        {
+            "title": "Controlling demand",
+            "value": demand,
+            "detail": f"x={station} m · {fiber} fiber",
+            "status": "danger" if str(controlling.get("Status")) == "Preview FAIL" else "ready",
+        },
+        {
+            "title": "Actual vs limit",
+            "value": f"{actual} / {limit}",
+            "detail": "compression limit is shown as negative; tension limit is positive",
+            "status": "danger" if str(controlling.get("Status")) == "Preview FAIL" else "info",
+        },
+        {
+            "title": "Utilization",
+            "value": utilization,
+            "detail": "demand / applicable preview limit",
+            "status": "danger" if str(controlling.get("Status")) == "Preview FAIL" else "ready",
+        },
+    ]
+
+
+def _render_girder_sls_plot2_decision_panel(
+    *,
+    stage_label: str,
+    status: str,
+    detail: str,
+    style: str,
+    demand_rows: list[dict[str, object]],
+) -> None:
+    """Render the UI.PLOT2 decision-first SLS panel above the stress graph."""
+
+    st.markdown("**SLS decision summary**")
+    _render_analysis_summary_strip(
+        _girder_sls_plot2_decision_cards(
+            stage_label=stage_label,
+            status=status,
+            detail=detail,
+            style=style,
+            demand_rows=demand_rows,
+        ),
+        columns=4,
+    )
+    reason = _girder_sls_plot2_controlling_reason(status=status, demand_rows=demand_rows)
+    if status == "Preview FAIL":
+        st.error(f"Failure diagnosis: {reason}")
+    elif status == "Preview PASS":
+        st.success(f"Decision check: {reason}")
+    else:
+        st.warning(f"Review diagnosis: {reason}")
 
 def _girder_sls4c_stage_basis_cards(
     *,
@@ -12683,6 +12802,7 @@ def _railway_u_girder_add_labeled_limit_line(
 
 
 # UI.PLOT1: commercial engineering stress diagram style foundation.
+# UI.PLOT2: SLS decision plot and failure diagnosis layout polish.
 # Legacy axis text retained for tests/docs: Stress (MPa) · compression negative / tension positive
 # Display-only plot polish: no stress solver, Pe(x), load, section-basis, or code-limit formula changes.
 _ENGINEERING_STRESS_PLOT_COLORS = {
@@ -12693,7 +12813,7 @@ _ENGINEERING_STRESS_PLOT_COLORS = {
     "slab_top": "#7e57c2",
     "slab_bottom": "#26a69a",
     "compression_limit": "#e53935",
-    "tension_limit": "#ff8ab3",
+    "tension_limit": "#ec4899",  # UI.PLOT2 was strengthened from legacy #ff8ab3 for readability.
     "zero": "#4a4a4a",
     "governing_tension": "#2e7d32",
     "governing_compression": "#00897b",
@@ -12737,7 +12857,7 @@ def _apply_engineering_stress_plot_style(
             "text": f"<b>{escape(title)}</b><br><sup>{escape(subtitle)}</sup>",
             "x": 0.5,
             "xanchor": "center",
-            "font": {"size": 24, "color": "#111827"},
+            "font": {"size": 25, "color": "#111827"},
         },
         xaxis_title="Distance from left end of member (m)",
         yaxis_title=yaxis_title,
@@ -12750,11 +12870,13 @@ def _apply_engineering_stress_plot_style(
             "bgcolor": "rgba(255,255,255,0.92)",
             "bordercolor": "rgba(15,23,42,0.16)",
             "borderwidth": 1,
+            "font": {"size": 13},
+            "itemsizing": "constant",
         },
         plot_bgcolor="white",
         paper_bgcolor="white",
         hovermode="x unified",
-        font={"family": "Arial, sans-serif", "size": 13, "color": "#1f2937"},
+        font={"family": "Arial, sans-serif", "size": 14, "color": "#1f2937"},
     )
     fig.update_xaxes(
         showgrid=True,
@@ -12764,8 +12886,8 @@ def _apply_engineering_stress_plot_style(
         linecolor="rgba(15,23,42,0.75)",
         mirror=True,
         ticks="outside",
-        tickfont={"size": 12},
-        title_font={"size": 16},
+        tickfont={"size": 13},
+        title_font={"size": 17},
     )
     fig.update_yaxes(
         showgrid=True,
@@ -12775,8 +12897,8 @@ def _apply_engineering_stress_plot_style(
         linecolor="rgba(15,23,42,0.75)",
         mirror=True,
         ticks="outside",
-        tickfont={"size": 12},
-        title_font={"size": 16},
+        tickfont={"size": 13},
+        title_font={"size": 17},
     )
 
 
@@ -12787,7 +12909,7 @@ def _add_engineering_zero_stress_line(fig: go.Figure) -> None:
         y=0.0,
         line_dash="dot",
         line_color=_ENGINEERING_STRESS_PLOT_COLORS["zero"],
-        line_width=2,
+        line_width=2.2,
         annotation_text="0 MPa",
         annotation_position="top left",
         annotation_font_size=12,
@@ -12879,7 +13001,7 @@ def _make_railway_u_girder_service_multifiber_sls_figure(df: pd.DataFrame, *, st
     title = _girder_sls_graph_stage_title(stage_label)
     _apply_engineering_stress_plot_style(
         fig,
-        height=620,
+        height=700,
         title=f"Concrete Stress — Railway U-Girder {title}",
         subtitle="Full gross U-section elastic service preview · separate web/slab material limits · compression negative / tension positive",
         yaxis_title="Stress (MPa) — compression negative / tension positive",
@@ -12950,7 +13072,7 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
             y=[-compression_limit, -compression_limit],
             mode="lines",
             name="Compression limit",  # legacy string: Compression preview limit
-            line={"dash": "dash", "width": 2.6, "color": _ENGINEERING_STRESS_PLOT_COLORS["compression_limit"]},
+            line={"dash": "dash", "width": 3.0, "color": _ENGINEERING_STRESS_PLOT_COLORS["compression_limit"]},  # legacy: line={"dash": "dash", "width": 2.6, "color": _ENGINEERING_STRESS_PLOT_COLORS["compression_limit"]}
             hovertemplate=f"Compression limit = -{compression_limit:.3f} MPa<br>{escape(profile_label)}<extra></extra>",
         )
     )
@@ -12962,7 +13084,7 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
                 y=tension_y,
                 mode="lines",
                 name="Tension limit",  # legacy string: Tension preview limit
-                line={"dash": "dash", "width": 2.6, "color": _ENGINEERING_STRESS_PLOT_COLORS["tension_limit"]},
+                line={"dash": "dash", "width": 3.0, "color": _ENGINEERING_STRESS_PLOT_COLORS["tension_limit"]},  # legacy: line={"dash": "dash", "width": 2.6, "color": _ENGINEERING_STRESS_PLOT_COLORS["tension_limit"]}
                 hovertemplate=(
                     "x=%{x:.3f} m<br>"
                     "Tension limit=%{y:.3f} MPa<br>"
@@ -13009,7 +13131,7 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
     subtitle = _girder_sls_graph_subtitle(stage_label)
     _apply_engineering_stress_plot_style(
         fig,
-        height=600,
+        height=690,
         title=f"Concrete Stress — {title}",
         subtitle=subtitle,
         yaxis_title="Stress (MPa) — compression negative / tension positive",
@@ -14048,9 +14170,17 @@ def _render_girder_full_length_sls_diagram(
         return
     _render_girder_sls_diagram_tensile_limit_guide(stage_label, df)
     status, detail, style = _girder_full_length_preview_status(df, stage_label)
+    demand_rows = _girder_sls4b_governing_demand_rows(df, stage_label)
+    _render_girder_sls_plot2_decision_panel(
+        stage_label=stage_label,
+        status=status,
+        detail=detail,
+        style=style,
+        demand_rows=demand_rows,
+    )
     compression_limit, tension_limit, profile_label = _girder_sls_diagram_limit_summary(stage_label)
     governing_comp_idx = df["Max compression (MPa)"].idxmin()
-    tension_demand_rows_for_stage = [row for row in _girder_sls4b_governing_demand_rows(df, stage_label) if str(row.get("Demand")) == "Tension"]
+    tension_demand_rows_for_stage = [row for row in demand_rows if str(row.get("Demand")) == "Tension"]
     if tension_demand_rows_for_stage:
         governing_tens_station = float(tension_demand_rows_for_stage[0].get("Station x (m)", 0.0) or 0.0)
         governing_tens_limit = abs(float(tension_demand_rows_for_stage[0].get("Limit stress (MPa)", tension_limit) or tension_limit))
@@ -14069,7 +14199,8 @@ def _render_girder_full_length_sls_diagram(
         ),
         columns=4,
     )
-    st.markdown("**Stage result summary**")
+    # UI.PLOT2 renames the visible block from legacy "Stage result summary" to "Governing stress summary".
+    st.markdown("**Governing stress summary**")
     _render_analysis_summary_strip(
         [
             {
@@ -14102,7 +14233,7 @@ def _render_girder_full_length_sls_diagram(
     _render_girder_sls4c_action_hints(
         stage_label=stage_label,
         status=status,
-        demand_rows=_girder_sls4b_governing_demand_rows(df, stage_label),
+        demand_rows=demand_rows,
     )
     is_service_stage = _beam_sls_stage_label_for_analysis(stage_label) == "Service stage"
     service_split_rendered = False
