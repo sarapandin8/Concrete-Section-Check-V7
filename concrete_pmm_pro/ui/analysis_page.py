@@ -3065,6 +3065,131 @@ def _beam_uls_shear_utilization_display(row: Mapping[str, object]) -> str:
     )
 
 
+def _beam_uls_shear_failure_diagnosis(row: Mapping[str, object] | None) -> dict[str, str]:
+    """Return user-facing diagnosis for the governing shear row.
+
+    UI.PLOT4: the shear workspace must explain *why* a row passes or fails
+    without requiring the engineer to open the raw audit table.  This helper
+    is display-only; it does not change shear capacity, detailing, or status
+    equations.
+    """
+
+    if row is None:
+        return {
+            "status": "NOT READY",
+            "title": "Shear diagnosis",
+            "reason": "No calculated shear row is available.",
+            "detail": "Press Calculate Shear after defining active ULS Vuy rows and provided stirrup zones.",
+            "action": "Define Loads → ULS and Sections → Rebar → Transverse Rebar, then calculate shear.",
+        }
+
+    status = str(row.get("Status") or "REVIEW").strip().upper()
+    strength_status = str(row.get("Strength status") or "-").strip().upper()
+    detailing_status = str(row.get("Detailing status") or "-").strip().upper()
+    vn_limit_status = str(row.get("Vn limit status") or "-").strip().upper()
+    strength_dc = _beam_uls_float(row.get("Strength D/C value", row.get("D/C value")))
+    detailing_dc = _beam_uls_float(row.get("Detailing D/C value"))
+    avs_dc = _beam_uls_float(row.get("Av/s min D/C"))
+    spacing_dc = _beam_uls_float(row.get("Spacing D/C"))
+    vn_limit_dc = _beam_uls_float(row.get("Vn limit D/C"))
+    demand = _format_beam_uls_audit_number(row.get("Demand kN"), unit="kN")
+    capacity = _format_beam_uls_audit_number(row.get("φVn kN"), unit="kN")
+    x_text = str(row.get("Governing x") or "-")
+    zone = str(row.get("Zone") or "-")
+    stirrup = str(row.get("Stirrup") or "-")
+    avs_provided = _format_beam_uls_audit_number(row.get("Av/s mm2/m"), unit="mm²/m")
+    avs_required = _format_beam_uls_audit_number(row.get("Av/s required mm2/m"), unit="mm²/m")
+    smax = _format_beam_uls_audit_number(row.get("s max mm"), unit="mm")
+
+    def _ratio_text(value: float) -> str:
+        return _format_beam_uls_ratio(value) if math.isfinite(value) else "-"
+
+    # Prioritize the true engineering blocker, not the broad Status text.
+    if math.isfinite(strength_dc) and strength_dc > 1.0 + 1.0e-9:
+        return {
+            "status": "FAIL",
+            "title": "Strength shear failure",
+            "reason": f"Vu exceeds φVn at x={x_text}.",
+            "detail": f"Vu = {demand}; φVn = {capacity}; Strength D/C = {_ratio_text(strength_dc)}.",
+            "action": "Increase shear capacity, revise section/stirrup design, or review the governing ULS Vuy demand.",
+        }
+
+    if math.isfinite(vn_limit_dc) and vn_limit_dc > 1.0 + 1.0e-9:
+        return {
+            "status": "FAIL",
+            "title": "Nominal shear limit failure",
+            "reason": f"Nominal Vn limit is exceeded at x={x_text}.",
+            "detail": f"Vn limit D/C = {_ratio_text(vn_limit_dc)}; Strength D/C = {_ratio_text(strength_dc)}.",
+            "action": "Review web width, effective shear depth, concrete strength, and maximum permitted shear capacity for the selected code route.",
+        }
+
+    if math.isfinite(avs_dc) and avs_dc > 1.0 + 1.0e-9:
+        return {
+            "status": "FAIL",
+            "title": "Minimum shear reinforcement failure",
+            "reason": f"Av/s provided is less than Av/s min in zone {zone} at x={x_text}.",
+            "detail": f"{stirrup}; Av/s provided = {avs_provided}; Av/s min = {avs_required}; Av/s min D/C = {_ratio_text(avs_dc)}.",
+            "action": "Reduce stirrup spacing, increase bar size, or increase number of legs in the controlling zone.",
+        }
+
+    if math.isfinite(spacing_dc) and spacing_dc > 1.0 + 1.0e-9:
+        return {
+            "status": "FAIL",
+            "title": "Maximum stirrup spacing failure",
+            "reason": f"Provided stirrup spacing exceeds smax in zone {zone} at x={x_text}.",
+            "detail": f"{stirrup}; smax = {smax}; Spacing D/C = {_ratio_text(spacing_dc)}.",
+            "action": "Reduce the spacing in the controlling shear zone or split the zone with closer spacing near the critical section.",
+        }
+
+    if status == "LAYOUT REQUIRED":
+        return {
+            "status": "LAYOUT REQUIRED",
+            "title": "Shear layout required",
+            "reason": f"No active provided stirrup zone covers the design/check station x={x_text}.",
+            "detail": str(row.get("Notes") or "Extend or add a transverse reinforcement zone for the governing station."),
+            "action": "Go to Sections → Rebar → Transverse Rebar and define an active zone covering the governing station.",
+        }
+
+    if status == "PASS" or (strength_status == "PASS" and detailing_status == "PASS"):
+        return {
+            "status": "PASS",
+            "title": "Shear check passes",
+            "reason": f"Strength and provided-stirrup detailing gates pass at x={x_text}.",
+            "detail": f"Vu = {demand}; φVn = {capacity}; {_beam_uls_shear_utilization_display(row)}.",
+            "action": "No shear reinforcement change is required for this preview row; continue reviewing development length, anchorage, and shop-drawing detailing separately.",
+        }
+
+    if detailing_status == "FAIL" or (math.isfinite(detailing_dc) and detailing_dc > 1.0 + 1.0e-9):
+        return {
+            "status": "FAIL",
+            "title": "Shear detailing failure",
+            "reason": f"A provided-stirrup detailing gate fails at x={x_text}.",
+            "detail": f"{stirrup}; {_beam_uls_shear_utilization_display(row)}.",
+            "action": "Open the shear audit table to identify whether Av/s minimum or spacing controls, then adjust the active transverse reinforcement zone.",
+        }
+
+    return {
+        "status": "REVIEW",
+        "title": "Shear check requires review",
+        "reason": f"Shear row status is {status or 'REVIEW'} at x={x_text}.",
+        "detail": str(row.get("Notes") or f"Strength status {strength_status}; detailing status {detailing_status}; Vn limit status {vn_limit_status}."),
+        "action": "Review input completeness, zone coverage, and shear audit output before relying on this result.",
+    }
+
+
+def _beam_uls_shear_diagnosis_cards(row: Mapping[str, object] | None) -> list[dict[str, object]]:
+    """Return compact cards for the shear diagnosis strip."""
+
+    diagnosis = _beam_uls_shear_failure_diagnosis(row)
+    status = diagnosis.get("status", "REVIEW")
+    card_status = "danger" if status == "FAIL" else ("ready" if status == "PASS" else "warning")
+    return [
+        {"title": "Shear diagnosis", "value": diagnosis.get("title", "Shear diagnosis"), "detail": diagnosis.get("reason", "-"), "status": card_status, "strong": True},
+        {"title": "Evidence", "value": diagnosis.get("detail", "-"), "detail": "Source: governing shear decision row", "status": "info"},
+        {"title": "Recommended action", "value": diagnosis.get("action", "Review shear audit output."), "detail": "Display guidance only; equations are unchanged", "status": "neutral"},
+    ]
+
+
 def _beam_uls_demand_dataframe_from_session(state: Mapping[str, object]) -> pd.DataFrame:
     """Return normalized Beam/Girder ULS station demand rows from Loads.
 
@@ -8920,26 +9045,48 @@ def _make_beam_uls_shear_capacity_figure(
                 )
             )
 
-    governing = _beam_uls_governing_shear_row(shear_check_df)
+    decision = _beam_uls_shear_decision_summary(shear_check_df)
+    governing = decision.get("row") if isinstance(decision.get("row"), dict) else _beam_uls_governing_shear_row(shear_check_df)
     if governing is not None:
         x_text = str(governing.get("Governing x") or "").replace(" m", "")
         x_val = _beam_uls_float(x_text)
         cap = _beam_uls_float(governing.get("φVn kN"))
-        util = _beam_uls_float(governing.get("Governing D/C value", governing.get("D/C value")))
-        if math.isfinite(x_val) and math.isfinite(cap) and math.isfinite(util):
+        gates = _beam_uls_shear_row_gate_values(governing)
+        status_text = str(decision.get("status") or governing.get("Status") or "REVIEW")
+        strength_dc = _beam_uls_float(gates.get("strength_dc"))
+        detailing_dc = _beam_uls_float(gates.get("detailing_dc"))
+        display_dc = detailing_dc if status_text == "FAIL" and math.isfinite(detailing_dc) and detailing_dc > 1.0 + 1.0e-9 else strength_dc
+        if not math.isfinite(display_dc):
+            display_dc = _beam_uls_float(gates.get("governing_dc"))
+        label = status_text
+        if math.isfinite(display_dc):
+            if status_text == "FAIL" and math.isfinite(detailing_dc) and detailing_dc > 1.0 + 1.0e-9 and detailing_dc >= (strength_dc if math.isfinite(strength_dc) else 0.0):
+                label = f"FAIL · {_beam_uls_shear_detailing_dc_label(governing)} {display_dc:.3f}"
+            else:
+                label = f"{status_text} · Strength D/C {display_dc:.3f}"
+        if math.isfinite(x_val) and math.isfinite(cap):
             fig.add_trace(
                 go.Scatter(
                     x=[x_val],
                     y=[cap],
                     mode="markers+text",
-                    text=[f"{governing.get('Status', 'REVIEW')} · D/C {util:.3f}"],
+                    text=[label],
                     textposition="top center",
                     name="Governing shear check",
-                    hovertemplate="x=%{x:.3f} m<br>Governing φVn=%{y:.3f} kN<extra></extra>",
+                    marker={"size": 11, "symbol": "diamond", "line": {"width": 1.5}},
+                    hovertemplate="x=%{x:.3f} m<br>Governing φVn=%{y:.3f} kN<br>" + label + "<extra></extra>",
                 )
             )
     subtitle = "demand vs φVn" if has_capacity_plot else "demand only — φVn not ready"
-    fig.update_layout(title={"text": f"Shear Check — Strength ULS<br><sup>{code_label} · {subtitle}</sup>"})
+    fig.update_layout(
+        title={"text": f"Shear Check — Strength ULS<br><sup>{code_label} · {subtitle}</sup>", "x": 0.5, "xanchor": "center"},
+        height=540,
+        margin={"l": 70, "r": 40, "t": 85, "b": 115},
+        legend={"orientation": "h", "yanchor": "top", "y": -0.20, "xanchor": "center", "x": 0.5, "font": {"size": 11}},
+        hovermode="x unified",
+    )
+    fig.update_xaxes(title_text="Distance from left end of member (m)", showgrid=True, gridcolor="rgba(2, 6, 23, 0.08)")
+    fig.update_yaxes(title_text="Shear, Vu (kN)", zeroline=True, zerolinewidth=1.5, zerolinecolor="rgba(15, 23, 42, 0.55)", showgrid=True, gridcolor="rgba(2, 6, 23, 0.08)")
     return fig
 
 
@@ -9286,6 +9433,8 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
                 {"title": "Input owner", "value": "Sections → Rebar", "detail": "Analysis only reads provided stirrup zones", "status": "neutral"},
             ]
         _render_analysis_summary_strip(shear_cards, columns=4)
+        if shear_result is not None:
+            _render_analysis_summary_strip(_beam_uls_shear_diagnosis_cards(shear_result), columns=3)
         if shear_result is None:
             _render_beam_uls_shear_layout_readiness_panel(st.session_state)
         st.plotly_chart(

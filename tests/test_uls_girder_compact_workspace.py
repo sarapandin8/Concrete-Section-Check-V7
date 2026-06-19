@@ -20,6 +20,7 @@ from concrete_pmm_pro.ui.analysis_page import (
     _beam_uls_shear_critical_section_dataframe,
     _beam_uls_shear_diagram_boundary_dataframe,
     _beam_uls_shear_detailing_guard,
+    _beam_uls_shear_failure_diagnosis,
     _beam_uls_shear_reinforcement_status_dataframe,
     _beam_uls_governing_shear_row,
     _beam_uls_shear_overall_status,
@@ -2705,3 +2706,76 @@ def test_shear_label1_compact_table_uses_clear_avs_min_dc_label() -> None:
     assert "det" not in shear_row["Utilization"].lower()
     assert check_card["value"] == "805.09 kN · Strength D/C 0.460; Av/s min D/C 1.893"
     assert "det" not in check_card["value"].lower()
+
+def test_ui_plot4_shear_diagnosis_explains_avs_min_failure() -> None:
+    row = {
+        "Status": "FAIL",
+        "Strength status": "PASS",
+        "Detailing status": "FAIL",
+        "Governing x": "7.000 m",
+        "Case": "Strength I",
+        "Demand kN": 805.09,
+        "φVn kN": 1751.30,
+        "Strength D/C value": 0.460,
+        "Detailing D/C value": 1.893,
+        "Av/s min D/C": 1.893,
+        "Spacing D/C": 0.417,
+        "Zone": "Midspan",
+        "Stirrup": "DB12 × 2 legs @ 250 mm",
+        "Av/s mm2/m": 904.78,
+        "Av/s required mm2/m": 1713.17,
+    }
+
+    diagnosis = _beam_uls_shear_failure_diagnosis(row)
+
+    assert diagnosis["status"] == "FAIL"
+    assert diagnosis["title"] == "Minimum shear reinforcement failure"
+    assert "Av/s provided is less than Av/s min" in diagnosis["reason"]
+    assert "DB12 × 2 legs @ 250 mm" in diagnosis["detail"]
+    assert "904.78 mm²/m" in diagnosis["detail"]
+    assert "1,713.17 mm²/m" in diagnosis["detail"]
+    assert "Reduce stirrup spacing" in diagnosis["action"]
+
+
+def test_ui_plot4_shear_capacity_figure_uses_report_style_layout_and_decision_marker() -> None:
+    active = pd.DataFrame(
+        [
+            {"Active": True, "Station x (m)": 0.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": -700.0, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": ""},
+            {"Active": True, "Station x (m)": 7.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 805.09, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": ""},
+        ]
+    )
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "PASS",
+                "Detailing status": "FAIL",
+                "Station type": "LOAD STATION",
+                "Governing x": "7.000 m",
+                "Case": "Strength I",
+                "Demand": "805.09 kN",
+                "Capacity": "φVn = 1,751.30 kN",
+                "Demand kN": 805.09,
+                "Abs demand kN": 805.09,
+                "φVn kN": 1751.30,
+                "φVc kN": 1385.45,
+                "D/C value": 0.460,
+                "Strength D/C value": 0.460,
+                "Detailing D/C value": 1.893,
+                "Governing D/C value": 1.893,
+                "Av/s min D/C": 1.893,
+                "Spacing D/C": 0.417,
+            }
+        ]
+    )
+
+    fig = _make_beam_uls_shear_capacity_figure(active, shear, code_label="AASHTO LRFD")
+
+    assert fig.layout.height == 540
+    assert fig.layout.legend.orientation == "h"
+    assert fig.layout.margin.b >= 110
+    marker_traces = [trace for trace in fig.data if getattr(trace, "name", "") == "Governing shear check"]
+    assert marker_traces
+    assert "FAIL · Av/s min D/C 1.893" in marker_traces[0].text[0]
+

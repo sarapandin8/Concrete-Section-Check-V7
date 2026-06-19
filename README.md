@@ -1,3 +1,11 @@
+### UI.PLOT4 — ULS Shear Diagram and Failure Diagnosis Polish
+
+Added a display-only ULS shear diagnosis layer so the Shear workspace explains why a calculated shear result passes or fails without requiring the engineer to open the raw audit table. The shear cards now include a diagnosis strip with the controlling reason, evidence, and recommended action, such as minimum Av/s failure, maximum spacing failure, strength failure, Vn-limit failure, or layout coverage requirement. The ULS shear plot also uses a more report-style layout with taller plot height, bottom legend spacing, axis labels, and a governing decision marker that reflects the actual decision row.
+
+No shear equation, φVc/φVs/φVn calculation, Av/s minimum equation, spacing limit equation, SLS/ULS solver, data-editor commit logic, widget key, load-combination equation, project schema, geometry generator, prestress/debonding logic, or report certification wording was changed.
+
+See `docs/design/ui_plot4.md`.
+
 ### UI.PLOT1 — Engineering Stress Diagram Plot Style
 
 Added a display-only engineering stress diagram style layer for full-length SLS stress plots. The updated plots use report-style title/subtitle typography, stronger top/bottom stress curves, explicit compression/tension limit colors, a visible 0 MPa reference line, bottom legend box, framed axes, and clearer governing tension/compression markers. This milestone applies first to Beam/Girder SLS full-length stress diagrams and Railway U-Girder service multi-fiber stress diagrams.
