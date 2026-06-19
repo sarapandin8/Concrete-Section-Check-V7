@@ -98,6 +98,13 @@ pytest -q \
 
 Result: `244 passed in 11.35s`.
 
+### SHEAR.TRACE1
+
+- Added traceable Beam/Girder ULS shear compact-table source selection.
+- The compact shear status and displayed shear row now come from the same decision source.
+- Prevents a misleading table row such as `Shear = FAIL` while displaying a passing D/C row.
+- No shear equations, SLS equations, geometry, prestress, or project schema were changed.
+
 ## Latest milestone
 
 ### SLS.RAIL.UGIRDER7 — Dedicated Railway U-Girder lifting stage tab
@@ -1051,12 +1058,4 @@ No SLS solver equations, ULS equations, prestress/debond logic, geometry generat
 - Prioritizes finite shear strength/detailing D/C evidence over stale text status fields in the Beam/Girder compact ULS shear summary.
 - Prevents `Shear = FAIL` when the visible shear card and diagram show Strength PASS, Detailing PASS, and D/C values below 1.0.
 - No shear equations or solver equations were changed.
-
-
-## SHEAR.STATUS4 — Support-Row Status Hardening Hotfix
-
-- Fixed a remaining Beam/Girder ULS shear compact-summary mismatch for Railway U-Girder.
-- When inserted critical shear sections exist, exact support `LOAD STATION` rows are treated as diagram/support-demand rows only and no longer override passing critical-section shear evidence.
-- Preserves true failures for eligible critical/interior design rows with D/C > 1.0.
-- Added regression tests for Railway-style support rows that previously kept the compact shear row at `FAIL` while the shear workspace card showed `PASS`.
 

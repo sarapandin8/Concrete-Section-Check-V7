@@ -2099,6 +2099,21 @@ def test_uls_shear_governing1_uses_strength_demand_not_detailing_only_row() -> N
             {
                 "Check": "Shear",
                 "Status": "FAIL",
+                "Strength status": "FAIL",
+                "Detailing status": "REVIEW",
+                "Station type": "LOAD STATION",
+                "Governing x": "0.000 m",
+                "Case": "Strength I",
+                "Demand": "-700.00 kN",
+                "Capacity": "-",
+                "Utilization": "-",
+                "Demand kN": -700.0,
+                "Strength D/C value": float("nan"),
+                "Detailing D/C value": float("nan"),
+            },
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
                 "Strength status": "PASS",
                 "Detailing status": "FAIL",
                 "Station type": "LOAD STATION",
@@ -2507,3 +2522,147 @@ def test_shear_status4_support_rows_still_control_when_no_critical_sections_exis
     )
 
     assert _beam_uls_shear_overall_status(shear) == "FAIL"
+
+
+def test_shear_trace1_compact_table_status_and_row_come_from_same_source() -> None:
+    """A compact FAIL must display the row that actually causes the FAIL.
+
+    This guards the Railway U-Girder screenshot regression where the compact
+    table showed Status=FAIL while displaying a passing x=9.000 m row.  If a
+    hidden/non-governing row controls the overall status, that row must be the
+    displayed compact row; otherwise users cannot see the reason for FAIL.
+    """
+
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "FAIL",
+                "Detailing status": "REVIEW",
+                "Station type": "LOAD STATION",
+                "Governing x": "0.000 m",
+                "Case": "Strength I",
+                "Demand": "-700.00 kN",
+                "Capacity": "-",
+                "Utilization": "-",
+                "Demand kN": -700.0,
+                "Strength D/C value": float("nan"),
+                "Detailing D/C value": float("nan"),
+            },
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "PASS",
+                "Detailing status": "FAIL",
+                "Station type": "LOAD STATION",
+                "Governing x": "4.000 m",
+                "Case": "Strength I",
+                "Demand": "57.14 kN",
+                "Capacity": "φVn = 1,908.64 kN",
+                "Utilization": "0.030 / det 1.893",
+                "Demand kN": 57.14,
+                "Abs demand kN": 57.14,
+                "Strength D/C value": 0.030,
+                "Detailing D/C value": 1.893,
+                "Governing D/C value": 1.893,
+            },
+            {
+                "Check": "Shear",
+                "Status": "PASS",
+                "Strength status": "PASS",
+                "Detailing status": "PASS",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand": "1,355.74 kN",
+                "Capacity": "φVn = 2,506.72 kN",
+                "Utilization": "0.541 / det 0.757",
+                "Demand kN": 1355.74,
+                "Abs demand kN": 1355.74,
+                "Strength D/C value": 0.541,
+                "Detailing D/C value": 0.757,
+                "Governing D/C value": 0.757,
+            },
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "FAIL",
+                "Detailing status": "REVIEW",
+                "Station type": "LOAD STATION",
+                "Governing x": "10.000 m",
+                "Case": "Strength I",
+                "Demand": "1,644.35 kN",
+                "Capacity": "-",
+                "Utilization": "-",
+                "Demand kN": 1644.35,
+                "Strength D/C value": float("nan"),
+                "Detailing D/C value": float("nan"),
+            },
+        ]
+    )
+    active = pd.DataFrame(
+        [
+            {"Active": True, "Station x (m)": 0.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": -700.0, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": "support"},
+            {"Active": True, "Station x (m)": 4.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 57.14, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": ""},
+            {"Active": True, "Station x (m)": 9.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 1355.74, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": ""},
+        ]
+    )
+
+    table = _beam_uls_check_table(active, shear_check_df=shear)
+    shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
+
+    assert shear_row["Status"] == "FAIL"
+    assert shear_row["Governing x"] == "4.000 m"
+    assert shear_row["Utilization"] == "0.030 / det 1.893"
+
+
+def test_shear_trace1_compact_table_passes_when_all_eligible_rows_pass() -> None:
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "PASS",
+                "Strength status": "PASS",
+                "Detailing status": "PASS",
+                "Station type": "LOAD STATION",
+                "Governing x": "4.000 m",
+                "Case": "Strength I",
+                "Demand": "57.14 kN",
+                "Capacity": "φVn = 1,908.64 kN",
+                "Utilization": "0.030 / det 0.757",
+                "Demand kN": 57.14,
+                "Abs demand kN": 57.14,
+                "Strength D/C value": 0.030,
+                "Detailing D/C value": 0.757,
+                "Governing D/C value": 0.757,
+            },
+            {
+                "Check": "Shear",
+                "Status": "FAIL",  # stale text; numeric gates pass
+                "Strength status": "FAIL",
+                "Detailing status": "FAIL",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand": "1,355.74 kN",
+                "Capacity": "φVn = 2,506.72 kN",
+                "Utilization": "0.541 / det 0.757",
+                "Demand kN": 1355.74,
+                "Abs demand kN": 1355.74,
+                "Strength D/C value": 0.541,
+                "Detailing D/C value": 0.757,
+                "Governing D/C value": 0.757,
+            },
+        ]
+    )
+    active = pd.DataFrame(
+        [{"Active": True, "Station x (m)": 9.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 1355.74, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": ""}]
+    )
+
+    table = _beam_uls_check_table(active, shear_check_df=shear)
+    shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
+
+    assert shear_row["Status"] == "PASS"
+    assert shear_row["Governing x"] == "9.000 m"
+    assert shear_row["Utilization"] == "0.541 / det 0.757"

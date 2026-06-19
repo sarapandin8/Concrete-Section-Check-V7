@@ -6542,95 +6542,146 @@ def _beam_uls_shear_design_rows_for_governing(shear_df: pd.DataFrame | None) -> 
     return df
 
 
-def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
-    """Summarize overall shear status from non-boundary design rows.
+def _beam_uls_shear_row_gate_values(row: Mapping[str, object]) -> dict[str, float | str | bool]:
+    """Return normalized shear status gates for one rendered/calculated row.
 
-    The compact ULS table must agree with the actual shear evidence shown in
-    the shear workspace.  SHEAR.STATUS3 makes finite numeric gates the source of
-    truth and treats bare/stale ``FAIL`` text without numeric evidence as stale
-    review metadata, not as a controlling failure.
+    SHEAR.TRACE1: the compact table was mixing two different source rows: the
+    displayed governing-strength row and an overall FAIL coming from another row
+    in the shear dataframe.  Normalize each candidate row so the status row and
+    displayed row can be traced from the same source.
+    """
+
+    status = str(row.get("Status") or "").strip().upper()
+    strength_status = str(row.get("Strength status") or "").strip().upper()
+    detailing_status = str(row.get("Detailing status") or "").strip().upper()
+    vn_limit_status = str(row.get("Vn limit status") or "").strip().upper()
+
+    strength_dc = _beam_uls_float(row.get("Strength D/C value"))
+    if not math.isfinite(strength_dc):
+        strength_dc = _beam_uls_float(row.get("D/C value"))
+    detailing_dc = _beam_uls_float(row.get("Detailing D/C value"))
+    if not math.isfinite(strength_dc) or not math.isfinite(detailing_dc):
+        util_strength, util_detailing = _beam_uls_shear_utilization_parts(row.get("Utilization"))
+        if not math.isfinite(strength_dc):
+            strength_dc = util_strength
+        if not math.isfinite(detailing_dc):
+            detailing_dc = util_detailing
+    if not math.isfinite(strength_dc):
+        demand = abs(_beam_uls_float(row.get("Abs demand kN", row.get("Demand kN"))))
+        phi_vn = _beam_uls_float(row.get("φVn kN"))
+        if math.isfinite(demand) and math.isfinite(phi_vn) and phi_vn > 0.0:
+            strength_dc = demand / phi_vn
+
+    governing_dc = max([value for value in [strength_dc, detailing_dc] if math.isfinite(value)], default=float("nan"))
+    demand_abs = abs(_beam_uls_float(row.get("Abs demand kN", row.get("Demand kN"))))
+    station_type = str(row.get("Station type") or "").strip().upper()
+    return {
+        "status": status,
+        "strength_status": strength_status,
+        "detailing_status": detailing_status,
+        "vn_limit_status": vn_limit_status,
+        "strength_dc": strength_dc,
+        "detailing_dc": detailing_dc,
+        "governing_dc": governing_dc,
+        "demand_abs": demand_abs,
+        "station_type": station_type,
+        "numeric_strength_fail": math.isfinite(strength_dc) and strength_dc > 1.0 + 1.0e-9,
+        "numeric_detailing_fail": math.isfinite(detailing_dc) and detailing_dc > 1.0 + 1.0e-9,
+        "finite_gate_present": math.isfinite(strength_dc) or math.isfinite(detailing_dc),
+    }
+
+
+def _beam_uls_shear_decision_summary(shear_df: pd.DataFrame | None) -> dict[str, object]:
+    """Return the controlling compact-table shear status and its source row.
+
+    The compact ULS table must never display a PASS-looking row with a FAIL
+    status from a different hidden row.  This function is the single traceable
+    source for compact shear status: if a row fails, that failing row is returned;
+    if all rows pass, the ordinary strength-governing row is returned.
     """
 
     df = _beam_uls_shear_design_rows_for_governing(shear_df)
     if df.empty:
-        return "NOT READY"
+        return {"status": "NOT READY", "row": None, "reason": "No eligible shear design rows"}
 
-    saw_pass = False
-    saw_no_demand = False
-    saw_review = False
+    blockers: list[tuple[int, float, float, int, pd.Series, str]] = []
+    reviews: list[tuple[int, float, float, int, pd.Series, str]] = []
+    pass_rows: list[pd.Series] = []
 
-    for _, row in df.iterrows():
-        status = str(row.get("Status") or "").strip().upper()
-        strength_status = str(row.get("Strength status") or "").strip().upper()
-        detailing_status = str(row.get("Detailing status") or "").strip().upper()
-        vn_limit_status = str(row.get("Vn limit status") or "").strip().upper()
-
-        strength_dc = _beam_uls_float(row.get("Strength D/C value"))
-        if not math.isfinite(strength_dc):
-            strength_dc = _beam_uls_float(row.get("D/C value"))
-        detailing_dc = _beam_uls_float(row.get("Detailing D/C value"))
-        if not math.isfinite(strength_dc) or not math.isfinite(detailing_dc):
-            util_strength, util_detailing = _beam_uls_shear_utilization_parts(row.get("Utilization"))
-            if not math.isfinite(strength_dc):
-                strength_dc = util_strength
-            if not math.isfinite(detailing_dc):
-                detailing_dc = util_detailing
-        if not math.isfinite(strength_dc):
-            demand = abs(_beam_uls_float(row.get("Abs demand kN", row.get("Demand kN"))))
-            phi_vn = _beam_uls_float(row.get("φVn kN"))
-            if math.isfinite(demand) and math.isfinite(phi_vn) and phi_vn > 0.0:
-                strength_dc = demand / phi_vn
+    for order, (_, row) in enumerate(df.iterrows()):
+        gates = _beam_uls_shear_row_gate_values(row)
+        status = str(gates["status"])
+        strength_status = str(gates["strength_status"])
+        detailing_status = str(gates["detailing_status"])
+        vn_limit_status = str(gates["vn_limit_status"])
+        strength_dc = float(gates["strength_dc"])
+        detailing_dc = float(gates["detailing_dc"])
+        governing_dc = float(gates["governing_dc"])
+        demand_abs = float(gates["demand_abs"])
+        finite_gate_present = bool(gates["finite_gate_present"])
+        numeric_strength_fail = bool(gates["numeric_strength_fail"])
+        numeric_detailing_fail = bool(gates["numeric_detailing_fail"])
 
         if status in {"NO DEMAND", "NOT APPLICABLE"}:
-            saw_no_demand = True
             continue
         if status == "LAYOUT REQUIRED":
-            return "LAYOUT REQUIRED"
+            blockers.append((90, 0.0 if not math.isfinite(governing_dc) else governing_dc, 0.0 if not math.isfinite(demand_abs) else demand_abs, -order, row, "LAYOUT REQUIRED"))
+            continue
         if status in {"DATA REQUIRED", "NOT READY", "INCOMPLETE"}:
-            saw_review = True
+            reviews.append((50, 0.0 if not math.isfinite(governing_dc) else governing_dc, 0.0 if not math.isfinite(demand_abs) else demand_abs, -order, row, status))
             continue
 
-        strength_dc_is_finite = math.isfinite(strength_dc)
-        detailing_dc_is_finite = math.isfinite(detailing_dc)
-        numeric_strength_fail = strength_dc_is_finite and strength_dc > 1.0 + 1.0e-9
-        numeric_detailing_fail = detailing_dc_is_finite and detailing_dc > 1.0 + 1.0e-9
-        if numeric_strength_fail or numeric_detailing_fail:
-            return "FAIL"
+        if numeric_strength_fail:
+            blockers.append((100, strength_dc, 0.0 if not math.isfinite(demand_abs) else demand_abs, -order, row, "FAIL"))
+            continue
+        if numeric_detailing_fail:
+            blockers.append((95, detailing_dc, 0.0 if not math.isfinite(demand_abs) else demand_abs, -order, row, "FAIL"))
+            continue
 
-        finite_gate_present = strength_dc_is_finite or detailing_dc_is_finite
         if finite_gate_present:
-            strength_clear = (not strength_dc_is_finite) or strength_dc <= 1.0 + 1.0e-9
-            detailing_clear = (not detailing_dc_is_finite) or detailing_dc <= 1.0 + 1.0e-9
+            strength_clear = (not math.isfinite(strength_dc)) or strength_dc <= 1.0 + 1.0e-9
+            detailing_clear = (not math.isfinite(detailing_dc)) or detailing_dc <= 1.0 + 1.0e-9
             if strength_clear and detailing_clear:
-                # Finite current D/C values override stale text copied from an
-                # older row cache.  This is the exact condition seen when the
-                # shear card/diagram shows PASS but the compact table still
-                # displayed FAIL.
-                saw_pass = True
+                pass_rows.append(row)
                 continue
 
         if strength_status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or detailing_status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or vn_limit_status == "REVIEW":
-            saw_review = True
+            reviews.append((40, 0.0 if not math.isfinite(governing_dc) else governing_dc, 0.0 if not math.isfinite(demand_abs) else demand_abs, -order, row, "REVIEW"))
             continue
 
         if status == "FAIL" or strength_status == "FAIL" or detailing_status == "FAIL":
-            # A FAIL label without finite numeric evidence is not trustworthy
-            # enough to control the compact table.  Keep it out of PASS/FAIL
-            # and allow calculated numeric rows to control the displayed result.
-            saw_review = True
+            # Stale text without numeric fail evidence is not a blocker, but it
+            # should be traceable as review if no clean PASS rows exist.
+            reviews.append((30, 0.0 if not math.isfinite(governing_dc) else governing_dc, 0.0 if not math.isfinite(demand_abs) else demand_abs, -order, row, "REVIEW"))
             continue
         if status == "PASS" or strength_status == "PASS" or detailing_status == "PASS":
-            saw_pass = True
-        elif status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or not status:
-            saw_review = True
+            pass_rows.append(row)
+            continue
+        reviews.append((10, 0.0 if not math.isfinite(governing_dc) else governing_dc, 0.0 if not math.isfinite(demand_abs) else demand_abs, -order, row, "REVIEW"))
 
-    if saw_pass:
-        return "PASS"
-    if saw_review:
-        return "REVIEW"
-    if saw_no_demand:
-        return "NO DEMAND"
-    return "REVIEW"
+    if blockers:
+        # Highest priority, then largest utilization, then largest demand.
+        priority, _dc, _demand, _order, row, status = sorted(blockers, key=lambda item: (item[0], item[1], item[2], item[3]), reverse=True)[0]
+        return {"status": str(status), "row": row.to_dict(), "reason": "Blocking shear row controls compact status"}
+
+    if pass_rows:
+        governing = _beam_uls_governing_shear_row(df)
+        if governing is not None:
+            return {"status": "PASS", "row": governing, "reason": "All eligible shear rows pass; strength-governing row displayed"}
+        row = pass_rows[0]
+        return {"status": "PASS", "row": row.to_dict(), "reason": "All eligible shear rows pass"}
+
+    if reviews:
+        priority, _dc, _demand, _order, row, status = sorted(reviews, key=lambda item: (item[0], item[1], item[2], item[3]), reverse=True)[0]
+        return {"status": str(status), "row": row.to_dict(), "reason": "Shear row requires review"}
+
+    return {"status": "NO DEMAND", "row": None, "reason": "No active shear demand rows"}
+
+
+def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
+    """Summarize overall shear status from the traceable decision row."""
+
+    return str(_beam_uls_shear_decision_summary(shear_df).get("status") or "REVIEW")
 
 def _beam_uls_governing_shear_row(shear_df: pd.DataFrame | None) -> dict[str, object] | None:
     if shear_df is None or shear_df.empty:
@@ -8350,8 +8401,9 @@ def _beam_uls_check_table(
             }
         )
 
-    shear_result = _beam_uls_governing_shear_row(shear_check_df)
-    shear_overall_status = _beam_uls_shear_overall_status(shear_check_df)
+    shear_decision = _beam_uls_shear_decision_summary(shear_check_df)
+    shear_result = shear_decision.get("row") if isinstance(shear_decision.get("row"), dict) else _beam_uls_governing_shear_row(shear_check_df)
+    shear_overall_status = str(shear_decision.get("status") or _beam_uls_shear_overall_status(shear_check_df))
     torsion_result = _beam_uls_governing_torsion_row(torsion_check_df)
     torsion_status_text = str(torsion_result.get("Status") or "REVIEW") if torsion_result is not None else "OPTIONAL"
     if shear_result is not None:
@@ -8495,10 +8547,11 @@ def _beam_uls_summary_cards(active_df: pd.DataFrame, *, workflow_label: str, cod
     )
     governing_shear_value = "-"
     governing_shear_detail = "Calculate Shear to report governing check station."
-    shear_result = _beam_uls_governing_shear_row(shear_check_df)
+    shear_decision = _beam_uls_shear_decision_summary(shear_check_df)
+    shear_result = shear_decision.get("row") if isinstance(shear_decision.get("row"), dict) else _beam_uls_governing_shear_row(shear_check_df)
     torsion_result = _beam_uls_governing_torsion_row(torsion_check_df)
     torsion_status_text = str(torsion_result.get("Status") or "REVIEW") if torsion_result is not None else "OPTIONAL"
-    shear_overall_status = _beam_uls_shear_overall_status(shear_check_df)
+    shear_overall_status = str(shear_decision.get("status") or _beam_uls_shear_overall_status(shear_check_df))
     if shear_result is not None:
         shear_dc = str(shear_result.get("Utilization") or "-")
         shear_demand = _beam_uls_float(shear_result.get("Demand kN"))
@@ -9147,9 +9200,10 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
 
     if selected_check == "Shear":
         shear = _beam_uls_governing_action(active_df, "Vuy")
-        shear_result = _beam_uls_governing_shear_row(shear_check_df)
+        shear_decision = _beam_uls_shear_decision_summary(shear_check_df)
+        shear_result = shear_decision.get("row") if isinstance(shear_decision.get("row"), dict) else _beam_uls_governing_shear_row(shear_check_df)
         if shear_result is not None:
-            shear_status = str(shear_result.get("Status") or "REVIEW")
+            shear_status = str(shear_decision.get("status") or shear_result.get("Status") or "REVIEW")
             d_text = _format_beam_uls_audit_number(shear_result.get("d mm"), unit="mm")
             dv_text = _format_beam_uls_audit_number(shear_result.get("dv mm"), unit="mm")
             depth_detail = f"d {d_text}" + (f" · dv {dv_text}" if dv_text != "-" else "")
