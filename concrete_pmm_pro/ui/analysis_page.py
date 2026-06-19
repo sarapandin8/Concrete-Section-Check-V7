@@ -6434,21 +6434,90 @@ def _beam_uls_torsion_diagram_boundary_dataframe(
     return pd.DataFrame(rows, columns=columns)
 
 
+def _beam_uls_shear_design_rows_for_governing(shear_df: pd.DataFrame | None) -> pd.DataFrame:
+    """Return rows eligible for the displayed governing shear station.
+
+    The displayed governing shear station must be a strength-demand station, not
+    an arbitrary row selected only because a zone-wide detailing gate failed.
+    SHEAR.GOVERNING1 separates two ideas that the previous implementation mixed:
+
+    * governing shear location/diagram marker = maximum sectional strength D/C
+      or maximum |Vu| when strength D/C is not available;
+    * overall shear acceptance = any strength/detailing gate failure in the
+      calculated rows.
+
+    This keeps the compact table and chart aligned with the shear diagram while
+    still allowing minimum Av/s or spacing failures to fail the overall check.
+    """
+
+    if shear_df is None or shear_df.empty:
+        return pd.DataFrame()
+    df = shear_df.copy()
+    if "Station type" in df.columns:
+        df = df[df["Station type"].astype(str) != "DIAGRAM BOUNDARY"].copy()
+    if "Status" in df.columns:
+        df = df[~df["Status"].astype(str).isin(["DIAGRAM BOUNDARY", "NO DEMAND", "BOUNDARY SKIPPED"])].copy()
+    return df
+
+
+def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
+    """Summarize overall shear status from all non-boundary rows."""
+
+    df = _beam_uls_shear_design_rows_for_governing(shear_df)
+    if df.empty or "Status" not in df.columns:
+        return "NOT READY"
+    statuses = {str(value or "").upper() for value in df["Status"].tolist()}
+    if "FAIL" in statuses:
+        return "FAIL"
+    if "LAYOUT REQUIRED" in statuses:
+        return "LAYOUT REQUIRED"
+    review_statuses = {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"}
+    if statuses.intersection(review_statuses):
+        return "REVIEW"
+    if statuses and statuses.issubset({"NO DEMAND", "NOT APPLICABLE"}):
+        return "NO DEMAND"
+    if "PASS" in statuses:
+        return "PASS"
+    return "REVIEW"
+
+
 def _beam_uls_governing_shear_row(shear_df: pd.DataFrame | None) -> dict[str, object] | None:
     if shear_df is None or shear_df.empty:
         return None
-    df = shear_df.copy()
+    df = _beam_uls_shear_design_rows_for_governing(shear_df)
+    if df.empty:
+        return None
+    strength_source = df["Strength D/C value"] if "Strength D/C value" in df.columns else df.get("D/C value", pd.Series(index=df.index, dtype=float))
+    demand_source = df["Abs demand kN"] if "Abs demand kN" in df.columns else df.get("Demand kN", pd.Series(index=df.index, dtype=float))
+    df["__strength_dc"] = pd.to_numeric(strength_source, errors="coerce")
+    df["__abs_demand"] = pd.to_numeric(demand_source, errors="coerce").abs()
+    df["__is_critical"] = df.get("Station type", pd.Series(index=df.index, dtype=object)).astype(str).eq("CRITICAL SHEAR SECTION").astype(int)
+
+    strength_valid = df[df["__strength_dc"].notna()].copy()
+    if not strength_valid.empty:
+        # First sort by actual shear strength utilization.  Use |Vu| and the
+        # critical-section flag only as stable tie-breakers.  Do not rank by
+        # Detailing D/C here; detailing failures are already shown separately
+        # and included in _beam_uls_shear_overall_status().
+        idx = strength_valid.sort_values(
+            ["__strength_dc", "__abs_demand", "__is_critical"],
+            ascending=[False, False, False],
+            kind="stable",
+        ).index[0]
+        return df.loc[idx].drop(labels=["__strength_dc", "__abs_demand", "__is_critical"], errors="ignore").to_dict()
+
     governing_column = "Governing D/C value" if "Governing D/C value" in df.columns else "D/C value"
-    if governing_column not in df.columns:
+    if governing_column in df.columns:
+        df["__fallback_dc"] = pd.to_numeric(df[governing_column], errors="coerce")
+    else:
+        df["__fallback_dc"] = float("nan")
+    fallback = df[df["__fallback_dc"].notna()].copy()
+    if fallback.empty:
+        fallback = df[df["__abs_demand"].notna()].copy()
+    if fallback.empty:
         return None
-    df["__governing_dc"] = pd.to_numeric(df[governing_column], errors="coerce")
-    valid = df[df["__governing_dc"].notna()].copy()
-    if valid.empty:
-        return None
-    status_priority = {"FAIL": 3, "REVIEW": 2, "PASS": 1}
-    valid["__status_priority"] = valid.get("Status", pd.Series(index=valid.index, dtype=object)).map(lambda value: status_priority.get(str(value), 0))
-    idx = valid.sort_values(["__status_priority", "__governing_dc"], ascending=[False, False]).index[0]
-    return df.loc[idx].drop(labels=["__governing_dc"], errors="ignore").to_dict()
+    idx = fallback.sort_values(["__fallback_dc", "__abs_demand", "__is_critical"], ascending=[False, False, False], kind="stable").index[0]
+    return df.loc[idx].drop(labels=["__strength_dc", "__abs_demand", "__is_critical", "__fallback_dc"], errors="ignore").to_dict()
 
 
 def _beam_uls_shear_audit_dataframe(shear_df: pd.DataFrame | None) -> pd.DataFrame:
@@ -6459,9 +6528,20 @@ def _beam_uls_shear_audit_dataframe(shear_df: pd.DataFrame | None) -> pd.DataFra
     if shear_df is None or shear_df.empty:
         return pd.DataFrame(columns=columns)
     df = shear_df.copy()
-    governing_column = "Governing D/C value" if "Governing D/C value" in df.columns else "D/C value"
-    df["__util"] = pd.to_numeric(df.get(governing_column), errors="coerce")
-    governing_idx = df["__util"].idxmax() if df["__util"].notna().any() else None
+    governing = _beam_uls_governing_shear_row(shear_df)
+    governing_idx = None
+    if governing is not None:
+        governing_x = str(governing.get("Governing x") or "")
+        governing_case = str(governing.get("Case") or "")
+        governing_station_type = str(governing.get("Station type") or "LOAD STATION")
+        for candidate_idx, candidate_row in df.iterrows():
+            if (
+                str(candidate_row.get("Governing x") or "") == governing_x
+                and str(candidate_row.get("Case") or "") == governing_case
+                and str(candidate_row.get("Station type") or "LOAD STATION") == governing_station_type
+            ):
+                governing_idx = candidate_idx
+                break
     rows = []
     for idx, row in df.iterrows():
         rows.append(
@@ -7706,8 +7786,8 @@ def _beam_uls_combined_vt_source_strength_gate(
 
     shear = _beam_uls_governing_shear_row(shear_df)
     if shear is not None:
-        shear_status = str(shear.get("Status") or "-").upper()
-        shear_dc = _beam_uls_float(shear.get("Governing D/C value", shear.get("D/C value")))
+        shear_status = _beam_uls_shear_overall_status(shear_df).upper()
+        shear_dc = _beam_uls_float(shear.get("Strength D/C value", shear.get("D/C value")))
         shear_x = str(shear.get("Governing x") or "-")
         if shear_status == "FAIL":
             blockers.append(f"Shear FAIL at x={shear_x}" + (f" (D/C {_format_beam_uls_ratio(shear_dc)})" if math.isfinite(shear_dc) else ""))
@@ -8120,13 +8200,14 @@ def _beam_uls_check_table(
         )
 
     shear_result = _beam_uls_governing_shear_row(shear_check_df)
+    shear_overall_status = _beam_uls_shear_overall_status(shear_check_df)
     torsion_result = _beam_uls_governing_torsion_row(torsion_check_df)
     torsion_status_text = str(torsion_result.get("Status") or "REVIEW") if torsion_result is not None else "OPTIONAL"
     if shear_result is not None:
         rows.append(
             {
                 "Check": "Shear",
-                "Status": str(shear_result.get("Status") or "REVIEW"),
+                "Status": shear_overall_status,
                 "Governing x": str(shear_result.get("Governing x") or "-"),
                 "Case": str(shear_result.get("Case") or "-"),
                 "Demand": str(shear_result.get("Demand") or "-"),
@@ -8266,6 +8347,7 @@ def _beam_uls_summary_cards(active_df: pd.DataFrame, *, workflow_label: str, cod
     shear_result = _beam_uls_governing_shear_row(shear_check_df)
     torsion_result = _beam_uls_governing_torsion_row(torsion_check_df)
     torsion_status_text = str(torsion_result.get("Status") or "REVIEW") if torsion_result is not None else "OPTIONAL"
+    shear_overall_status = _beam_uls_shear_overall_status(shear_check_df)
     if shear_result is not None:
         shear_dc = str(shear_result.get("Utilization") or "-")
         shear_demand = _beam_uls_float(shear_result.get("Demand kN"))
@@ -8273,13 +8355,15 @@ def _beam_uls_summary_cards(active_df: pd.DataFrame, *, workflow_label: str, cod
         if shear_dc != "-":
             governing_shear_value = f"{governing_shear_value} · D/C {shear_dc}"
         governing_shear_detail = f"{shear_result.get('Case', '-')} @ x={shear_result.get('Governing x', '-')}; {shear_result.get('Capacity', '-')}"
+        if shear_overall_status != str(shear_result.get("Status") or "REVIEW"):
+            governing_shear_detail += f"; overall shear status = {shear_overall_status}"
     flex_preview = _beam_uls_governing_flexure_preview_row(flexure_preview_df)
     if flex_preview is not None:
         status_text = str(flex_preview.get("Status") or "REVIEW")
         dc_value = str(flex_preview.get("Utilization") or "-")
         flexure_card_value = f"{flexure_value} · D/C {dc_value}" if dc_value != "-" else flexure_value
         flexure_card_detail = f"{flexure_detail}; {flex_preview.get('Capacity', '-')}"
-        shear_status_text = str(shear_result.get("Status") or "REVIEW") if shear_result is not None else "NOT READY"
+        shear_status_text = shear_overall_status if shear_result is not None else "NOT READY"
         if shear_result is not None:
             if status_text == "FAIL" or shear_status_text == "FAIL" or torsion_status_text == "FAIL":
                 overall_value = "ULS PARTIAL CHECK — FAIL"
@@ -8317,7 +8401,7 @@ def _beam_uls_summary_cards(active_df: pd.DataFrame, *, workflow_label: str, cod
         },
         {"title": "Critical flexure demand / D/C", "value": flexure_card_value, "detail": flexure_card_detail, "status": "warning" if flex_preview is not None and str(flex_preview.get("Status")) == "FAIL" else "info"},
         {"title": "Peak shear demand", "value": peak_shear_value, "detail": peak_shear_detail, "status": "info"},
-        {"title": "Governing shear check", "value": governing_shear_value, "detail": governing_shear_detail, "status": "warning" if shear_result is not None and str(shear_result.get("Status")) == "FAIL" else "info"},
+        {"title": "Governing shear check", "value": governing_shear_value, "detail": governing_shear_detail, "status": "warning" if shear_overall_status == "FAIL" else "info"},
         {
             "title": "Design action",
             "value": "Review calculated ULS gates",

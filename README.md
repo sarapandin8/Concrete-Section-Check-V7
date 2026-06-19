@@ -1,3 +1,11 @@
+### SHEAR.GOVERNING1 — Beam/Girder ULS Shear Governing-Station Selection Hotfix
+
+This hotfix corrects the Beam/Girder/Railway U-Girder ULS shear governing-row selection used by the compact ULS table, summary cards, shear chart marker, and shear audit table. The displayed governing shear station now ranks non-boundary rows by strength D/C and absolute Vu, instead of letting a zone-wide detailing D/C failure select an arbitrary low-demand row. Overall shear status still fails when any non-boundary strength/detailing gate fails.
+
+No shear equation, torsion equation, flexure equation, SLS equation, prestress/debonding logic, geometry generator, section properties, load-combination equation, project schema, or UI layout is changed.
+
+See `docs/design/shear_governing1.md`.
+
 ### CLOSEOUT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Closeout
 
 This milestone closes the current Railway U-Girder development slice as a guarded SLS engineering-review package. It adds an explicit closeout status table to the Railway U-Girder report package and Word report section while preserving the non-certification boundary:

@@ -21,6 +21,8 @@ from concrete_pmm_pro.ui.analysis_page import (
     _beam_uls_shear_diagram_boundary_dataframe,
     _beam_uls_shear_detailing_guard,
     _beam_uls_shear_reinforcement_status_dataframe,
+    _beam_uls_governing_shear_row,
+    _beam_uls_shear_overall_status,
     _beam_uls_summary_cards,
     _beam_uls_torsion_audit_dataframe,
     _beam_uls_torsion_check_dataframe,
@@ -2089,3 +2091,79 @@ def test_uls_shear_code2_caps_nominal_vn_without_failing_when_demand_is_below_ca
     assert row["φVn kN"] == row["φVn limit kN"]
     assert row["Vn uncapped kN"] > row["Vn limit kN"]
     assert "capped" in row["Notes"].lower()
+
+
+def test_uls_shear_governing1_uses_strength_demand_not_detailing_only_row() -> None:
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "PASS",
+                "Detailing status": "FAIL",
+                "Station type": "LOAD STATION",
+                "Governing x": "4.000 m",
+                "Case": "Strength I",
+                "Demand": "57.14 kN",
+                "Demand kN": 57.14,
+                "Abs demand kN": 57.14,
+                "Capacity": "φVn = 1,908.64 kN",
+                "Utilization": "0.030 / det 1.893",
+                "D/C value": 0.030,
+                "Strength D/C value": 0.030,
+                "Detailing D/C value": 1.893,
+                "Governing D/C value": 1.893,
+            },
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "PASS",
+                "Detailing status": "FAIL",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Support side": "Right",
+                "Governing x": "8.744 m",
+                "Case": "Strength I",
+                "Demand": "1,320.00 kN",
+                "Demand kN": 1320.0,
+                "Abs demand kN": 1320.0,
+                "Capacity": "φVn = 1,908.64 kN",
+                "Utilization": "0.692 / det 1.893",
+                "D/C value": 0.692,
+                "Strength D/C value": 0.692,
+                "Detailing D/C value": 1.893,
+                "Governing D/C value": 1.893,
+            },
+        ]
+    )
+
+    governing = _beam_uls_governing_shear_row(shear)
+    table = _beam_uls_check_table(
+        pd.DataFrame([{"Active": True, "Station x (m)": 10.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 1644.35, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": ""}]),
+        shear_check_df=shear,
+    )
+    shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
+
+    assert governing is not None
+    assert governing["Governing x"] == "8.744 m"
+    assert governing["Demand"] == "1,320.00 kN"
+    assert _beam_uls_shear_overall_status(shear) == "FAIL"
+    assert shear_row["Status"] == "FAIL"
+    assert shear_row["Governing x"] == "8.744 m"
+    assert shear_row["Utilization"] == "0.692 / det 1.893"
+
+
+def test_uls_shear_governing1_audit_marks_strength_governing_station() -> None:
+    shear = pd.DataFrame(
+        [
+            {"Status": "FAIL", "Station type": "LOAD STATION", "Governing x": "4.000 m", "Case": "Strength I", "Demand kN": 57.14, "φVn kN": 1908.64, "D/C value": 0.030, "Strength D/C value": 0.030, "Detailing D/C value": 1.893, "Governing D/C value": 1.893},
+            {"Status": "FAIL", "Station type": "CRITICAL SHEAR SECTION", "Governing x": "8.744 m", "Case": "Strength I", "Demand kN": 1320.0, "φVn kN": 1908.64, "D/C value": 0.692, "Strength D/C value": 0.692, "Detailing D/C value": 1.893, "Governing D/C value": 1.893},
+        ]
+    )
+
+    audit = _beam_uls_shear_audit_dataframe(shear)
+    governing_rows = audit[audit["Governing"] == "Yes"]
+
+    assert len(governing_rows) == 1
+    assert governing_rows.iloc[0]["Station x"] == "8.744 m"
+    assert governing_rows.iloc[0]["Strength D/C"] == "0.692"
+    assert governing_rows.iloc[0]["Detailing D/C"] == "1.893"
