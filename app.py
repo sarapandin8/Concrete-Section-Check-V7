@@ -13,6 +13,7 @@ from concrete_pmm_pro.ui.project_page import render_project_page
 from concrete_pmm_pro.ui.navigation import render_active_choice
 from concrete_pmm_pro.ui.rebar_page import render_rebar_page
 from concrete_pmm_pro.ui.section_builder import render_section_builder
+from concrete_pmm_pro.visualization.plot_readability import install_streamlit_plotly_readability_patch
 
 
 WORKSPACE_NAVIGATION = {
@@ -720,6 +721,7 @@ def render_results_workspace() -> None:
 def main() -> None:
     st.set_page_config(page_title="Concrete Section Pro", layout="wide")
     _render_global_commercial_tab_styles()
+    install_streamlit_plotly_readability_patch(st)
     st.title("Concrete Section Pro")
     st.caption(
         "Concrete section analysis and design-review workspace. "

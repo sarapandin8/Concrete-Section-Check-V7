@@ -1,3 +1,11 @@
+### UI.PLOT5 — Global Plot Readability Polish
+
+Added a global Plotly readability layer for all charts rendered through `st.plotly_chart`.  The app now strengthens plot text color, tick labels, axis titles, legend text, hover labels, annotation labels, grid contrast, and 3D scene axis labels across Analysis, Sections, Rebar, Prestress, Reports, and future pages without changing trace data or engineering calculations.
+
+No solver equations, result dataframe values, trace coordinates, data-editor commit logic, widget keys, navigation/page routing, project schema, geometry generator, load routing, prestress/debonding logic, or report certification wording were changed.
+
+See `docs/design/ui_plot5.md`.
+
 ### UI.PLOT4 — ULS Shear Diagram and Failure Diagnosis Polish
 
 Added a display-only ULS shear diagnosis layer so the Shear workspace explains why a calculated shear result passes or fails without requiring the engineer to open the raw audit table. The shear cards now include a diagnosis strip with the controlling reason, evidence, and recommended action, such as minimum Av/s failure, maximum spacing failure, strength failure, Vn-limit failure, or layout coverage requirement. The ULS shear plot also uses a more report-style layout with taller plot height, bottom legend spacing, axis labels, and a governing decision marker that reflects the actual decision row.
