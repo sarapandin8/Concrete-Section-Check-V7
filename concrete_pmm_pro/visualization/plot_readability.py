@@ -21,6 +21,46 @@ _CP_GRID = "rgba(15,23,42,0.13)"
 _CP_AXIS = "rgba(15,23,42,0.78)"
 _CP_LEGEND_BORDER = "rgba(15,23,42,0.18)"
 _CP_LEGEND_BG = "rgba(255,255,255,0.94)"
+_CP_LEGEND_DASH_SAMPLE_WIDTH = 76
+_CP_LEGEND_ENTRY_WIDTH = 148
+_CP_DASHED_LINE_WIDTH_MIN = 3.0
+
+
+def _is_dashed_line_trace(trace: Any) -> bool:
+    """Return True when a Plotly trace uses a non-solid line dash pattern."""
+
+    line_obj = getattr(trace, "line", None)
+    dash = getattr(line_obj, "dash", None)
+    if dash is None:
+        return False
+    return str(dash).strip().lower() not in {"", "solid", "none"}
+
+
+def _strengthen_dashed_trace_legend_samples(fig: Any) -> None:
+    """Make dashed traces visibly dashed in Plotly legend swatches.
+
+    Plotly's default legend symbol can be short enough that dashed engineering
+    limit traces look almost solid.  This helper only changes presentation
+    metadata: legend symbol width and minimum line width for non-solid traces.
+    It never changes trace coordinates, names, visibility, or calculated values.
+    """
+
+    if go is None or not isinstance(fig, go.Figure):
+        return
+
+    for trace in fig.data:
+        if not _is_dashed_line_trace(trace):
+            continue
+        line_obj = getattr(trace, "line", None)
+        try:
+            current_width = float(getattr(line_obj, "width", 0) or 0)
+        except Exception:
+            current_width = 0.0
+        if current_width < _CP_DASHED_LINE_WIDTH_MIN:
+            try:
+                trace.line.width = _CP_DASHED_LINE_WIDTH_MIN
+            except Exception:
+                pass
 
 
 def apply_global_plot_readability(fig: Any) -> Any:
@@ -46,6 +86,11 @@ def apply_global_plot_readability(fig: Any) -> Any:
             "bordercolor": _CP_LEGEND_BORDER,
             "borderwidth": 1,
             "itemsizing": "constant",
+            # UI.PLOT7: longer legend swatches make dashed capacity/limit traces
+            # visually dashed instead of looking like short solid line samples.
+            "itemwidth": _CP_LEGEND_DASH_SAMPLE_WIDTH,
+            "entrywidth": _CP_LEGEND_ENTRY_WIDTH,
+            "entrywidthmode": "pixels",
         },
         hoverlabel={
             "font": {"family": _CP_FONT_FAMILY, "size": 13},
@@ -68,6 +113,8 @@ def apply_global_plot_readability(fig: Any) -> Any:
         linecolor=_CP_AXIS,
         zerolinecolor="rgba(15,23,42,0.42)",
     )
+
+    _strengthen_dashed_trace_legend_samples(fig)
 
     # Plotly 3D/ternary/polar figures do not use normal x/y axes.  Strengthen the
     # common 3D scene labels without assuming every figure owns a scene.

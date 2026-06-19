@@ -1119,3 +1119,9 @@ This milestone adds a decision-first SLS stress diagram panel with PASS/FAIL/REV
 ## UI.PLOT3 — Railway U-Girder Service Multi-Fiber Plot Label Cleanup
 
 Polished the Railway U-Girder service-stage multi-fiber SLS plot so the legend no longer crowds the x-axis label and right-side web/slab limit labels sit outside the plot area. Actual-vs-limit decision cards now use clear comparison symbols where possible. This is display-only UI polish; SLS stress equations, limits, load routing, prestress/debonding logic, and ULS checks are unchanged.
+
+## UI.PLOT7 — Dashed-Line Legend Visibility Polish
+
+Polished the global Plotly rendering layer so dashed engineering limit/capacity traces remain visibly dashed in legend swatches. The global readability wrapper now uses wider legend samples/entries and applies a minimum line width to non-solid dashed traces. This affects SLS stress diagrams, ULS shear/torsion plots, PMM/interaction plots, section/rebar/prestress previews, and report/QA Plotly figures rendered through `st.plotly_chart`.
+
+This is presentation-only polish. It does not change trace coordinates, result dataframes, solver equations, shear/torsion/flexure calculations, SLS stress limits, load routing, widget keys, or project schema.

@@ -54,3 +54,47 @@ def test_ui_plot5_installs_streamlit_plotly_patch_once() -> None:
     assert fake.plotly_chart(fig) == "ok"
     assert fake.received is fig
     assert fig.layout.font.color == "#0f172a"
+
+
+def test_ui_plot7_extends_legend_swatch_for_dashed_engineering_lines() -> None:
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=[0.0, 10.0],
+            y=[100.0, 100.0],
+            name="φVn",
+            mode="lines",
+            line={"dash": "dash", "width": 1.5},
+        )
+    )
+    before_x = list(fig.data[0].x)
+    before_y = list(fig.data[0].y)
+
+    apply_global_plot_readability(fig)
+
+    assert list(fig.data[0].x) == before_x
+    assert list(fig.data[0].y) == before_y
+    assert fig.layout.legend.itemwidth >= 70
+    assert fig.layout.legend.entrywidth >= 140
+    assert fig.layout.legend.entrywidthmode == "pixels"
+    assert fig.data[0].line.dash == "dash"
+    assert fig.data[0].line.width >= 3.0
+
+
+def test_ui_plot7_solid_trace_data_and_line_width_are_not_changed() -> None:
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=[0.0, 5.0, 10.0],
+            y=[1.0, 2.0, 3.0],
+            name="Demand",
+            mode="lines+markers",
+            line={"width": 1.25},
+        )
+    )
+
+    apply_global_plot_readability(fig)
+
+    assert list(fig.data[0].x) == [0.0, 5.0, 10.0]
+    assert list(fig.data[0].y) == [1.0, 2.0, 3.0]
+    assert fig.data[0].line.width == 1.25
