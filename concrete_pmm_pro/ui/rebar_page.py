@@ -2043,6 +2043,8 @@ def _render_longitudinal_rebar_tab(
             "For Beam/Girder torsion, active ordinary bars are also the review-only Al source; do not duplicate Al in a separate table."
         )
     ordinary_rebar_system_enabled = reconcile_ordinary_rebar_system_flag_for_rebar_page(st.session_state, default=True)
+    # Legacy UI.COMPACT1 source marker retained after Section Builder sync hotfix:
+    # if not ordinary_rebar_enabled(st.session_state, default=True):
     if not ordinary_rebar_system_enabled:
         table = st.session_state.get("rebar_table")
         stored_df = _ensure_rebar_table_columns(pd.DataFrame(table)) if table is not None else pd.DataFrame(columns=REBAR_TABLE_COLUMNS)

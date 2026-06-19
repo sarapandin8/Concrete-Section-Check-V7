@@ -13,6 +13,7 @@ from concrete_pmm_pro.reporting.terminology import terminology_to_dataframe
 from concrete_pmm_pro.reporting.traceability import build_result_traceability_snapshot, result_traceability_snapshot_to_dataframe
 from concrete_pmm_pro.reporting.units import unit_conventions_to_dataframe
 from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
+from concrete_pmm_pro.reporting.railway_u_girder_release import build_railway_u_girder_release_package
 from concrete_pmm_pro.analysis.railway_u_girder_uls import build_railway_u_girder_uls_framework_package
 from concrete_pmm_pro.verification.column_pier_vt_benchmarks import benchmark_cases
 from concrete_pmm_pro.verification.pmm_published_benchmark_inventory import (
@@ -61,6 +62,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
     pmm_benchmark_inventory = summarize_pmm_published_benchmark_inventory()
     railway_report = build_railway_u_girder_sls_report_package(session_state)
     railway_uls_report = build_railway_u_girder_uls_framework_package(session_state)
+    railway_release = build_railway_u_girder_release_package(session_state)
 
     standard_tables = [
         ReportTableInfo(
@@ -209,6 +211,25 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
                     "Railway U-Girder guarded ULS strength-check framework table. Framework-ready only; not final code-certified.",
                     row_count=len(dataframe),
                     warning="Railway U-Girder ULS framework is guarded engineering-review evidence, not final code-certified design.",
+                )
+            )
+
+    if railway_release.available:
+        railway_release_titles = {
+            "railway_u_girder_release_manifest": "Railway U-Girder Release Manifest",
+            "railway_u_girder_release_readiness": "Railway U-Girder Release Readiness",
+            "railway_u_girder_final_claim_guard": "Railway U-Girder Final Claim Guard",
+        }
+        for table_key, dataframe in railway_release.tables().items():
+            standard_tables.append(
+                ReportTableInfo(
+                    table_key,
+                    railway_release_titles.get(table_key, table_key.replace("_", " ").title()),
+                    not dataframe.empty,
+                    "reporting.railway_u_girder_release",
+                    "Railway U-Girder engineering-review release closeout table. No new UI and not final code-certified design.",
+                    row_count=len(dataframe),
+                    warning="Railway U-Girder release baseline is closeout-ready for engineering review only; it is not final code-certified design.",
                 )
             )
     return standard_tables

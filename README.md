@@ -996,3 +996,11 @@ Added guarded Railway U-Girder anchorage/end-zone bursting and spalling evidence
 Changed areas: `concrete_pmm_pro/analysis/railway_u_girder_uls.py`, report registry/Word export, docs, and regression tests. No SLS solver equations, ULS flexure/shear/torsion equations, prestress/debond station-participation logic, geometry generator, section properties, load-combination equation, project schema, or report certification wording were modified.
 
 Status wording remains guarded: anchorage/end-zone evidence is engineering-review only; not final code-certified design. Final certification still requires project-specific anchorage-zone reinforcement detailing, debonded strand sleeve-termination validation, end-region benchmarks, and Engineer-of-Record review.
+
+### RELEASE.RAIL.UGIRDER1 — Railway U-Girder Engineering-Review Release Closeout
+
+Closed the current Railway U-Girder work as an engineering-review release baseline without adding UI and without changing solver equations. The release adds report/Word closeout tables for release manifest, release readiness, and final-claim guardrails. Accepted release wording is `Railway U-Girder Engineering Review Release Baseline - Closeout Ready`.
+
+This milestone keeps the product boundary explicit: the Railway U-Girder package is closeout-ready for engineering review only; it is not final code-certified design and is not engineer certification. Final certification still requires project-specific detailing, independent benchmark validation, authority-specific criteria, and Engineer-of-Record review.
+
+Changed areas: report release helper, report table registry, Word report export, docs, and regression tests. No UI panels, SLS solver equations, ULS flexure/shear/torsion equations, prestress/debond station-participation logic, geometry generator, section properties, load-combination equations, project schema, or report certification wording were promoted to certified status.
