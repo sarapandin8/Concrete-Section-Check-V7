@@ -1,3 +1,11 @@
+### UI.THEME1 — Commercial Engineering Theme Foundation
+
+Added a visual-only commercial engineering theme foundation inspired by the user's preferred dark-navy engineering tool UI. The theme improves the app background, dark navy section/expander bars, sidebar foundation, metric cards, table/editor chrome, plot panels, existing custom cards, alerts, and input borders while preserving the current workspace/page structure.
+
+No solver equations, data-editor commit logic, widget keys, navigation/page routing, project schema, section geometry, prestress/debonding logic, load-combination logic, or report certification wording were changed.
+
+See `docs/design/ui_theme1.md`.
+
 ### UI.DATAEDITOR.COMMIT1 — One-Pass Commit for Rebar and Load Input Tables
 
 Fixed first-edit persistence for Streamlit `st.data_editor` inputs that previously could require entering the same value twice before the project/source table retained it.  The fix adds patch-payload reconstruction and `on_change` commit callbacks for Beam/Girder transverse rebar, Column/Pier transverse rebar, Column/Pier ULS/SLS load tables, Beam/Girder ULS load tables, Building Beam/Girder ULS load tables, and Beam/Girder staged SLS load tables.  No solver equations, load-combination equations, shear equations, section properties, or project schema were changed.

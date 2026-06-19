@@ -433,6 +433,233 @@ div[data-testid="stMarkdownContainer"] h4 {
   color: var(--cpmm-ink-blue);
   font-weight: 760;
 }
+
+/* UI.THEME1: visual-only commercial engineering theme foundation.
+   This layer intentionally changes color, spacing, cards, and table chrome only.
+   It does not add, remove, move, or rename widgets and it does not affect session-state keys. */
+:root {
+  --cpmm-theme-navy: #071a33;
+  --cpmm-theme-navy-2: #0b2545;
+  --cpmm-theme-navy-3: #102f55;
+  --cpmm-theme-bg: #f4f7fb;
+  --cpmm-theme-panel: #ffffff;
+  --cpmm-theme-panel-soft: #f8fbff;
+  --cpmm-theme-line: #d7e2ee;
+  --cpmm-theme-shadow: rgba(7, 26, 51, 0.08);
+  --cpmm-theme-shadow-strong: rgba(7, 26, 51, 0.14);
+  --cpmm-theme-cyan: #3aa0c4;
+  --cpmm-theme-amber: #f6b84b;
+}
+html, body, [data-testid="stAppViewContainer"] {
+  background: var(--cpmm-theme-bg) !important;
+}
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #071a33 0%, #0b2545 100%) !important;
+  border-right: 1px solid rgba(255, 255, 255, 0.10) !important;
+}
+section[data-testid="stSidebar"] *:not(input):not(textarea):not(option):not(svg):not(path) {
+  color: #eef6ff !important;
+}
+section[data-testid="stSidebar"] div[data-testid="stWidgetLabel"] p,
+section[data-testid="stSidebar"] div[data-testid="stWidgetLabel"] label,
+section[data-testid="stSidebar"] label,
+section[data-testid="stSidebar"] p {
+  color: #d9e8f7 !important;
+  font-weight: 750 !important;
+}
+section[data-testid="stSidebar"] div[data-baseweb="select"] *,
+section[data-testid="stSidebar"] div[data-baseweb="input"] input,
+section[data-testid="stSidebar"] div[data-baseweb="base-input"] input,
+section[data-testid="stSidebar"] textarea {
+  color: #071a33 !important;
+}
+section[data-testid="stSidebar"] .stButton button,
+section[data-testid="stSidebar"] .stDownloadButton button {
+  background: #0f335d !important;
+  color: #f7fbff !important;
+  border-color: #3a5f88 !important;
+}
+section[data-testid="stSidebar"] .stButton button[kind="primary"],
+section[data-testid="stSidebar"] button[data-testid="stBaseButton-primary"] {
+  background: #1f8fb3 !important;
+  border-color: #58c3e3 !important;
+  color: #ffffff !important;
+  box-shadow: inset 0 -2px 0 rgba(255, 255, 255, 0.18) !important;
+}
+.block-container {
+  background: transparent !important;
+}
+div[data-testid="stAppViewBlockContainer"] > div[data-testid="stVerticalBlock"] {
+  background: transparent !important;
+}
+/* Top-level cards and Streamlit containers. */
+div[data-testid="stMetric"],
+div[data-testid="stDataFrame"],
+div[data-testid="stDataEditor"],
+div[data-testid="stPlotlyChart"],
+div[data-testid="stPyplot"],
+div[data-testid="stImage"] {
+  border-radius: 9px !important;
+}
+div[data-testid="stMetric"] {
+  background: linear-gradient(180deg, #0b2545 0%, #123a67 100%) !important;
+  border: 1px solid #194b7a !important;
+  box-shadow: 0 4px 12px var(--cpmm-theme-shadow) !important;
+  padding: 0.62rem 0.78rem !important;
+}
+div[data-testid="stMetric"] label,
+div[data-testid="stMetric"] [data-testid="stMetricLabel"],
+div[data-testid="stMetric"] [data-testid="stMetricLabel"] p {
+  color: #bcd2e8 !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.025em !important;
+  text-transform: uppercase !important;
+}
+div[data-testid="stMetric"] [data-testid="stMetricValue"],
+div[data-testid="stMetric"] [data-testid="stMetricValue"] div {
+  color: #ffffff !important;
+  font-weight: 900 !important;
+}
+div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
+  color: #a8ecff !important;
+}
+/* Expander panels become dark-navy section bars, close to the user's preferred engineering-tool theme. */
+div[data-testid="stExpander"] details {
+  border: 1px solid var(--cpmm-theme-line) !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+  background: var(--cpmm-theme-panel) !important;
+  box-shadow: 0 2px 8px var(--cpmm-theme-shadow) !important;
+}
+div[data-testid="stExpander"] details > summary {
+  background: linear-gradient(90deg, var(--cpmm-theme-navy) 0%, var(--cpmm-theme-navy-2) 76%, var(--cpmm-theme-navy-3) 100%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10) !important;
+  min-height: 2.0rem !important;
+  padding: 0.42rem 0.75rem !important;
+}
+div[data-testid="stExpander"] details > summary p,
+div[data-testid="stExpander"] details > summary span,
+div[data-testid="stExpander"] details > summary div {
+  color: #f7fbff !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.01em !important;
+}
+div[data-testid="stExpander"] details > summary svg {
+  color: #f7fbff !important;
+  fill: #f7fbff !important;
+}
+div[data-testid="stExpander"] details > div[role="group"] {
+  background: var(--cpmm-theme-panel) !important;
+  padding-top: 0.56rem !important;
+}
+/* Data tables/editors: stronger engineering grid chrome without touching editor behavior. */
+div[data-testid="stDataFrame"],
+div[data-testid="stDataEditor"] {
+  border: 1px solid var(--cpmm-theme-line) !important;
+  background: var(--cpmm-theme-panel) !important;
+  box-shadow: 0 2px 8px var(--cpmm-theme-shadow) !important;
+  overflow: hidden !important;
+}
+div[data-testid="stDataFrame"] [role="columnheader"],
+div[data-testid="stDataEditor"] [role="columnheader"],
+div[data-testid="stDataFrame"] [data-testid="stTableStyledCell"],
+div[data-testid="stDataEditor"] [data-testid="stTableStyledCell"] {
+  font-weight: 800 !important;
+}
+div[data-testid="stDataFrame"] [role="columnheader"],
+div[data-testid="stDataEditor"] [role="columnheader"] {
+  color: var(--cpmm-theme-navy) !important;
+}
+/* Plots sit inside report-like panels. */
+div[data-testid="stPlotlyChart"],
+div[data-testid="stPyplot"] {
+  border: 1px solid var(--cpmm-theme-line) !important;
+  background: #ffffff !important;
+  box-shadow: 0 2px 8px var(--cpmm-theme-shadow) !important;
+  padding: 0.35rem !important;
+}
+/* Existing custom cards should pick up the darker professional result style. */
+.cpmm-analysis-strip,
+.cpmm-analysis-card,
+.cpmm-governing-card,
+.cpmm-prestress-chip,
+.cpmm-prestress-kv-panel,
+.cpmm-prestress-note-panel,
+.cpmm-dashboard-card,
+.cpmm-summary-strip,
+.cpmm-compact-panel,
+.cpmm-runtime-compact-card {
+  border-color: var(--cpmm-theme-line) !important;
+  box-shadow: 0 2px 8px var(--cpmm-theme-shadow) !important;
+}
+.cpmm-analysis-title,
+.cpmm-card-title,
+.cpmm-summary-title,
+.cpmm-prestress-chip-label,
+.cpmm-prestress-kv-label,
+.cpmm-governing-label,
+.cpmm-runtime-compact-card .cpmm-kicker {
+  color: #526f8d !important;
+  font-weight: 850 !important;
+  letter-spacing: 0.025em !important;
+  text-transform: uppercase !important;
+}
+.cpmm-analysis-value,
+.cpmm-card-value,
+.cpmm-summary-value,
+.cpmm-prestress-chip-value,
+.cpmm-prestress-kv-value,
+.cpmm-governing-value,
+.cpmm-runtime-compact-card .cpmm-value {
+  color: var(--cpmm-theme-navy) !important;
+  font-weight: 900 !important;
+}
+.cpmm-executive-header {
+  background: linear-gradient(90deg, var(--cpmm-theme-navy) 0%, var(--cpmm-theme-navy-2) 74%, #123e6d 100%) !important;
+  border-color: #183f6b !important;
+  box-shadow: 0 4px 14px var(--cpmm-theme-shadow-strong) !important;
+}
+.cpmm-executive-eyebrow,
+.cpmm-executive-title,
+.cpmm-executive-subtitle {
+  color: #f7fbff !important;
+}
+.cpmm-sls-action-panel,
+.cpmm-prestress-mode-card {
+  border-left: 5px solid var(--cpmm-theme-cyan) !important;
+  border-color: var(--cpmm-theme-line) !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%) !important;
+  box-shadow: 0 2px 8px var(--cpmm-theme-shadow) !important;
+}
+.cpmm-decision-banner,
+.cpmm-prestress-table-note,
+.cpmm-prestress-quiet-note {
+  box-shadow: 0 2px 8px var(--cpmm-theme-shadow) !important;
+}
+/* Streamlit alerts and callouts: cleaner border and density. */
+div[data-testid="stAlert"] {
+  border-radius: 8px !important;
+  border: 1px solid var(--cpmm-theme-line) !important;
+  box-shadow: 0 2px 8px rgba(7, 26, 51, 0.05) !important;
+}
+/* Forms and inputs get a more deliberate engineering-software feel. */
+div[data-baseweb="input"],
+div[data-baseweb="base-input"],
+div[data-baseweb="select"],
+div[data-baseweb="textarea"],
+textarea,
+input {
+  border-radius: 6px !important;
+}
+/* Header text polish under the global brand. */
+div[data-testid="stMarkdownContainer"] h2 {
+  border-bottom: 2px solid #d7e2ee !important;
+  padding-bottom: 0.18rem !important;
+}
+div[data-testid="stMarkdownContainer"] h3 {
+  color: var(--cpmm-theme-navy) !important;
+}
+
 </style>
 """
 
