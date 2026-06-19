@@ -2167,3 +2167,77 @@ def test_uls_shear_governing1_audit_marks_strength_governing_station() -> None:
     assert governing_rows.iloc[0]["Station x"] == "8.744 m"
     assert governing_rows.iloc[0]["Strength D/C"] == "0.692"
     assert governing_rows.iloc[0]["Detailing D/C"] == "1.893"
+
+
+def test_shear_status1_compact_table_ignores_stale_fail_when_explicit_gates_pass() -> None:
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",  # stale aggregate status from an older/source row
+                "Strength status": "PASS",
+                "Detailing status": "PASS",
+                "Vn limit status": "PASS",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Support side": "Right",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand": "1,355.74 kN",
+                "Demand kN": 1355.74,
+                "Abs demand kN": 1355.74,
+                "Capacity": "φVn = 2,506.72 kN",
+                "Utilization": "0.541 / det 0.757",
+                "D/C value": 0.541,
+                "Strength D/C value": 0.541,
+                "Detailing D/C value": 0.757,
+                "Governing D/C value": 0.757,
+            }
+        ]
+    )
+    active = pd.DataFrame([{"Active": True, "Station x (m)": 10.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 1644.35, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": ""}])
+
+    table = _beam_uls_check_table(active, shear_check_df=shear)
+    shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
+
+    assert _beam_uls_shear_overall_status(shear) == "PASS"
+    assert shear_row["Status"] == "PASS"
+    assert shear_row["Governing x"] == "9.000 m"
+    assert shear_row["Utilization"] == "0.541 / det 0.757"
+
+
+def test_shear_status1_source_gate_clear_when_explicit_shear_gates_pass() -> None:
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "PASS",
+                "Detailing status": "PASS",
+                "Station type": "CRITICAL SHEAR SECTION",
+                "Governing x": "9.000 m",
+                "Case": "Strength I",
+                "Demand kN": 1355.74,
+                "Abs demand kN": 1355.74,
+                "D/C value": 0.541,
+                "Strength D/C value": 0.541,
+                "Detailing D/C value": 0.757,
+                "Governing D/C value": 0.757,
+            }
+        ]
+    )
+    torsion = pd.DataFrame(
+        [
+            {
+                "Check": "Torsion",
+                "Status": "BELOW THRESHOLD",
+                "Governing x": "4.000 m",
+                "Case": "Strength I",
+                "D/C value": 0.132,
+            }
+        ]
+    )
+
+    gate = _beam_uls_combined_vt_source_strength_gate(shear, torsion)
+
+    assert gate["value"] == "CLEAR"
+    assert gate["has_blocker"] is False

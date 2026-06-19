@@ -1,3 +1,18 @@
+### SHEAR.STATUS1 — Beam/Girder ULS Shear Status Propagation Hotfix
+
+This hotfix corrects the Beam/Girder ULS shear compact-table and source-gate status propagation. The earlier SHEAR.GOVERNING1 fix correctly moved the displayed governing shear station to the strength-demand row, but the compact table could still report `Shear = FAIL` when a stale/source row-level `Status` string said `FAIL` even though the explicit displayed gates were clear:
+
+```text
+Strength D/C <= 1.0
+Detailing D/C <= 1.0
+Strength status = PASS
+Detailing status = PASS
+```
+
+The overall shear status now derives from the explicit strength/detailing/readiness gates instead of trusting the aggregate `Status` string alone. This keeps the compact ULS table, top summary cards, source gate for Shear + Torsion, and the Shear workspace cards consistent. No shear equation, torsion equation, flexure equation, SLS equation, prestress/debonding logic, geometry generator, section properties, load-combination equation, project schema, or UI layout is changed.
+
+See `docs/design/shear_status1.md`.
+
 ### SHEAR.GOVERNING1 — Beam/Girder ULS Shear Governing-Station Selection Hotfix
 
 This hotfix corrects the Beam/Girder/Railway U-Girder ULS shear governing-row selection used by the compact ULS table, summary cards, shear chart marker, and shear audit table. The displayed governing shear station now ranks non-boundary rows by strength D/C and absolute Vu, instead of letting a zone-wide detailing D/C failure select an arbitrary low-demand row. Overall shear status still fails when any non-boundary strength/detailing gate fails.

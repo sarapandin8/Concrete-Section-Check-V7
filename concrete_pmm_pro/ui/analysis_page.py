@@ -6461,23 +6461,78 @@ def _beam_uls_shear_design_rows_for_governing(shear_df: pd.DataFrame | None) -> 
 
 
 def _beam_uls_shear_overall_status(shear_df: pd.DataFrame | None) -> str:
-    """Summarize overall shear status from all non-boundary rows."""
+    """Summarize overall shear status from non-boundary design rows.
+
+    SHEAR.STATUS1 deliberately derives the status from the explicit strength and
+    detailing gates instead of trusting the row-level ``Status`` string alone.
+    Older cached/source rows could carry ``Status = FAIL`` even when the visible
+    gate evidence said ``Strength status = PASS``, ``Detailing status = PASS``,
+    ``Strength D/C <= 1.0``, and ``Detailing D/C <= 1.0``.  That produced the
+    misleading UI state where the shear diagram was entirely below φVn and the
+    shear workspace card showed PASS, while the compact summary still reported
+    FAIL.
+
+    The overall shear result should fail only when an explicit strength,
+    detailing, zone-coverage, or data-readiness gate fails/requires layout.
+    """
 
     df = _beam_uls_shear_design_rows_for_governing(shear_df)
-    if df.empty or "Status" not in df.columns:
+    if df.empty:
         return "NOT READY"
-    statuses = {str(value or "").upper() for value in df["Status"].tolist()}
-    if "FAIL" in statuses:
-        return "FAIL"
-    if "LAYOUT REQUIRED" in statuses:
-        return "LAYOUT REQUIRED"
-    review_statuses = {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"}
-    if statuses.intersection(review_statuses):
+
+    saw_pass = False
+    saw_no_demand = False
+    saw_review = False
+
+    for _, row in df.iterrows():
+        status = str(row.get("Status") or "").upper()
+        strength_status = str(row.get("Strength status") or "").upper()
+        detailing_status = str(row.get("Detailing status") or "").upper()
+        vn_limit_status = str(row.get("Vn limit status") or "").upper()
+        strength_dc = _beam_uls_float(row.get("Strength D/C value", row.get("D/C value")))
+        detailing_dc = _beam_uls_float(row.get("Detailing D/C value"))
+
+        if status in {"NO DEMAND", "NOT APPLICABLE"}:
+            saw_no_demand = True
+            continue
+        if status == "LAYOUT REQUIRED":
+            return "LAYOUT REQUIRED"
+        if status in {"DATA REQUIRED", "NOT READY", "INCOMPLETE"}:
+            saw_review = True
+            continue
+
+        explicit_strength_fail = strength_status == "FAIL" or (math.isfinite(strength_dc) and strength_dc > 1.0 + 1.0e-9)
+        explicit_detailing_fail = detailing_status == "FAIL" or (math.isfinite(detailing_dc) and detailing_dc > 1.0 + 1.0e-9)
+        if explicit_strength_fail or explicit_detailing_fail:
+            return "FAIL"
+
+        if strength_status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or detailing_status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or vn_limit_status == "REVIEW":
+            saw_review = True
+            continue
+
+        # If the explicit gate columns are present and pass, do not let a stale
+        # aggregate Status string override the actual displayed shear evidence.
+        explicit_gates_present = bool(strength_status or detailing_status or math.isfinite(strength_dc) or math.isfinite(detailing_dc))
+        if explicit_gates_present:
+            strength_clear = strength_status in {"", "PASS", "BOUNDARY"} and (not math.isfinite(strength_dc) or strength_dc <= 1.0 + 1.0e-9)
+            detailing_clear = detailing_status in {"", "PASS"} and (not math.isfinite(detailing_dc) or detailing_dc <= 1.0 + 1.0e-9)
+            if strength_clear and detailing_clear:
+                saw_pass = True
+                continue
+
+        if status == "FAIL":
+            return "FAIL"
+        if status == "PASS":
+            saw_pass = True
+        elif status in {"REVIEW", "DATA REQUIRED", "NOT READY", "INCOMPLETE"} or not status:
+            saw_review = True
+
+    if saw_review:
         return "REVIEW"
-    if statuses and statuses.issubset({"NO DEMAND", "NOT APPLICABLE"}):
-        return "NO DEMAND"
-    if "PASS" in statuses:
+    if saw_pass:
         return "PASS"
+    if saw_no_demand:
+        return "NO DEMAND"
     return "REVIEW"
 
 
