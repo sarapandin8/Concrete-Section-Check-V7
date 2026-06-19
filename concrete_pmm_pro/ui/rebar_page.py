@@ -507,6 +507,92 @@ def _apply_generated_perimeter_layout_to_rebar_table(generated_table: pd.DataFra
     apply_generated_perimeter_layout_state(st.session_state, generated_table)
 
 
+def _data_editor_payload_to_dataframe(payload: Any, fallback_table: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Return a full dataframe from a Streamlit data_editor return value or patch.
+
+    UI.DATAEDITOR.COMMIT1: keyed ``st.data_editor`` callbacks receive patch
+    dictionaries in session state.  Reconstructing the full table from the
+    previous source-of-truth table lets the first cell edit persist before the
+    next rerun, instead of requiring the engineer to enter the same value twice.
+    """
+
+    if isinstance(payload, pd.DataFrame):
+        return payload.reset_index(drop=True).copy()
+    if payload is None:
+        return pd.DataFrame(fallback_table).reset_index(drop=True).copy() if fallback_table is not None else pd.DataFrame()
+    if isinstance(payload, list):
+        return pd.DataFrame(payload).reset_index(drop=True)
+    if not isinstance(payload, dict):
+        return pd.DataFrame(payload).reset_index(drop=True)
+
+    if {"edited_rows", "added_rows", "deleted_rows"}.intersection(payload.keys()):
+        df = pd.DataFrame(fallback_table).reset_index(drop=True).copy() if fallback_table is not None else pd.DataFrame()
+        edited_rows = payload.get("edited_rows") or {}
+        for raw_index, changes in edited_rows.items():
+            try:
+                row_index = int(raw_index)
+            except (TypeError, ValueError):
+                continue
+            if row_index < 0:
+                continue
+            while row_index >= len(df.index):
+                df.loc[len(df.index)] = {column: None for column in df.columns}
+            if isinstance(changes, dict):
+                for column, value in changes.items():
+                    if column not in df.columns:
+                        df[column] = None
+                    df.at[row_index, column] = value
+        deleted_rows = payload.get("deleted_rows") or []
+        delete_indices: list[int] = []
+        for raw_index in deleted_rows:
+            try:
+                delete_indices.append(int(raw_index))
+            except (TypeError, ValueError):
+                continue
+        if delete_indices and not df.empty:
+            df = df.drop(index=[index for index in set(delete_indices) if index in df.index]).reset_index(drop=True)
+        added_rows = payload.get("added_rows") or []
+        if added_rows:
+            df = pd.concat([df, pd.DataFrame(added_rows)], ignore_index=True)
+        return df.reset_index(drop=True)
+
+    try:
+        return pd.DataFrame(payload).reset_index(drop=True)
+    except ValueError:
+        return pd.DataFrame([payload]).reset_index(drop=True)
+
+
+def _clear_data_editor_widget_state(editor_key: str) -> None:
+    try:
+        del st.session_state[editor_key]
+    except KeyError:
+        pass
+
+
+def _sync_beam_girder_shear_reinforcement_editor_to_table(editor_key: str, rebar_db: pd.DataFrame) -> None:
+    """Commit the first transverse-rebar editor edit to the provided-zone table."""
+
+    fallback = _ensure_shear_reinforcement_columns(pd.DataFrame(st.session_state.get(SHEAR_REINFORCEMENT_TABLE_KEY)))
+    edited = _data_editor_payload_to_dataframe(st.session_state.get(editor_key), fallback)
+    normalized = _normalize_shear_reinforcement_table(edited, fallback, rebar_db)
+    st.session_state[SHEAR_REINFORCEMENT_TABLE_KEY] = normalized
+    _store_shear_reinforcement_metadata(normalized)
+    st.session_state["beam_girder_shear_reinforcement_editor_revision"] = int(st.session_state.get("beam_girder_shear_reinforcement_editor_revision", 0) or 0) + 1
+    _clear_data_editor_widget_state(editor_key)
+
+
+def _sync_column_pier_transverse_reinforcement_editor_to_table(editor_key: str, rebar_db: pd.DataFrame) -> None:
+    """Commit the first Column/Pier transverse editor edit to the control table."""
+
+    fallback = _ensure_shear_reinforcement_columns(pd.DataFrame(st.session_state.get(COLUMN_PIER_TRANSVERSE_TABLE_KEY)))
+    edited = _data_editor_payload_to_dataframe(st.session_state.get(editor_key), fallback)
+    normalized = _normalize_shear_reinforcement_table(edited, fallback, rebar_db)
+    st.session_state[COLUMN_PIER_TRANSVERSE_TABLE_KEY] = normalized
+    _store_column_pier_transverse_metadata(normalized)
+    st.session_state["column_pier_transverse_reinforcement_editor_revision"] = int(st.session_state.get("column_pier_transverse_reinforcement_editor_revision", 0) or 0) + 1
+    _clear_data_editor_widget_state(editor_key)
+
+
 def _editor_cell_equal(left: Any, right: Any, numeric: bool = False, boolean: bool = False) -> bool:
     """Compare data_editor cells without false mismatches from type coercion.
 
@@ -1875,7 +1961,10 @@ def _render_shear_reinforcement_layout(rebar_db: pd.DataFrame) -> None:
         hide_index=True,
         column_config=_shear_reinforcement_column_config(),
         key=shear_editor_key,
+        on_change=_sync_beam_girder_shear_reinforcement_editor_to_table,
+        args=(shear_editor_key, rebar_db),
     )
+    edited = _data_editor_payload_to_dataframe(edited, pd.DataFrame(previous))
     normalized = _normalize_shear_reinforcement_table(edited, pd.DataFrame(previous), rebar_db)
     st.session_state[SHEAR_REINFORCEMENT_TABLE_KEY] = normalized
     _store_shear_reinforcement_metadata(normalized)
@@ -1970,7 +2059,10 @@ def _render_column_pier_transverse_reinforcement_layout(rebar_db: pd.DataFrame) 
         hide_index=True,
         column_config=_column_pier_transverse_column_config(),
         key=editor_key,
+        on_change=_sync_column_pier_transverse_reinforcement_editor_to_table,
+        args=(editor_key, rebar_db),
     )
+    edited = _data_editor_payload_to_dataframe(edited, pd.DataFrame(previous))
     normalized = _normalize_shear_reinforcement_table(edited, pd.DataFrame(previous), rebar_db)
     st.session_state[COLUMN_PIER_TRANSVERSE_TABLE_KEY] = normalized
     _store_column_pier_transverse_metadata(normalized)

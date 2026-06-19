@@ -1,3 +1,7 @@
+### UI.DATAEDITOR.COMMIT1 — One-Pass Commit for Rebar and Load Input Tables
+
+Fixed first-edit persistence for Streamlit `st.data_editor` inputs that previously could require entering the same value twice before the project/source table retained it.  The fix adds patch-payload reconstruction and `on_change` commit callbacks for Beam/Girder transverse rebar, Column/Pier transverse rebar, Column/Pier ULS/SLS load tables, Beam/Girder ULS load tables, Building Beam/Girder ULS load tables, and Beam/Girder staged SLS load tables.  No solver equations, load-combination equations, shear equations, section properties, or project schema were changed.
+
 ### SHEAR.LABEL1 — Clear Shear Detailing D/C Labels
 
 This UI/diagnostic polish replaces opaque compact shear utilization wording such as `0.460 / det 1.893` with explicit labels such as `Strength D/C 0.460; Av/s min D/C 1.893` or `Strength D/C 0.460; Spacing D/C 1.200`.  The parser remains backward compatible with old cached `det` strings, but the compact ULS check table and top governing-shear card no longer expose `det` as the user-facing label.

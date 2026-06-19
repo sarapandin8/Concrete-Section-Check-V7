@@ -231,25 +231,105 @@ def _dataframes_equal_for_editor(left: pd.DataFrame, right: pd.DataFrame, column
     return left_norm.equals(right_norm)
 
 
+def _data_editor_payload_to_dataframe(payload: Any, fallback_table: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Return a full dataframe from a Streamlit data_editor value or patch payload.
+
+    Streamlit stores keyed ``st.data_editor`` changes as patch dictionaries during
+    callbacks, for example ``edited_rows`` / ``added_rows`` / ``deleted_rows``.
+    The returned value from ``st.data_editor`` is normally a dataframe, but the
+    callback path is the only reliable way to persist the *first* edit before the
+    next rerun.  This helper reconstructs the full table from the previous
+    source-of-truth table plus the patch payload.
+    """
+
+    if isinstance(payload, pd.DataFrame):
+        return payload.reset_index(drop=True).copy()
+    if payload is None:
+        return pd.DataFrame(fallback_table).reset_index(drop=True).copy() if fallback_table is not None else pd.DataFrame()
+    if isinstance(payload, list):
+        return pd.DataFrame(payload).reset_index(drop=True)
+    if not isinstance(payload, dict):
+        return pd.DataFrame(payload).reset_index(drop=True)
+
+    if {"edited_rows", "added_rows", "deleted_rows"}.intersection(payload.keys()):
+        df = pd.DataFrame(fallback_table).reset_index(drop=True).copy() if fallback_table is not None else pd.DataFrame()
+        edited_rows = payload.get("edited_rows") or {}
+        for raw_index, changes in edited_rows.items():
+            try:
+                row_index = int(raw_index)
+            except (TypeError, ValueError):
+                continue
+            if row_index < 0:
+                continue
+            while row_index >= len(df.index):
+                df.loc[len(df.index)] = {column: "" for column in df.columns}
+            if isinstance(changes, dict):
+                for column, value in changes.items():
+                    if column not in df.columns:
+                        df[column] = ""
+                    df.at[row_index, column] = value
+
+        deleted_rows = payload.get("deleted_rows") or []
+        delete_indices: list[int] = []
+        for raw_index in deleted_rows:
+            try:
+                delete_indices.append(int(raw_index))
+            except (TypeError, ValueError):
+                continue
+        if delete_indices and not df.empty:
+            df = df.drop(index=[index for index in set(delete_indices) if index in df.index]).reset_index(drop=True)
+
+        added_rows = payload.get("added_rows") or []
+        if added_rows:
+            df = pd.concat([df, pd.DataFrame(added_rows)], ignore_index=True)
+        return df.reset_index(drop=True)
+
+    try:
+        return pd.DataFrame(payload).reset_index(drop=True)
+    except ValueError:
+        return pd.DataFrame([payload]).reset_index(drop=True)
+
+
+def _sync_simple_load_editor_to_table(state_key: str, editor_key: str, columns: list[str]) -> None:
+    """Commit the first keyed data-editor edit into the load-table source of truth."""
+
+    fallback = _stringify_table(pd.DataFrame(st.session_state.get(state_key)), columns)
+    payload = st.session_state.get(editor_key)
+    normalized = _stringify_table(_data_editor_payload_to_dataframe(payload, fallback), columns)
+    st.session_state[state_key] = normalized
+    _sync_workflow_load_tables_metadata()
+
+
+def _sync_beam_sls_stage_editor_to_table(editor_key: str, stage_label: str) -> None:
+    """Commit first-edit changes from one SLS stage editor into the backend table."""
+
+    current_table = _normalize_beam_sls_load_table(pd.DataFrame(st.session_state.get("beam_sls_loads_table")))
+    fallback = _beam_sls_stage_editor_rows(current_table, stage_label)
+    payload = st.session_state.get(editor_key)
+    edited_stage = _stringify_table(_data_editor_payload_to_dataframe(payload, fallback), BEAM_SLS_STAGE_EDITOR_COLUMNS)
+    st.session_state["beam_sls_loads_table"] = _beam_sls_table_after_stage_edit(current_table, stage_label, edited_stage)
+    _sync_workflow_load_tables_metadata()
+
+
 def _store_editor_table_and_rerun_on_change(
     state_key: str,
     edited_table: pd.DataFrame,
     previous_table: pd.DataFrame,
     columns: list[str],
 ) -> None:
-    """Persist edited load-table data and rerun once when it changed.
+    """Persist edited load-table data without forcing a second user edit.
 
-    This is deliberately small and UI-local. It does not change the load schema
-    or solver mapping; it only makes dropdown edits in workflow-specific tables
-    feel single-click by rebuilding the editor from the updated session state on
-    the next run.
+    UI.DATAEDITOR.COMMIT1 moves first-edit persistence into ``on_change``
+    callbacks.  This post-render path remains as a safety net for the dataframe
+    returned by the widget, but it no longer forces ``st.rerun()`` because the
+    widget callback already triggers the rerun and has committed the edit before
+    the next render.
     """
 
     normalized = _stringify_table(pd.DataFrame(edited_table), columns)
     st.session_state[state_key] = normalized
     if not _dataframes_equal_for_editor(previous_table, normalized, columns):
         _sync_workflow_load_tables_metadata()
-        st.rerun()
 
 def _beam_sls_stage_label(value: object) -> str:
     """Normalize Beam/Girder SLS rows to the simplified three-stage model."""
@@ -1772,6 +1852,8 @@ def _render_column_load_tables(force_unit: str, moment_unit: str) -> None:
             "Note": st.column_config.TextColumn("Note"),
         },
         key="column_uls_loads_editor",
+        on_change=_sync_simple_load_editor_to_table,
+        args=("column_uls_loads_table", "column_uls_loads_editor", COLUMN_ULS_LOAD_COLUMNS),
     )
     edited_uls = _stringify_table(edited_uls, COLUMN_ULS_LOAD_COLUMNS)
     _store_editor_table_and_rerun_on_change(
@@ -1811,6 +1893,8 @@ def _render_column_load_tables(force_unit: str, moment_unit: str) -> None:
             "Note": st.column_config.TextColumn("Note"),
         },
         key="column_sls_loads_editor",
+        on_change=_sync_simple_load_editor_to_table,
+        args=("column_sls_loads_table", "column_sls_loads_editor", COLUMN_SLS_LOAD_COLUMNS),
     )
     edited_sls = _stringify_table(edited_sls, COLUMN_SLS_LOAD_COLUMNS)
     _store_editor_table_and_rerun_on_change(
@@ -2218,9 +2302,16 @@ def _render_beam_girder_load_tables(force_unit: str, moment_unit: str) -> None:
                 "Note": st.column_config.TextColumn("Note"),
             },
             key="beam_uls_loads_editor",
+            on_change=_sync_simple_load_editor_to_table,
+            args=("beam_uls_loads_table", "beam_uls_loads_editor", BEAM_ULS_LOAD_COLUMNS),
         )
         edited_uls = _stringify_table(edited_uls, BEAM_ULS_LOAD_COLUMNS)
-        st.session_state["beam_uls_loads_table"] = edited_uls
+        _store_editor_table_and_rerun_on_change(
+            "beam_uls_loads_table",
+            edited_uls,
+            uls_df,
+            BEAM_ULS_LOAD_COLUMNS,
+        )
 
     with sls_tab:
         _render_beam_girder_auto_sls_load_component_inputs()
@@ -2302,6 +2393,8 @@ def _render_beam_girder_load_tables(force_unit: str, moment_unit: str) -> None:
                         "Note": st.column_config.TextColumn("Note"),
                     },
                     key=f"beam_sls_{stage_key}_loads_editor",
+                    on_change=_sync_beam_sls_stage_editor_to_table,
+                    args=(f"beam_sls_{stage_key}_loads_editor", stage_label),
                 )
                 merged_sls_table = _beam_sls_table_after_stage_edit(current_sls_table, stage_label, edited_stage)
                 _store_editor_table_and_rerun_on_change(
@@ -2419,9 +2512,16 @@ def _render_building_beam_girder_load_tables(force_unit: str, moment_unit: str) 
                 "Note": st.column_config.TextColumn("Note"),
             },
             key="building_beam_uls_loads_editor",
+            on_change=_sync_simple_load_editor_to_table,
+            args=("beam_uls_loads_table", "building_beam_uls_loads_editor", BEAM_ULS_LOAD_COLUMNS),
         )
         edited_uls = _stringify_table(edited_uls, BEAM_ULS_LOAD_COLUMNS)
-        st.session_state["beam_uls_loads_table"] = edited_uls
+        _store_editor_table_and_rerun_on_change(
+            "beam_uls_loads_table",
+            edited_uls,
+            uls_df,
+            BEAM_ULS_LOAD_COLUMNS,
+        )
 
     with sls_tab:
         _render_building_beam_girder_service_load_inputs()
