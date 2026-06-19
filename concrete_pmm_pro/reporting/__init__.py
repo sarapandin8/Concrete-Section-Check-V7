@@ -125,6 +125,21 @@ from concrete_pmm_pro.reporting.railway_u_girder_release import (
     railway_u_girder_release_readiness_dataframe,
 )
 
+
+from concrete_pmm_pro.reporting.railway_u_girder_final import (
+    RAILWAY_UGIRDER_FINAL_CERTIFICATION_BOUNDARY,
+    RAILWAY_UGIRDER_FINAL_MILESTONE,
+    RAILWAY_UGIRDER_FINAL_STATUS,
+    RAILWAY_UGIRDER_FINAL_TABLE_KEYS,
+    RAILWAY_UGIRDER_FINAL_WARNING,
+    RailwayUGirderFinalDesignCheckPackage,
+    build_railway_u_girder_final_design_check_package,
+    railway_u_girder_final_certification_boundary_dataframe,
+    railway_u_girder_final_design_check_manifest_dataframe,
+    railway_u_girder_final_handoff_dataframe,
+    railway_u_girder_final_prerequisite_matrix_dataframe,
+)
+
 from concrete_pmm_pro.reporting.railway_u_girder_report import (
     RAILWAY_UGIRDER_CLOSEOUT_SCOPE,
     RAILWAY_UGIRDER_CLOSEOUT_STATUS,
@@ -154,6 +169,17 @@ __all__ = [
     "ReportTableInfo",
     "ResultTraceabilitySnapshot",
     "UnitConvention",
+    "RAILWAY_UGIRDER_FINAL_CERTIFICATION_BOUNDARY",
+    "RAILWAY_UGIRDER_FINAL_MILESTONE",
+    "RAILWAY_UGIRDER_FINAL_STATUS",
+    "RAILWAY_UGIRDER_FINAL_TABLE_KEYS",
+    "RAILWAY_UGIRDER_FINAL_WARNING",
+    "RailwayUGirderFinalDesignCheckPackage",
+    "build_railway_u_girder_final_design_check_package",
+    "railway_u_girder_final_certification_boundary_dataframe",
+    "railway_u_girder_final_design_check_manifest_dataframe",
+    "railway_u_girder_final_handoff_dataframe",
+    "railway_u_girder_final_prerequisite_matrix_dataframe",
     "RAILWAY_UGIRDER_RELEASE_BOUNDARY",
     "RAILWAY_UGIRDER_RELEASE_MILESTONE",
     "RAILWAY_UGIRDER_RELEASE_STATUS",

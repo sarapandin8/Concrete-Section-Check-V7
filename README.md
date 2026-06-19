@@ -1004,3 +1004,22 @@ Closed the current Railway U-Girder work as an engineering-review release baseli
 This milestone keeps the product boundary explicit: the Railway U-Girder package is closeout-ready for engineering review only; it is not final code-certified design and is not engineer certification. Final certification still requires project-specific detailing, independent benchmark validation, authority-specific criteria, and Engineer-of-Record review.
 
 Changed areas: report release helper, report table registry, Word report export, docs, and regression tests. No UI panels, SLS solver equations, ULS flexure/shear/torsion equations, prestress/debond station-participation logic, geometry generator, section properties, load-combination equations, project schema, or report certification wording were promoted to certified status.
+
+
+### FINAL.RAIL.UGIRDER1 — Railway U-Girder Final Design-Check Evidence Closeout
+
+This milestone consolidates the Railway U-Girder SLS report evidence, ULS flexure/shear/torsion-V+T evidence, prestress development evidence, anchorage/end-zone evidence, release traceability, Word-report tables, and QA guardrails into a final software design-check evidence package.
+
+Status wording:
+
+```text
+Railway U-Girder Final Design-Check Evidence Package - Complete
+```
+
+Boundary:
+
+```text
+This is not legal Engineer-of-Record certification and must not be represented as Final Code-Certified Design Complete without signed project certification, independent validation, and authority/client acceptance.
+```
+
+No SLS solver equations, ULS equations, prestress/debond logic, geometry generation, load combinations, project schema, or Streamlit UI panels were changed by this milestone.

@@ -14,6 +14,7 @@ from concrete_pmm_pro.reporting.traceability import build_result_traceability_sn
 from concrete_pmm_pro.reporting.units import unit_conventions_to_dataframe
 from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
 from concrete_pmm_pro.reporting.railway_u_girder_release import build_railway_u_girder_release_package
+from concrete_pmm_pro.reporting.railway_u_girder_final import build_railway_u_girder_final_design_check_package
 from concrete_pmm_pro.analysis.railway_u_girder_uls import build_railway_u_girder_uls_framework_package
 from concrete_pmm_pro.verification.column_pier_vt_benchmarks import benchmark_cases
 from concrete_pmm_pro.verification.pmm_published_benchmark_inventory import (
@@ -63,6 +64,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
     railway_report = build_railway_u_girder_sls_report_package(session_state)
     railway_uls_report = build_railway_u_girder_uls_framework_package(session_state)
     railway_release = build_railway_u_girder_release_package(session_state)
+    railway_final = build_railway_u_girder_final_design_check_package(session_state)
 
     standard_tables = [
         ReportTableInfo(
@@ -230,6 +232,27 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
                     "Railway U-Girder engineering-review release closeout table. No new UI and not final code-certified design.",
                     row_count=len(dataframe),
                     warning="Railway U-Girder release baseline is closeout-ready for engineering review only; it is not final code-certified design.",
+                )
+            )
+
+
+    if railway_final.available:
+        railway_final_titles = {
+            "railway_u_girder_final_design_check_manifest": "Railway U-Girder Final Design-Check Manifest",
+            "railway_u_girder_final_prerequisite_matrix": "Railway U-Girder Final Prerequisite Matrix",
+            "railway_u_girder_final_certification_boundary": "Railway U-Girder Final Certification Boundary",
+            "railway_u_girder_final_handoff": "Railway U-Girder Final Handoff",
+        }
+        for table_key, dataframe in railway_final.tables().items():
+            standard_tables.append(
+                ReportTableInfo(
+                    table_key,
+                    railway_final_titles.get(table_key, table_key.replace("_", " ").title()),
+                    not dataframe.empty,
+                    "reporting.railway_u_girder_final",
+                    "Railway U-Girder final software design-check evidence table. Complete for engineering-review evidence; Engineer-of-Record certification remains required.",
+                    row_count=len(dataframe),
+                    warning="Railway U-Girder final design-check package is not legal engineer certification and must not be claimed as Final Code-Certified Design Complete without Engineer-of-Record approval.",
                 )
             )
     return standard_tables
