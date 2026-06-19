@@ -2986,10 +2986,11 @@ def _beam_uls_float(value: object) -> float:
 def _beam_uls_shear_utilization_parts(value: object) -> tuple[float, float]:
     """Parse formatted shear utilization text into strength/detailing D/C values.
 
-    SHEAR.STATUS3 uses this as a display-layer recovery path for cached or
-    externally reconstructed shear rows that may preserve ``Utilization`` text
-    such as ``0.541 / det 0.757`` while losing one or both numeric D/C columns.
-    Numeric columns remain the preferred source of truth.
+    SHEAR.LABEL1 keeps this parser backward compatible with older compact-table
+    strings such as ``0.541 / det 0.757`` while also accepting the clearer UI
+    labels ``Strength D/C 0.541; Av/s min D/C 0.757`` and
+    ``Strength D/C 0.541; Spacing D/C 0.757``.  Numeric columns remain the
+    preferred source of truth.
     """
 
     text = str(value or "").strip().replace(",", "")
@@ -2998,14 +2999,70 @@ def _beam_uls_shear_utilization_parts(value: object) -> tuple[float, float]:
     strength = float("nan")
     detailing = float("nan")
     lowered = text.lower()
-    # First number before any separator is the strength utilization.
-    match = re.search(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", lowered)
-    if match:
-        strength = _beam_uls_float(match.group(0))
-    det_match = re.search(r"\bdet\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)", lowered)
-    if det_match:
-        detailing = _beam_uls_float(det_match.group(1))
+
+    strength_match = re.search(
+        r"strength\s*(?:d\s*/\s*c|dc|utilization)?\s*[=:]?\s*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
+        lowered,
+    )
+    if strength_match:
+        strength = _beam_uls_float(strength_match.group(1))
+
+    detail_match = re.search(
+        r"(?:\bdet\b|detailing|av\s*/\s*s\s*min|minimum\s*av\s*/\s*s|spacing|shear\s*rebar)[^0-9+\-]*([-+]?\d*\.?\d+(?:[eE][-+]?\d+)?)",
+        lowered,
+    )
+    if detail_match:
+        detailing = _beam_uls_float(detail_match.group(1))
+
+    # Backward/fallback behavior: the first number is the strength utilization
+    # when no explicit label is present.
+    if not math.isfinite(strength):
+        match = re.search(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", lowered)
+        if match:
+            strength = _beam_uls_float(match.group(0))
     return strength, detailing
+
+
+def _beam_uls_shear_detailing_dc_label(row: Mapping[str, object]) -> str:
+    """Return the clearest compact label for the controlling shear detailing gate."""
+
+    avs_dc = _beam_uls_float(row.get("Av/s min D/C"))
+    spacing_dc = _beam_uls_float(row.get("Spacing D/C"))
+    if math.isfinite(avs_dc) or math.isfinite(spacing_dc):
+        if math.isfinite(avs_dc) and (not math.isfinite(spacing_dc) or avs_dc >= spacing_dc):
+            return "Av/s min D/C"
+        return "Spacing D/C"
+    return "Shear rebar detailing D/C"
+
+
+def _format_beam_uls_shear_utilization_text(
+    strength_dc: object,
+    detailing_dc: object = float("nan"),
+    *,
+    detailing_label: str = "Shear rebar detailing D/C",
+) -> str:
+    """Format shear strength and detailing utilization without opaque abbreviations."""
+
+    strength_value = _beam_uls_float(strength_dc)
+    detailing_value = _beam_uls_float(detailing_dc)
+    parts: list[str] = []
+    if math.isfinite(strength_value):
+        parts.append(f"Strength D/C {_format_beam_uls_ratio(strength_value)}")
+    if math.isfinite(detailing_value):
+        label = str(detailing_label or "Shear rebar detailing D/C").strip()
+        parts.append(f"{label} {_format_beam_uls_ratio(detailing_value)}")
+    return "; ".join(parts) if parts else "-"
+
+
+def _beam_uls_shear_utilization_display(row: Mapping[str, object]) -> str:
+    """Return the user-facing shear utilization label for compact cards/tables."""
+
+    gates = _beam_uls_shear_row_gate_values(row)
+    return _format_beam_uls_shear_utilization_text(
+        gates.get("strength_dc"),
+        gates.get("detailing_dc"),
+        detailing_label=_beam_uls_shear_detailing_dc_label(row),
+    )
 
 
 def _beam_uls_demand_dataframe_from_session(state: Mapping[str, object]) -> pd.DataFrame:
@@ -5911,9 +5968,16 @@ def _beam_uls_shear_result_for_row(
         utilization_text = "-"
         governing_dc = float("nan")
     else:
-        utilization_text = _format_beam_uls_ratio(strength_utilization)
-        if math.isfinite(detailing_dc):
-            utilization_text = f"{utilization_text} / det {_format_beam_uls_ratio(detailing_dc)}"
+        utilization_text = _format_beam_uls_shear_utilization_text(
+            strength_utilization,
+            detailing_dc,
+            detailing_label=(
+                "Av/s min D/C"
+                if _beam_uls_float(detailing.get("Av/s min D/C")) >= _beam_uls_float(detailing.get("Spacing D/C"))
+                or not math.isfinite(_beam_uls_float(detailing.get("Spacing D/C")))
+                else "Spacing D/C"
+            ),
+        )
     return {
         "Check": "Shear",
         "Status": status,
@@ -8415,7 +8479,7 @@ def _beam_uls_check_table(
                 "Case": str(shear_result.get("Case") or "-"),
                 "Demand": str(shear_result.get("Demand") or "-"),
                 "Capacity": str(shear_result.get("Capacity") or "-"),
-                "Utilization": str(shear_result.get("Utilization") or "-"),
+                "Utilization": _beam_uls_shear_utilization_display(shear_result),
             }
         )
     else:
@@ -8553,11 +8617,11 @@ def _beam_uls_summary_cards(active_df: pd.DataFrame, *, workflow_label: str, cod
     torsion_status_text = str(torsion_result.get("Status") or "REVIEW") if torsion_result is not None else "OPTIONAL"
     shear_overall_status = str(shear_decision.get("status") or _beam_uls_shear_overall_status(shear_check_df))
     if shear_result is not None:
-        shear_dc = str(shear_result.get("Utilization") or "-")
+        shear_dc = _beam_uls_shear_utilization_display(shear_result)
         shear_demand = _beam_uls_float(shear_result.get("Demand kN"))
         governing_shear_value = _format_beam_uls_demand(shear_demand, "kN") if math.isfinite(shear_demand) else str(shear_result.get("Demand") or "-")
         if shear_dc != "-":
-            governing_shear_value = f"{governing_shear_value} · D/C {shear_dc}"
+            governing_shear_value = f"{governing_shear_value} · {shear_dc}"
         governing_shear_detail = f"{shear_result.get('Case', '-')} @ x={shear_result.get('Governing x', '-')}; {shear_result.get('Capacity', '-')}"
         if shear_overall_status != str(shear_result.get("Status") or "REVIEW"):
             governing_shear_detail += f"; overall shear status = {shear_overall_status}"

@@ -118,7 +118,7 @@ def test_uls_shear_code2_summary_separates_peak_demand_from_governing_check() ->
     assert peak_card["value"] == "250.00 kN"
     assert "x=0.000 m" in peak_card["detail"]
     assert "diagram/support demand only" in peak_card["detail"]
-    assert check_card["value"] == "75.00 kN · D/C 0.117 / det 0.333"
+    assert check_card["value"] == "75.00 kN · Strength D/C 0.117; Shear rebar detailing D/C 0.333"
     assert "x=7.000 m" in check_card["detail"]
     assert "φVn = 638.79 kN" in check_card["detail"]
     assert "250.00" not in check_card["value"]
@@ -726,7 +726,7 @@ def test_uls_shear1_check_table_uses_governing_shear_capacity() -> None:
     shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
     assert shear_row["Status"] == "PASS"
     assert shear_row["Capacity"] == "φVn = 450.00 kN"
-    assert shear_row["Utilization"] == "0.267"
+    assert shear_row["Utilization"] == "Strength D/C 0.267"
 
 
 def test_uls_shear1_audit_dataframe_exposes_capacity_components() -> None:
@@ -2164,7 +2164,7 @@ def test_uls_shear_governing1_uses_strength_demand_not_detailing_only_row() -> N
     assert _beam_uls_shear_overall_status(shear) == "FAIL"
     assert shear_row["Status"] == "FAIL"
     assert shear_row["Governing x"] == "8.744 m"
-    assert shear_row["Utilization"] == "0.692 / det 1.893"
+    assert shear_row["Utilization"] == "Strength D/C 0.692; Shear rebar detailing D/C 1.893"
 
 
 def test_uls_shear_governing1_audit_marks_strength_governing_station() -> None:
@@ -2217,7 +2217,7 @@ def test_shear_status1_compact_table_ignores_stale_fail_when_explicit_gates_pass
     assert _beam_uls_shear_overall_status(shear) == "PASS"
     assert shear_row["Status"] == "PASS"
     assert shear_row["Governing x"] == "9.000 m"
-    assert shear_row["Utilization"] == "0.541 / det 0.757"
+    assert shear_row["Utilization"] == "Strength D/C 0.541; Shear rebar detailing D/C 0.757"
 
 
 def test_shear_status1_source_gate_clear_when_explicit_shear_gates_pass() -> None:
@@ -2313,7 +2313,7 @@ def test_shear_status2_numeric_gates_override_stale_text_failures() -> None:
     assert _beam_uls_shear_overall_status(shear) == "PASS"
     assert shear_row["Status"] == "PASS"
     assert shear_row["Governing x"] == "9.000 m"
-    assert shear_row["Utilization"] == "0.541 / det 0.757"
+    assert shear_row["Utilization"] == "Strength D/C 0.541; Shear rebar detailing D/C 0.757"
 
 
 def test_shear_status2_numeric_gate_failure_still_controls_over_stale_pass_text() -> None:
@@ -2497,7 +2497,7 @@ def test_shear_status4_railway_support_load_rows_do_not_override_passing_critica
     shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
     assert shear_row["Status"] == "PASS"
     assert shear_row["Governing x"] == "9.000 m"
-    assert shear_row["Utilization"] == "0.541 / det 0.757"
+    assert shear_row["Utilization"] == "Strength D/C 0.541; Shear rebar detailing D/C 0.757"
 
 
 def test_shear_status4_support_rows_still_control_when_no_critical_sections_exist() -> None:
@@ -2614,7 +2614,7 @@ def test_shear_trace1_compact_table_status_and_row_come_from_same_source() -> No
 
     assert shear_row["Status"] == "FAIL"
     assert shear_row["Governing x"] == "4.000 m"
-    assert shear_row["Utilization"] == "0.030 / det 1.893"
+    assert shear_row["Utilization"] == "Strength D/C 0.030; Shear rebar detailing D/C 1.893"
 
 
 def test_shear_trace1_compact_table_passes_when_all_eligible_rows_pass() -> None:
@@ -2665,4 +2665,43 @@ def test_shear_trace1_compact_table_passes_when_all_eligible_rows_pass() -> None
 
     assert shear_row["Status"] == "PASS"
     assert shear_row["Governing x"] == "9.000 m"
-    assert shear_row["Utilization"] == "0.541 / det 0.757"
+    assert shear_row["Utilization"] == "Strength D/C 0.541; Shear rebar detailing D/C 0.757"
+
+def test_shear_label1_compact_table_uses_clear_avs_min_dc_label() -> None:
+    shear = pd.DataFrame(
+        [
+            {
+                "Check": "Shear",
+                "Status": "FAIL",
+                "Strength status": "PASS",
+                "Detailing status": "FAIL",
+                "Station type": "LOAD STATION",
+                "Governing x": "7.000 m",
+                "Case": "Strength I",
+                "Demand": "805.09 kN",
+                "Capacity": "φVn = 1,751.30 kN",
+                "Utilization": "0.460 / det 1.893",  # old cached format remains parseable
+                "Demand kN": 805.09,
+                "Abs demand kN": 805.09,
+                "Strength D/C value": 0.460,
+                "Detailing D/C value": 1.893,
+                "Governing D/C value": 1.893,
+                "Av/s min D/C": 1.893,
+                "Spacing D/C": 0.417,
+            }
+        ]
+    )
+    active = pd.DataFrame(
+        [{"Active": True, "Station x (m)": 7.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 805.09, "Tu": 0.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": ""}]
+    )
+
+    table = _beam_uls_check_table(active, shear_check_df=shear)
+    shear_row = table.loc[table["Check"] == "Shear"].iloc[0]
+    cards = _beam_uls_summary_cards(active, workflow_label="Bridge Beam/Girder", code_label="AASHTO LRFD", shear_check_df=shear)
+    check_card = next(card for card in cards if card["title"] == "Governing shear check")
+
+    assert shear_row["Status"] == "FAIL"
+    assert shear_row["Utilization"] == "Strength D/C 0.460; Av/s min D/C 1.893"
+    assert "det" not in shear_row["Utilization"].lower()
+    assert check_card["value"] == "805.09 kN · Strength D/C 0.460; Av/s min D/C 1.893"
+    assert "det" not in check_card["value"].lower()

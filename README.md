@@ -1,3 +1,11 @@
+### SHEAR.LABEL1 — Clear Shear Detailing D/C Labels
+
+This UI/diagnostic polish replaces opaque compact shear utilization wording such as `0.460 / det 1.893` with explicit labels such as `Strength D/C 0.460; Av/s min D/C 1.893` or `Strength D/C 0.460; Spacing D/C 1.200`.  The parser remains backward compatible with old cached `det` strings, but the compact ULS check table and top governing-shear card no longer expose `det` as the user-facing label.
+
+Changed areas: `concrete_pmm_pro/ui/analysis_page.py`, docs, and regression tests. No shear equation, φVn calculation, minimum Av/s equation, spacing limit equation, flexure/torsion equation, SLS equation, geometry generator, load-combination equation, project schema, or certification wording was changed.
+
+See `docs/design/shear_label1.md`.
+
 ### SHEAR.STATUS1 — Beam/Girder ULS Shear Status Propagation Hotfix
 
 This hotfix corrects the Beam/Girder ULS shear compact-table and source-gate status propagation. The earlier SHEAR.GOVERNING1 fix correctly moved the displayed governing shear station to the strength-demand row, but the compact table could still report `Shear = FAIL` when a stale/source row-level `Status` string said `FAIL` even though the explicit displayed gates were clear:
