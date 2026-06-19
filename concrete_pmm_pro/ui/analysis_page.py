@@ -9091,6 +9091,76 @@ def _make_beam_uls_shear_capacity_figure(
 
 
 
+def _beam_uls_active_station_domain(active_df: pd.DataFrame | None) -> tuple[float, float] | None:
+    """Return the plotted member-domain from active station rows when available."""
+
+    if active_df is None or active_df.empty or "Station x (m)" not in active_df.columns:
+        return None
+    stations = pd.to_numeric(active_df.get("Station x (m)"), errors="coerce").dropna()
+    finite = [float(value) for value in stations.tolist() if math.isfinite(float(value))]
+    if len(finite) < 2:
+        return None
+    x_min = min(finite)
+    x_max = max(finite)
+    if not math.isfinite(x_min) or not math.isfinite(x_max) or x_max <= x_min + 1.0e-9:
+        return None
+    return float(x_min), float(x_max)
+
+
+def _beam_uls_extend_torsion_plot_rows_to_active_domain(
+    plot_df: pd.DataFrame,
+    active_df: pd.DataFrame | None,
+) -> pd.DataFrame:
+    """Extend torsion capacity/threshold plot traces to the active member ends.
+
+    The torsion check table may contain only load/design stations, especially
+    for cached projects from older milestones or presets where boundary rows
+    were not saved.  This helper is display-only: it clones the nearest finite
+    torsion capacity row to the active station-domain ends so φTn/φTcr traces
+    plot from x=0 to x=L like shear capacity traces.  It does not add rows to
+    governing checks or change any capacity equation.
+    """
+
+    if plot_df is None or plot_df.empty or "__x_m" not in plot_df.columns:
+        return plot_df
+    domain = _beam_uls_active_station_domain(active_df)
+    if domain is None:
+        return plot_df
+    x_start, x_end = domain
+    case_col = "Case" if "Case" in plot_df.columns else None
+    extended_rows: list[pd.Series] = []
+    group_iter = plot_df.groupby(case_col, sort=False) if case_col else [(None, plot_df)]
+    for _, case_df in group_iter:
+        case_df = case_df.copy()
+        finite_capacity = case_df[
+            case_df.get("__x_m", pd.Series(dtype=float)).notna()
+            & (case_df.get("__phi_tn", pd.Series(dtype=float)).notna() | case_df.get("__phi_tcr", pd.Series(dtype=float)).notna())
+        ].copy()
+        if finite_capacity.empty:
+            continue
+        xs = pd.to_numeric(finite_capacity["__x_m"], errors="coerce")
+        for boundary_x in (x_start, x_end):
+            if (xs - float(boundary_x)).abs().le(1.0e-8).any():
+                continue
+            nearest_idx = (xs - float(boundary_x)).abs().idxmin()
+            clone = finite_capacity.loc[nearest_idx].copy()
+            clone["__x_m"] = float(boundary_x)
+            if "Governing x" in clone.index:
+                clone["Governing x"] = _format_beam_uls_x(float(boundary_x))
+            if "Station type" in clone.index:
+                clone["Station type"] = "DIAGRAM BOUNDARY"
+            if "Notes" in clone.index:
+                prior = str(clone.get("Notes") or "")
+                note = "Plot boundary extension from nearest torsion capacity row; diagram-only, not a design station."
+                clone["Notes"] = f"{prior}; {note}" if prior and prior != "-" else note
+            clone["__Plot boundary extension"] = True
+            extended_rows.append(clone)
+    if not extended_rows:
+        return plot_df
+    extended = pd.concat([plot_df, pd.DataFrame(extended_rows)], ignore_index=True, sort=False)
+    return extended
+
+
 def _make_beam_uls_torsion_capacity_figure(
     active_df: pd.DataFrame,
     torsion_check_df: pd.DataFrame | None,
@@ -9120,6 +9190,7 @@ def _make_beam_uls_torsion_capacity_figure(
         dedupe_columns = [column for column in ["Case", "__x_m", "__phi_tn", "__phi_tcr", "Station type"] if column in plot_df.columns]
         if dedupe_columns:
             plot_df = plot_df.drop_duplicates(subset=dedupe_columns, keep="first")
+        plot_df = _beam_uls_extend_torsion_plot_rows_to_active_domain(plot_df, active_df)
     has_capacity = not plot_df.empty
     if has_capacity:
         plot_df = plot_df.sort_values(["Case", "__x_m"], kind="stable")

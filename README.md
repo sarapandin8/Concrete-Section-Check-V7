@@ -1,5 +1,11 @@
 ### UI.PLOT5 — Global Plot Readability Polish
 
+### UI.PLOT6 — ULS Torsion Full-Length Capacity Plot Hotfix
+
+- ULS Beam/Girder torsion capacity/threshold traces now extend over the active member station domain when explicit boundary rows are missing or stale.
+- This is a display-only plot continuity fix; torsion equations, governing station logic, and combined V+T checks are unchanged.
+
+
 Added a global Plotly readability layer for all charts rendered through `st.plotly_chart`.  The app now strengthens plot text color, tick labels, axis titles, legend text, hover labels, annotation labels, grid contrast, and 3D scene axis labels across Analysis, Sections, Rebar, Prestress, Reports, and future pages without changing trace data or engineering calculations.
 
 No solver equations, result dataframe values, trace coordinates, data-editor commit logic, widget keys, navigation/page routing, project schema, geometry generator, load routing, prestress/debonding logic, or report certification wording were changed.

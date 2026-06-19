@@ -1467,6 +1467,34 @@ def test_uls_torsion1_figure_uses_unmarked_red_check_lines_and_marked_demand() -
     assert phi_tn.line.dash == "dash"
 
 
+def test_ui_plot6_torsion_figure_extends_capacity_to_active_member_domain_without_boundary_rows() -> None:
+    active = pd.DataFrame(
+        [
+            {"Active": True, "Station x (m)": 0.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 0.0, "Tu": 100.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": "left end"},
+            {"Active": True, "Station x (m)": 4.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 0.0, "Tu": 100.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": "interior"},
+            {"Active": True, "Station x (m)": 10.0, "Case Name": "Strength I", "Mux": 0.0, "Vuy": 0.0, "Tu": 100.0, "Muy": 0.0, "Vux": 0.0, "Nu": 0.0, "Note": "right end"},
+        ]
+    )
+    # Simulate a legacy/cached torsion result where only design-zone capacity
+    # rows are available.  The diagram should still show capacity continuity
+    # over the full active member station domain for all Beam/Girder presets.
+    torsion = pd.DataFrame(
+        [
+            {"Status": "BELOW THRESHOLD", "Station type": "LOAD STATION", "Governing x": "1.000 m", "Case": "Strength I", "Demand kN-m": 100.0, "Abs demand kN-m": 100.0, "φTn kN-m": 900.0, "φTcr kN-m": 450.0, "D/C value": 0.111},
+            {"Status": "BELOW THRESHOLD", "Station type": "LOAD STATION", "Governing x": "9.000 m", "Case": "Strength I", "Demand kN-m": 100.0, "Abs demand kN-m": 100.0, "φTn kN-m": 900.0, "φTcr kN-m": 450.0, "D/C value": 0.111},
+        ]
+    )
+
+    fig = _make_beam_uls_torsion_capacity_figure(active, torsion, code_label="AASHTO LRFD")
+
+    phi_tn = next(trace for trace in fig.data if trace.name == "φTn")
+    phi_tcr = next(trace for trace in fig.data if trace.name == "φTcr")
+    assert min(float(x) for x in phi_tn.x) == 0.0
+    assert max(float(x) for x in phi_tn.x) == 10.0
+    assert min(float(x) for x in phi_tcr.x) == 0.0
+    assert max(float(x) for x in phi_tcr.x) == 10.0
+
+
 def test_uls_torsion1_figure_uses_boundary_rows_to_extend_phi_tn_to_member_ends() -> None:
     from concrete_pmm_pro.analysis.uls_strength_routing import beam_girder_uls_strength_route
     from concrete_pmm_pro.core.models import ConcreteMaterial, Point2D, Rebar, RebarMaterial, SectionGeometry
