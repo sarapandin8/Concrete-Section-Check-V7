@@ -936,6 +936,73 @@ section[data-testid="stSidebar"] div[data-testid="stFileUploader"] small {
   font-weight: 750 !important;
 }
 
+
+/* UI.COMMERCIAL4.3.1: sidebar text contrast hotfix.
+   Override the older global sidebar ink rule with higher-specificity selectors
+   for the new light commercial rail panels. */
+section[data-testid="stSidebar"] .cpmm-sidebar-brand,
+section[data-testid="stSidebar"] .cpmm-sidebar-status,
+section[data-testid="stSidebar"] .cpmm-sidebar-context,
+section[data-testid="stSidebar"] .cpmm-sidebar-file {
+  opacity: 1 !important;
+  filter: none !important;
+  color: #061b35 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-brand *,
+section[data-testid="stSidebar"] .cpmm-sidebar-status *,
+section[data-testid="stSidebar"] .cpmm-sidebar-context *,
+section[data-testid="stSidebar"] .cpmm-sidebar-file * {
+  opacity: 1 !important;
+  filter: none !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-brand-title,
+section[data-testid="stSidebar"] .cpmm-sidebar-status-value,
+section[data-testid="stSidebar"] .cpmm-sidebar-mini-value {
+  color: #061b35 !important;
+  font-weight: 950 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-brand-subtitle,
+section[data-testid="stSidebar"] .cpmm-sidebar-file-note {
+  color: #243b53 !important;
+  font-weight: 750 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-section-label,
+section[data-testid="stSidebar"] .cpmm-sidebar-status-title,
+section[data-testid="stSidebar"] .cpmm-sidebar-mini-label {
+  color: #0b3a66 !important;
+  font-weight: 950 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-context,
+section[data-testid="stSidebar"] .cpmm-sidebar-file {
+  background: linear-gradient(180deg, #ffffff 0%, #f2f8ff 100%) !important;
+  border: 1px solid rgba(7, 55, 99, 0.34) !important;
+  box-shadow: 0 12px 26px rgba(7, 26, 51, 0.12) !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-mini-row {
+  border-bottom: 1px solid rgba(11, 58, 102, 0.18) !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-mini-row:last-child {
+  border-bottom: 0 !important;
+}
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] {
+  background: #ffffff !important;
+  border: 1px dashed rgba(7, 55, 99, 0.46) !important;
+}
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] *,
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] p,
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] small,
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] label {
+  color: #0b3a66 !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+}
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] button {
+  color: #0b3a66 !important;
+  background: #f8fbff !important;
+  border-color: #a9c4df !important;
+  font-weight: 900 !important;
+}
+
 .cpmm-top-brand-shell {
   border: 1px solid rgba(11, 58, 102, 0.11);
   border-radius: 18px;
