@@ -257,22 +257,31 @@ div[data-testid="stRadio"] div[role="radiogroup"] label span {
 }
 .cpmm-deterministic-nav-row,
 .cpmm-deterministic-nav-row--compact {
-  margin: 0.01rem 0 0.34rem 0;
+  margin: 0.02rem 0 0.48rem 0; /* previous compact baseline: 0.01rem 0 0.34rem */
+}
+.cpmm-deterministic-nav-row--compact .stButton button,
+.cpmm-deterministic-nav-row--compact .stButton button p,
+.cpmm-deterministic-nav-row--compact .stButton button span {
+  white-space: nowrap !important;
+  word-break: keep-all !important;
+  overflow-wrap: normal !important;
+  min-width: 108px !important;
 }
 .cpmm-nav-tab-pill {
   width: 100%;
-  min-height: 1.64rem;
+  min-height: 1.92rem; /* previous compact baseline: min-height: 1.64rem */
   border: 1px solid var(--cpmm-blue-border);
-  border-radius: 5px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.16rem 0.50rem;
+  padding: 0.24rem 0.72rem;
   color: var(--cpmm-ink-blue);
   font-size: 0.84rem;
-  font-weight: 850;
-  line-height: 1.12;
+  font-weight: 900;
+  line-height: 1.08;
   white-space: nowrap;
+  min-width: 108px;
 }
 .cpmm-nav-tab-active {
   background: var(--cpmm-active-tab-fill);
@@ -676,9 +685,26 @@ div[data-testid="stMarkdownContainer"] h3 {
   padding-right: 1.45rem !important;
 }
 section[data-testid="stSidebar"] {
-  background: linear-gradient(180deg, #f7fbff 0%, #ffffff 52%, #eef6ff 100%) !important;
-  border-right: 1px solid rgba(11, 58, 102, 0.13) !important;
-  box-shadow: 10px 0 28px rgba(7, 26, 51, 0.055) !important;
+  background: linear-gradient(180deg, #f3f8ff 0%, #ffffff 44%, #e7f1ff 100%) !important;
+  border-right: 1px solid rgba(11, 58, 102, 0.22) !important;
+  box-shadow: 12px 0 30px rgba(7, 26, 51, 0.085) !important;
+}
+section[data-testid="stSidebar"] * {
+  text-shadow: none !important;
+}
+section[data-testid="stSidebar"] .stButton button {
+  min-height: 2.10rem !important;
+  border-radius: 10px !important;
+  border-color: #a9c4df !important;
+  background: #ffffff !important;
+  color: #0b3a66 !important;
+  font-weight: 900 !important;
+  opacity: 1 !important;
+}
+section[data-testid="stSidebar"] .stButton button p,
+section[data-testid="stSidebar"] .stButton button span {
+  color: #0b3a66 !important;
+  font-weight: 900 !important;
 }
 section[data-testid="stSidebar"] > div {
   padding-top: 1.05rem !important;
@@ -689,21 +715,22 @@ section[data-testid="stSidebar"] > div {
   margin-bottom: 0.72rem;
 }
 .cpmm-sidebar-brand-title {
-  color: #08254a;
-  font-size: 1.15rem;
+  color: #061b35 !important;
+  font-size: 1.22rem;
   line-height: 1.08;
   font-weight: 950;
   letter-spacing: -0.015em;
 }
 .cpmm-sidebar-brand-subtitle {
   margin-top: 0.42rem;
-  color: #53657a;
-  font-size: 0.76rem;
-  line-height: 1.32;
+  color: #344054 !important;
+  font-size: 0.80rem;
+  line-height: 1.34;
+  font-weight: 650;
 }
 .cpmm-sidebar-section-label {
-  color: #475467;
-  font-size: 0.68rem;
+  color: #0b3a66 !important;
+  font-size: 0.70rem;
   font-weight: 950;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -731,12 +758,12 @@ section[data-testid="stSidebar"] > div {
   box-shadow: 0 7px 16px rgba(11, 58, 102, 0.18);
 }
 .cpmm-sidebar-status {
-  border: 1px solid rgba(11, 58, 102, 0.11);
-  border-radius: 13px;
-  background: #ffffff;
-  padding: 0.70rem 0.72rem;
-  box-shadow: 0 8px 20px rgba(7, 26, 51, 0.055);
-  margin-top: 0.80rem;
+  border: 1px solid rgba(11, 58, 102, 0.20);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  padding: 0.78rem 0.78rem;
+  box-shadow: 0 10px 24px rgba(7, 26, 51, 0.09);
+  margin-top: 0.86rem;
 }
 .cpmm-sidebar-status-row {
   display: grid;
@@ -760,18 +787,30 @@ section[data-testid="stSidebar"] > div {
 .cpmm-sidebar-status-dot.ready { background: #dcfce7; color: #16833a; }
 .cpmm-sidebar-status-dot.warning { background: #fef3c7; color: #b45309; }
 .cpmm-sidebar-status-title {
-  color: #667085;
-  font-size: 0.62rem;
-  font-weight: 900;
+  color: #526f8d !important;
+  font-size: 0.64rem;
+  font-weight: 950;
   letter-spacing: 0.055em;
   text-transform: uppercase;
 }
 .cpmm-sidebar-status-value {
-  color: #071a33;
-  font-size: 0.82rem;
-  font-weight: 900;
+  color: #061b35 !important;
+  font-size: 0.85rem;
+  font-weight: 950;
   margin-top: 0.04rem;
+  line-height: 1.22;
 }
+
+/* UI.COMMERCIAL4.1: sidebar contrast cleanup.  Older dark-sidebar
+   selectors intentionally remain for backward compatibility, but the new
+   premium light rail must keep readable ink colors. */
+.cpmm-sidebar-brand-title,
+.cpmm-sidebar-status-value { color: #061b35 !important; }
+.cpmm-sidebar-brand-subtitle { color: #344054 !important; }
+.cpmm-sidebar-section-label { color: #0b3a66 !important; }
+.cpmm-sidebar-status-title { color: #526f8d !important; }
+.cpmm-sidebar-active-pill, .cpmm-sidebar-active-pill *,
+.cpmm-sidebar-sub-active-pill, .cpmm-sidebar-sub-active-pill * { color: #ffffff !important; }
 .cpmm-top-brand-shell {
   border: 1px solid rgba(11, 58, 102, 0.11);
   border-radius: 18px;
