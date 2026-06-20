@@ -1149,7 +1149,7 @@ def render_project_page() -> None:
     _render_compact_panel("Project Design Code / Capability Guard", _project_design_code_cards(project, analysis_mode), columns=2)
 
     project = project_from_session_state(st.session_state)
-    _render_project_file_actions(project)
+    # UI.COMMERCIAL4.3: Project file actions moved to the sidebar Project File panel.
 
     _render_dashboard_section("Pre-Report Readiness", _pre_report_readiness_cards(snapshot, readiness), columns=5)
 

@@ -8,7 +8,14 @@ import streamlit as st
 
 from concrete_pmm_pro.core.analysis import AnalysisModeSettings
 from concrete_pmm_pro.core.analysis_modes import analysis_mode_label
-from concrete_pmm_pro.state.dirty_state import update_dirty_state_from_session
+from concrete_pmm_pro.state.dirty_state import current_project_dirty_status, update_dirty_state_from_session
+from concrete_pmm_pro.io.project_io import (
+    ProjectIOError,
+    apply_project_to_session_state,
+    project_from_json,
+    project_from_session_state,
+    project_to_json,
+)
 from concrete_pmm_pro.ui.analysis_page import render_analysis_page
 from concrete_pmm_pro.ui.loads_page import render_loads_page
 from concrete_pmm_pro.ui.materials_page import render_materials_page
@@ -873,6 +880,62 @@ section[data-testid="stSidebar"] .cpmm-sidebar-sub-active-pill {
   filter: none !important;
 }
 
+/* UI.COMMERCIAL4.3: sidebar project file actions and compact context. */
+.cpmm-sidebar-context,
+.cpmm-sidebar-file {
+  border: 1px solid rgba(7, 55, 99, 0.22);
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  padding: 0.74rem 0.76rem;
+  box-shadow: 0 9px 22px rgba(7, 26, 51, 0.085);
+  margin-top: 0.82rem;
+}
+.cpmm-sidebar-mini-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.12rem;
+  padding: 0.28rem 0;
+  border-bottom: 1px solid rgba(11, 58, 102, 0.09);
+}
+.cpmm-sidebar-mini-row:last-child { border-bottom: 0; }
+.cpmm-sidebar-mini-label {
+  color: #34536f !important;
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cpmm-sidebar-mini-value {
+  color: #061b35 !important;
+  font-size: 0.78rem;
+  font-weight: 900;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+.cpmm-sidebar-file-note {
+  color: #526f8d !important;
+  font-size: 0.70rem;
+  line-height: 1.25;
+  margin: 0.18rem 0 0.42rem 0;
+  font-weight: 650;
+}
+section[data-testid="stSidebar"] div[data-testid="stDownloadButton"] button {
+  background: linear-gradient(135deg, #fff4d8, #ffe9ac) !important;
+  border-color: #d8aa2e !important;
+  color: #0b3a66 !important;
+}
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] {
+  border: 1px dashed rgba(11, 58, 102, 0.28) !important;
+  border-radius: 12px !important;
+  background: rgba(255,255,255,0.82) !important;
+  padding: 0.28rem !important;
+}
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] label,
+section[data-testid="stSidebar"] div[data-testid="stFileUploader"] small {
+  color: #0b3a66 !important;
+  font-weight: 750 !important;
+}
+
 .cpmm-top-brand-shell {
   border: 1px solid rgba(11, 58, 102, 0.11);
   border-radius: 18px;
@@ -1036,6 +1099,72 @@ def _project_code_label_for_chrome() -> str:
     return f"{code} {edition}".strip()
 
 
+def _render_sidebar_active_context() -> None:
+    """Render compact always-visible project context in the left rail."""
+    mode = _analysis_mode_from_session_for_chrome()
+    st.sidebar.markdown(
+        f"""
+<div class="cpmm-sidebar-context">
+  <div class="cpmm-sidebar-section-label" style="margin-top:0;">Active Context</div>
+  <div class="cpmm-sidebar-mini-row"><div class="cpmm-sidebar-mini-label">Workflow</div><div class="cpmm-sidebar-mini-value">{escape(analysis_mode_label(mode))}</div></div>
+  <div class="cpmm-sidebar-mini-row"><div class="cpmm-sidebar-mini-label">Section</div><div class="cpmm-sidebar-mini-value">{escape(_current_section_label_for_chrome())}</div></div>
+  <div class="cpmm-sidebar-mini-row"><div class="cpmm-sidebar-mini-label">Code</div><div class="cpmm-sidebar-mini-value">{escape(_project_code_label_for_chrome())}</div></div>
+  <div class="cpmm-sidebar-mini-row"><div class="cpmm-sidebar-mini-label">Units</div><div class="cpmm-sidebar-mini-value">mm, MPa, N, N-mm</div></div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_sidebar_project_file_actions() -> None:
+    """Move project-level save/load actions into the commercial sidebar.
+
+    UI.COMMERCIAL4.3 keeps the existing JSON serialization/loading logic, but
+    places file actions in the left rail where project-level actions belong.
+    This is UI-only and does not change the project data model.
+    """
+    with st.sidebar.container(border=True):
+        st.markdown('<div class="cpmm-sidebar-section-label" style="margin-top:0;">Project File</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="cpmm-sidebar-file-note">Save or load the complete project JSON before handoff or major edits.</div>',
+            unsafe_allow_html=True,
+        )
+        project = project_from_session_state(st.session_state)
+        st.download_button(
+            "Save Project JSON",
+            data=project_to_json(project),
+            file_name="concrete_section_pro_project.json",
+            mime="application/json",
+            use_container_width=True,
+            type="primary",
+            key="ui_commercial4_3_sidebar_save_project_json",
+        )
+        uploaded_file = st.file_uploader(
+            "Load Project JSON",
+            type=["json"],
+            key="ui_commercial4_3_sidebar_project_json_uploader",
+        )
+        if uploaded_file is not None and st.button(
+            "Apply Loaded Project",
+            use_container_width=True,
+            type="primary",
+            key="ui_commercial4_3_sidebar_apply_project_json",
+        ):
+            try:
+                pending_json = uploaded_file.getvalue().decode("utf-8")
+                project = project_from_json(pending_json)
+                apply_project_to_session_state(project, st.session_state)
+            except (UnicodeDecodeError, ProjectIOError) as exc:
+                st.session_state["_project_load_error"] = str(exc)
+            else:
+                st.session_state["_project_load_success"] = (
+                    "Project JSON loaded. Review Section Builder, Rebar, Prestress, and Loads tabs before future analysis."
+                )
+            rerun = getattr(st, "rerun", None)
+            if callable(rerun):
+                rerun()
+
+
 def _render_commercial_sidebar(active_workspace: str | None = None) -> None:
     """Render a visual navigation rail without changing the existing page contracts.
 
@@ -1095,23 +1224,32 @@ def _render_commercial_sidebar(active_workspace: str | None = None) -> None:
                         if callable(rerun):
                             rerun()
 
-    mode = _analysis_mode_from_session_for_chrome()
+    dirty_status = current_project_dirty_status(st.session_state)
+    model_dot = "warning" if dirty_status.model_status == "Modified" else "ready"
+    analysis_dot = "warning" if dirty_status.analysis_status == "Out of date" else ("ready" if dirty_status.analysis_status == "Current" else "")
+    affected_count = len(dirty_status.affected_checks)
     st.sidebar.markdown(
         f"""
 <div class="cpmm-sidebar-status">
   <div class="cpmm-sidebar-section-label" style="margin-top:0;">Project Status</div>
   <div class="cpmm-sidebar-status-row">
-    <span class="cpmm-sidebar-status-dot ready">✓</span>
-    <div><div class="cpmm-sidebar-status-title">Workflow</div><div class="cpmm-sidebar-status-value">{escape(analysis_mode_label(mode))}</div></div>
+    <span class="cpmm-sidebar-status-dot {model_dot}">●</span>
+    <div><div class="cpmm-sidebar-status-title">Model</div><div class="cpmm-sidebar-status-value">{escape(dirty_status.model_status)}</div></div>
   </div>
   <div class="cpmm-sidebar-status-row">
-    <span class="cpmm-sidebar-status-dot">SEC</span>
-    <div><div class="cpmm-sidebar-status-title">Section</div><div class="cpmm-sidebar-status-value">{escape(_current_section_label_for_chrome())}</div></div>
+    <span class="cpmm-sidebar-status-dot {analysis_dot}">●</span>
+    <div><div class="cpmm-sidebar-status-title">Analysis</div><div class="cpmm-sidebar-status-value">{escape(dirty_status.analysis_status)}</div></div>
+  </div>
+  <div class="cpmm-sidebar-status-row">
+    <span class="cpmm-sidebar-status-dot">{affected_count}</span>
+    <div><div class="cpmm-sidebar-status-title">Affected Checks</div><div class="cpmm-sidebar-status-value">{escape(', '.join(dirty_status.affected_checks[:2]) if dirty_status.affected_checks else 'None')}</div></div>
   </div>
 </div>
 """,
         unsafe_allow_html=True,
     )
+    _render_sidebar_active_context()
+    _render_sidebar_project_file_actions()
 
 
 def _render_commercial_brand_header(active_workspace: str) -> None:
