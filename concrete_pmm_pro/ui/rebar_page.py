@@ -23,6 +23,7 @@ from concrete_pmm_pro.geometry.rebar_layout import PerimeterRebarLayoutResult, g
 from concrete_pmm_pro.geometry.summary import to_shapely_polygon
 from concrete_pmm_pro.serviceability.girder_sls_load_components import BEAM_GIRDER_SYSTEM_SETTINGS_KEY, system_settings_from_mapping
 from concrete_pmm_pro.visualization import create_section_preview
+from concrete_pmm_pro.ui.commercial import render_metric_cards, render_page_header, render_section_bar
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REBAR_DB_PATH = REPO_ROOT / "data" / "rebar_database.csv"
@@ -104,6 +105,26 @@ SECTION_BUILDER_PRESTRESS_SYNC_KEY = "section_builder_prestressing_steel_enabled
 SECTION_BUILDER_STEEL_SYSTEMS_PRESET_KEY = "section_builder_steel_systems_preset_key"
 
 
+
+
+def _commercial_rebar_dashboard_cards(member_type: str) -> list[dict[str, object]]:
+    """Return visual-only dashboard cards for the Rebar workspace."""
+
+    table = pd.DataFrame(st.session_state.get("rebar_table", []))
+    active_rows = int(pd.Series(table.get("Active", pd.Series(dtype=bool))).fillna(False).astype(bool).sum()) if not table.empty else 0
+    try:
+        total_area = sum(float(getattr(bar, "area", 0.0) or 0.0) for bar in st.session_state.get("rebars", []))
+    except Exception:
+        total_area = 0.0
+    ordinary_status = "Enabled" if ordinary_rebar_enabled(st.session_state, default=True) else "Disabled"
+    prestress_status = "Enabled" if prestressing_steel_enabled(st.session_state, default=True) else "Disabled"
+    workflow = "Column/Pier" if member_type == COLUMN_PIER_WORKFLOW_MEMBER_TYPE else "Beam/Girder"
+    return [
+        {"title": "Workflow", "value": workflow, "detail": "Rebar interpretation follows active member type", "status": "info"},
+        {"title": "Ordinary rebar", "value": ordinary_status, "detail": "Longitudinal Al / PMM participation", "status": "ready" if ordinary_status == "Enabled" else "warning"},
+        {"title": "Active bars", "value": f"{active_rows:,}", "detail": f"Total As ≈ {total_area:,.0f} mm²", "status": "ready" if active_rows else "warning"},
+        {"title": "Prestress", "value": prestress_status, "detail": "Prestress is managed on its own page", "status": "info" if prestress_status == "Enabled" else "neutral"},
+    ]
 
 
 def publish_ordinary_rebar_system_flag(session_state: Any, enabled: bool) -> None:
@@ -2391,16 +2412,21 @@ def _render_transverse_rebar_tab(rebar_db: pd.DataFrame) -> None:
 
 def render_rebar_page() -> None:
     st.markdown(_REBAR_PAGE_CSS, unsafe_allow_html=True)
-    st.subheader("Rebar")
     rebar_db = load_rebar_database()
     bar_size_options = ["", "Custom"] + [str(name) for name in rebar_db["name"].tolist()]
     active_material_name = st.session_state.get("active_rebar_material_name")
     member_type = _analysis_mode_member_type_from_session()
 
-    st.caption(
-        "Define reinforcement used by the active section analysis. "
-        "Longitudinal bars and transverse reinforcement inputs are separated so PMM, shear, torsion, and confinement inputs stay readable and are not duplicated."
+    render_page_header(
+        "Rebar",
+        "Define longitudinal bars, transverse reinforcement, torsion Al sources, and confinement inputs without duplicating analysis ownership.",
+        icon="RB",
+        kicker="Reinforcement workspace",
+        badge="Steel input",
+        accent="green",
     )
+    render_metric_cards(_commercial_rebar_dashboard_cards(member_type))
+    render_section_bar("Reinforcement input tabs", "Longitudinal and transverse reinforcement are separated for traceable PMM, shear, torsion, and confinement checks.", mark="R")
 
     longitudinal_tab, transverse_tab = st.tabs(["Longitudinal Rebar", "Transverse Rebar"])
     with longitudinal_tab:

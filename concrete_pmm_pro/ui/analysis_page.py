@@ -89,6 +89,7 @@ from concrete_pmm_pro.core.analysis_modes import (
 from concrete_pmm_pro.core.units import N_to_kN, Nmm_to_kNm
 from concrete_pmm_pro.state.dirty_state import mark_analysis_current, project_input_hash
 from concrete_pmm_pro.ui.navigation import render_active_choice
+from concrete_pmm_pro.ui.commercial import render_metric_cards, render_page_header, render_section_bar
 from concrete_pmm_pro.geometry.summary import summarize_geometry, to_shapely_polygon
 from concrete_pmm_pro.reporting import (
     build_result_traceability_snapshot,
@@ -17560,6 +17561,21 @@ def render_analysis_report_qa() -> None:
     _render_pre_report_qa_expander()
 
 
+def _commercial_analysis_dashboard_cards(settings: AnalysisModeSettings, active_subpage: str) -> list[dict[str, object]]:
+    """Return visual-only dashboard cards for the Analysis workspace."""
+
+    workflow_label = analysis_mode_label(settings)
+    code = project_design_code_from_session(st.session_state)
+    route = "PMM / ULS" if is_pmm_primary_workflow(settings) else ("Bridge girder" if is_beam_girder_future_workflow(settings) else "Building girder")
+    readiness = st.session_state.get("analysis_status", "Ready to review")
+    return [
+        {"title": "Active review", "value": active_subpage, "detail": "Only the selected analysis workspace is rendered", "status": "info"},
+        {"title": "Workflow", "value": workflow_label, "detail": route, "status": "ready"},
+        {"title": "Design code", "value": str(code), "detail": "Project code basis", "status": "neutral"},
+        {"title": "Runtime state", "value": str(readiness), "detail": "Displayed status only; solver routing is unchanged", "status": "info"},
+    ]
+
+
 def _analysis_subtabs_for_workflow(settings: AnalysisModeSettings) -> list[str]:
     if is_pmm_primary_workflow(settings):
         return list(ANALYSIS_COLUMN_PIER_SUBTABS)
@@ -17573,8 +17589,18 @@ def _analysis_subpage_choice() -> str:
 
 
 def render_analysis_page() -> None:
-    st.subheader("Analysis")
+    settings = _analysis_mode_from_session()
+    render_page_header(
+        "Analysis",
+        "Run and review strength, serviceability, deflection/camber, and report-readiness workflows under the active engineering context.",
+        icon="AN",
+        kicker="Analysis workspace",
+        badge="Review",
+        accent="blue",
+    )
     active_subpage = _analysis_subpage_choice()
+    render_metric_cards(_commercial_analysis_dashboard_cards(settings, active_subpage))
+    render_section_bar("Analysis workspace", "The selected analysis subpage controls what is evaluated on this rerun.", mark="A")
     if active_subpage == "ULS Strength":
         render_analysis_uls_pmm()
     elif active_subpage == "SLS / Stress & Cracking":

@@ -19,6 +19,7 @@ from concrete_pmm_pro.core.analysis import AnalysisModeSettings
 from concrete_pmm_pro.core.analysis_modes import analysis_mode_label
 from concrete_pmm_pro.core.models import LoadCase
 from concrete_pmm_pro.core.units import kN_to_N, kNm_to_Nmm, tonf_to_N, tonfm_to_Nmm
+from concrete_pmm_pro.ui.commercial import render_metric_cards, render_page_header, render_section_bar
 from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     BEAM_GIRDER_SYSTEM_SETTINGS_KEY,
     BEAM_GIRDER_SLS_AUTO_LOAD_SETTINGS_KEY,
@@ -2552,9 +2553,48 @@ def _render_building_beam_girder_load_tables(force_unit: str, moment_unit: str) 
         st.write("- Bridge-only barrier/parapet/sidewalk, wearing surface, and CSiBridge LL+IM are intentionally hidden.")
 
 
+def _commercial_load_dashboard_cards(force_unit: str, moment_unit: str, settings: AnalysisModeSettings) -> list[dict[str, object]]:
+    """Return visual-only dashboard cards for the Loads workspace."""
+
+    def _df_from_key(key: str) -> pd.DataFrame:
+        value = st.session_state.get(key, [])
+        try:
+            return pd.DataFrame(value)
+        except Exception:
+            return pd.DataFrame()
+
+    tables = [
+        _df_from_key("column_uls_loads_table"),
+        _df_from_key("column_sls_loads_table"),
+        _df_from_key("beam_uls_loads_table"),
+        _df_from_key("beam_sls_loads_table"),
+        _df_from_key("building_beam_girder_uls_loads_table"),
+    ]
+    total_rows = sum(len(df) for df in tables if not df.empty)
+    active_rows = 0
+    for df in tables:
+        if "Active" in df.columns:
+            active_rows += int(pd.Series(df["Active"]).fillna(False).astype(bool).sum())
+    workflow_label = analysis_mode_label(settings)
+    sls_source = "Auto + table" if settings.member_type in {"beam_girder", "building_beam_girder"} else "Manual table"
+    return [
+        {"title": "Workflow", "value": workflow_label, "detail": "Selected in Setup", "status": "info"},
+        {"title": "Input rows", "value": f"{total_rows:,}", "detail": f"{active_rows:,} active rows", "status": "ready" if active_rows else "warning"},
+        {"title": "Units", "value": f"{force_unit} / {moment_unit}", "detail": "Load-entry display units", "status": "neutral"},
+        {"title": "SLS source", "value": sls_source, "detail": "Stage rows remain auditable", "status": "info"},
+    ]
+
+
 def render_loads_page() -> None:
-    st.subheader("Loads")
-    st.caption("Workflow-based ULS/SLS load input for PMM and future Beam/Girder design workflows.")
+    settings = _analysis_mode_from_session_state()
+    render_page_header(
+        "Loads",
+        "Manage ULS/SLS demand inputs with workflow-specific tables, unit controls, validation, and stage-aware service-load routing.",
+        icon="LD",
+        kicker="Load workspace",
+        badge="Demand inputs",
+        accent="amber",
+    )
 
     _ensure_workflow_load_tables_initialized()
     _render_load_workflow_notice()
@@ -2575,10 +2615,12 @@ def render_loads_page() -> None:
             help="Unit used by moment and torsion columns in the active load tables.",
         )
 
+    render_metric_cards(_commercial_load_dashboard_cards(force_unit, moment_unit, settings))
+    render_section_bar("Load input tables", "ULS/SLS cases are edited below and remain the source of truth for analysis.", mark="Σ")
+
     with st.expander("Axis convention for load input", expanded=False):
         _render_axis_convention_panel()
 
-    settings = _analysis_mode_from_session_state()
     if settings.member_type == "beam_girder":
         _render_beam_girder_load_tables(force_unit, moment_unit)
     elif settings.member_type == "building_beam_girder":

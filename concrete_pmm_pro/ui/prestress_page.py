@@ -96,6 +96,7 @@ from concrete_pmm_pro.serviceability.girder_prestress_station import (
     strand_group_effective_at_station,
 )
 from concrete_pmm_pro.visualization import create_section_preview
+from concrete_pmm_pro.ui.commercial import render_metric_cards, render_page_header, render_section_bar
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESTRESS_DB_PATH = REPO_ROOT / "data" / "prestress_steel_database.csv"
@@ -7042,14 +7043,45 @@ def _render_prestress_section_preview_panel(
                 combined_fig.update_layout(height=380, margin=dict(l=10, r=10, t=34, b=8))
                 st.plotly_chart(combined_fig, use_container_width=True, key="prestress_combined_reinforcement_preview")
 
+def _commercial_prestress_dashboard_cards() -> list[dict[str, object]]:
+    """Return visual-only dashboard cards for the Prestress workspace."""
+
+    table = pd.DataFrame(st.session_state.get("prestress_table", []))
+    active_rows = int(pd.Series(table.get("Active", pd.Series(dtype=bool))).fillna(False).astype(bool).sum()) if not table.empty else 0
+    try:
+        total_area = float(pd.to_numeric(table.get("Area_mm2", pd.Series(dtype=float)), errors="coerce").fillna(0.0).sum())
+    except Exception:
+        total_area = 0.0
+    force_status = "Active" if prestressing_steel_enabled(st.session_state, default=True) else "Disabled"
+    bonded_rows = 0
+    if not table.empty and "Bonded" in table.columns:
+        bonded_rows = int(pd.Series(table["Bonded"]).fillna(False).astype(bool).sum())
+    input_modes = sorted({str(v) for v in table.get("Input Mode", pd.Series(dtype=str)).dropna().tolist() if str(v).strip()}) if not table.empty else []
+    return [
+        {"title": "Prestress status", "value": force_status, "detail": "Controlled by Section Builder steel systems", "status": "ready" if force_status == "Active" else "warning"},
+        {"title": "Active elements", "value": f"{active_rows:,}", "detail": f"Bonded rows: {bonded_rows:,}", "status": "ready" if active_rows else "warning"},
+        {"title": "Total Ap", "value": f"{total_area:,.1f} mm²", "detail": "From prestress table rows", "status": "info"},
+        {"title": "Input modes", "value": f"{len(input_modes):,}", "detail": ", ".join(input_modes[:2]) if input_modes else "No active mode yet", "status": "neutral"},
+    ]
+
+
 def _render_engineering_notes() -> None:
     st.markdown("#### Engineering Notes")
     st.markdown(_engineering_notes_html(), unsafe_allow_html=True)
 
 
 def render_prestress_page() -> None:
-    st.subheader("Prestress")
     st.markdown(_PRESTRESS_PAGE_CSS, unsafe_allow_html=True)
+    render_page_header(
+        "Prestress",
+        "Manage strand/tendon force definitions, bonded state, loss method, and staged Pe handoff for SLS and strength checks.",
+        icon="PS",
+        kicker="Prestress workspace",
+        badge="Force model",
+        accent="purple",
+    )
+    render_metric_cards(_commercial_prestress_dashboard_cards())
+    render_section_bar("Prestress input workflow", "Force rows, tendon products, losses, and stage Pe mapping are edited below.", mark="P")
     prestress_db = _combined_prestress_database(load_prestress_steel_database(), st.session_state.get("prestress_materials", []))
 
     if not prestressing_steel_enabled(st.session_state, default=True):
