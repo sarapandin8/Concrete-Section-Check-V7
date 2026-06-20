@@ -354,6 +354,52 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-sec
   margin-top: 0.16rem;
 }
 
+/* UI.COMMERCIAL4.3.2: compact engineering summary cards.
+   These replace oversized metric billboards for assembly/stage summaries so
+   editable inputs remain visually primary. */
+.cpmm-assembly-summary-card {
+  border: 1px solid rgba(29, 111, 231, 0.30);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #175cd3 0%, #1d6fe7 100%);
+  color: #ffffff;
+  padding: 0.58rem 0.68rem;
+  min-height: 74px;
+  box-shadow: 0 6px 14px rgba(29, 111, 231, 0.14);
+}
+.cpmm-assembly-summary-card.green {
+  border-color: rgba(22, 131, 58, 0.28);
+  background: linear-gradient(135deg, #16833a 0%, #22a447 100%);
+  box-shadow: 0 6px 14px rgba(22, 131, 58, 0.13);
+}
+.cpmm-assembly-summary-label {
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 0.64rem;
+  font-weight: 950;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  line-height: 1.15;
+  margin-bottom: 0.20rem;
+}
+.cpmm-assembly-summary-value {
+  color: #ffffff;
+  font-size: 1.18rem;
+  font-weight: 950;
+  line-height: 1.14;
+  overflow-wrap: anywhere;
+}
+.cpmm-assembly-summary-detail {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-top: 0.34rem;
+  padding: 0.13rem 0.44rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #eef6ff;
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
 .cpmm-commercial-section-hero {
   border: 1px solid #d5dde8;
   border-radius: 10px;
@@ -767,6 +813,20 @@ def _property_strip_html(properties: list[SectionMetric]) -> str:
     return '<div class="cpmm-section-property-grid">' + "".join(chips) + "</div>"
 
 
+
+
+def _compact_summary_card_html(label: str, value: str, detail: str = "", *, accent: str = "blue") -> str:
+    """Return a compact visual-only summary card for assembly/stage metadata."""
+    accent_class = "green" if str(accent).lower() == "green" else ""
+    detail_html = f'<div class="cpmm-assembly-summary-detail">{escape(detail)}</div>' if detail else ""
+    return (
+        f'<div class="cpmm-assembly-summary-card {accent_class}">'
+        f'<div class="cpmm-assembly-summary-label">{escape(label)}</div>'
+        f'<div class="cpmm-assembly-summary-value">{escape(value)}</div>'
+        f'{detail_html}'
+        '</div>'
+    )
+
 def _format_float(value: float, decimals: int = 1) -> str:
     return f"{value:,.{decimals}f}"
 
@@ -1053,7 +1113,7 @@ def _render_railway_u_girder_assembly_panel(values: dict[str, Any]) -> None:
                 help="Default is 10.0 m for the Railway U-Girder family. This value also synchronizes prestress/debond station previews.",
             )
         with top_cols[1]:
-            st.metric("Assembly units", "2 webs + CIP slab", help="Railway U-Girder is not a repeated-girder/box/plank system.")
+            st.markdown(_compact_summary_card_html("Assembly units", "2 webs + CIP slab"), unsafe_allow_html=True)
         with top_cols[2]:
             stage_settings["concrete_unit_weight_kN_m3"] = st.number_input(
                 "Concrete unit weight (kN/m³)",
@@ -1088,7 +1148,7 @@ def _render_railway_u_girder_assembly_panel(values: dict[str, Any]) -> None:
                 help="Default 0.20L from each end for two-point lifting of each precast web.",
             )
         with lift_cols[1]:
-            st.metric("Lifting a", f"{float(stage_settings['lifting_point_ratio']) * float(span_length_m):.3f} m", "from each end")
+            st.markdown(_compact_summary_card_html("Lifting a", f"{float(stage_settings['lifting_point_ratio']) * float(span_length_m):.3f} m", "from each end"), unsafe_allow_html=True)
         with lift_cols[2]:
             stage_settings["lifting_impact_factor"] = st.number_input(
                 "Lifting impact factor",
@@ -1100,7 +1160,7 @@ def _render_railway_u_girder_assembly_panel(values: dict[str, Any]) -> None:
                 help="Applied to web self-weight in the lifting-stage preview.",
             )
         with lift_cols[3]:
-            st.metric("Wet slab case", "Case B", "50/50 to left/right web")
+            st.markdown(_compact_summary_card_html("Wet slab case", "Case B", "50/50 to left/right web"), unsafe_allow_html=True)
 
         stage_settings.update(
             {
@@ -1211,7 +1271,7 @@ def _render_bridge_section_assembly_panel(preset: dict[str, Any], settings: Anal
                 help="Two-point symmetric lifting point measured from each end. Used for individual precast unit lifting only.",
             )
         with lift_cols[1]:
-            st.metric("Lifting a", f"{float(values['lifting_point_ratio']) * float(values['span_length_m']):.3f} m", "from each end")
+            st.markdown(_compact_summary_card_html("Lifting a", f"{float(values['lifting_point_ratio']) * float(values['span_length_m']):.3f} m", "from each end"), unsafe_allow_html=True)
         with lift_cols[2]:
             values["lifting_impact_factor"] = st.number_input(
                 "Lifting impact factor",
@@ -1223,7 +1283,7 @@ def _render_bridge_section_assembly_panel(preset: dict[str, Any], settings: Anal
                 help="Multiplier applied to individual precast unit self-weight during the lifting-stage stress preview.",
             )
         with lift_cols[3]:
-            st.metric("Lifting basis", "Individual precast unit", "not bridge assembly")
+            st.markdown(_compact_summary_card_html("Lifting basis", "Individual precast unit", "not bridge assembly", accent="green"), unsafe_allow_html=True)
         normalized = system_settings_from_mapping(values).as_metadata()
         st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized
         _sync_beam_girder_span_to_existing_sources(normalized)
@@ -1317,7 +1377,7 @@ def _render_building_member_assembly_panel(preset: dict[str, Any], settings: Ana
                 help="Two-point symmetric lifting point measured from each end. Used for individual precast member lifting only.",
             )
         with lift_cols[1]:
-            st.metric("Lifting a", f"{float(values['lifting_point_ratio']) * float(values['span_length_m']):.3f} m", "from each end")
+            st.markdown(_compact_summary_card_html("Lifting a", f"{float(values['lifting_point_ratio']) * float(values['span_length_m']):.3f} m", "from each end"), unsafe_allow_html=True)
         with lift_cols[2]:
             values["lifting_impact_factor"] = st.number_input(
                 "Lifting impact factor",
@@ -1329,7 +1389,7 @@ def _render_building_member_assembly_panel(preset: dict[str, Any], settings: Ana
                 help="Multiplier applied to individual precast member self-weight during the lifting-stage stress preview.",
             )
         with lift_cols[3]:
-            st.metric("Lifting basis", "Individual precast member", "not floor assembly")
+            st.markdown(_compact_summary_card_html("Lifting basis", "Individual precast member", "not floor assembly", accent="green"), unsafe_allow_html=True)
         values.setdefault("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)
         normalized = system_settings_from_mapping(values).as_metadata()
         st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized

@@ -34,3 +34,13 @@ def test_ui_commercial4_3_sidebar_status_is_not_duplicate_context() -> None:
     assert "Workflow" in app_source
     assert "Section" in app_source
     assert "Project File" in app_source
+
+
+def test_ui_commercial4_3_2_sidebar_actions_use_blue_primary_accent() -> None:
+    app_source = Path("app.py").read_text(encoding="utf-8")
+
+    assert "UI.COMMERCIAL4.3.2" in app_source
+    assert "--cpmm-action-fill: #1d6fe7" in app_source
+    assert "--cpmm-action-fill-hover: #175cd3" in app_source
+    assert "section[data-testid=\"stSidebar\"] div[data-testid=\"stDownloadButton\"] button" in app_source
+    assert "linear-gradient(135deg, #1d6fe7, #175cd3)" in app_source

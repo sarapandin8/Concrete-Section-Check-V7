@@ -51,17 +51,17 @@ _COMMERCIAL_TAB_CSS = """
   --cpmm-blue-border: #9fb9d4;
   --cpmm-blue-fill: #e8f1ff;
   --cpmm-blue-fill-strong: #d9eafe;
-  --cpmm-action-fill: #fff4d8;
-  --cpmm-action-fill-hover: #ffe9ac;
-  --cpmm-action-border: #d8aa2e;
-  --cpmm-action-border-hover: #b98a12;
+  --cpmm-action-fill: #1d6fe7;
+  --cpmm-action-fill-hover: #175cd3;
+  --cpmm-action-border: #1d6fe7;
+  --cpmm-action-border-hover: #0f5ec2;
   --cpmm-action-disabled-fill: #f3f6f9;
   --cpmm-action-disabled-border: #c8d2dd;
   --cpmm-action-disabled-text: #6d7d8f;
   --cpmm-active-tab-fill: #e7f2ff;
-  --cpmm-active-tab-border: #0b3a66;
-  --cpmm-active-tab-accent: #0b3a66;
-  --cpmm-active-tab-shadow: rgba(11, 58, 102, 0.12);
+  --cpmm-active-tab-border: #1d6fe7;
+  --cpmm-active-tab-accent: #1d6fe7;
+  --cpmm-active-tab-shadow: rgba(29, 111, 231, 0.14);
 }
 
 /* UI.ACTIVE.TABS3: make the app feel like a working engineering screen, not a landing page. */
@@ -140,7 +140,7 @@ div[data-testid="stButtonGroup"] [role="button"][aria-pressed="true"] {
   background: var(--cpmm-active-tab-fill) !important;
   color: var(--cpmm-ink-blue) !important;
   border-color: var(--cpmm-active-tab-border) !important;
-  box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue), 0 0 0 1px var(--cpmm-active-tab-shadow) !important;
+  box-shadow: inset 0 -3px 0 var(--cpmm-active-tab-accent), 0 0 0 1px var(--cpmm-active-tab-shadow) !important;
 }
 div[data-testid="stSegmentedControl"] button p,
 div[data-testid="stSegmentedControl"] button span,
@@ -241,7 +241,7 @@ div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) {
   background: var(--cpmm-active-tab-fill);
   color: var(--cpmm-ink-blue);
   border-color: var(--cpmm-active-tab-border);
-  box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue), 0 0 0 1px var(--cpmm-active-tab-shadow);
+  box-shadow: inset 0 -3px 0 var(--cpmm-active-tab-accent), 0 0 0 1px var(--cpmm-active-tab-shadow);
 }
 div[data-testid="stRadio"] div[role="radiogroup"] label:has(input:checked) + label {
   border-left-color: var(--cpmm-ink-blue-soft);
@@ -297,9 +297,9 @@ div[data-testid="stRadio"] div[role="radiogroup"] label span {
 }
 
 /* Action buttons: commercial-style bold dark-blue text.
-   Primary/action buttons are intentionally highlighted with a soft amber fill
-   so Run, Save, Upload/Load, Apply, Replace, Append, and confirm actions are
-   easy to find without using a heavy/dark color. */
+   UI.COMMERCIAL4.3.2 migrates primary/action buttons to the app blue accent
+   so Run, Save, Upload/Load, Apply, Replace, Append, and confirm actions read
+   as active controls in the same language as selected navigation. */
 .stButton button,
 .stDownloadButton button,
 div[data-testid="stFormSubmitButton"] button {
@@ -315,11 +315,11 @@ div[data-testid="stFormSubmitButton"] button {
 .stDownloadButton button[kind="primary"],
 div[data-testid="stFormSubmitButton"] button[kind="primary"],
 button[data-testid="stBaseButton-primary"] {
-  background: var(--cpmm-action-fill) !important;
-  color: var(--cpmm-ink-blue) !important;
+  background: linear-gradient(135deg, var(--cpmm-action-fill), var(--cpmm-action-fill-hover)) !important;
+  color: #ffffff !important;
   border-color: var(--cpmm-action-border) !important;
   font-weight: 850 !important;
-  box-shadow: inset 0 -2px 0 rgba(216, 170, 46, 0.32) !important;
+  box-shadow: inset 0 -2px 0 rgba(7, 55, 99, 0.20) !important;
 }
 .stButton button[kind="primary"] p,
 .stDownloadButton button[kind="primary"] p,
@@ -329,7 +329,7 @@ button[data-testid="stBaseButton-primary"] p,
 .stDownloadButton button[kind="primary"] span,
 div[data-testid="stFormSubmitButton"] button[kind="primary"] span,
 button[data-testid="stBaseButton-primary"] span {
-  color: var(--cpmm-ink-blue) !important;
+  color: #ffffff !important;
   font-weight: 850 !important;
 }
 .stButton button:hover,
@@ -343,9 +343,9 @@ div[data-testid="stFormSubmitButton"] button:hover {
 .stDownloadButton button[kind="primary"]:hover,
 div[data-testid="stFormSubmitButton"] button[kind="primary"]:hover,
 button[data-testid="stBaseButton-primary"]:hover {
-  color: var(--cpmm-ink-blue) !important;
+  color: #ffffff !important;
   border-color: var(--cpmm-action-border-hover) !important;
-  background: var(--cpmm-action-fill-hover) !important;
+  background: linear-gradient(135deg, var(--cpmm-action-fill-hover), #0f5ec2) !important;
 }
 /* UI.ACTION.BUTTONS2: disabled action buttons must not look ready to run. */
 .stButton button:disabled,
@@ -409,14 +409,14 @@ button[data-testid="stBaseButton-secondary"]:disabled span {
    stFileUploader: uploaded-file pills also contain remove (x) buttons, and
    broad button selectors can make those native controls hard to click. */
 div[data-testid="stFileUploaderDropzone"] button {
-  background: var(--cpmm-action-fill) !important;
+  background: #e8f1ff !important;
   color: var(--cpmm-ink-blue) !important;
-  border-color: var(--cpmm-action-border) !important;
+  border-color: #9fb9d4 !important;
   font-weight: 850 !important;
 }
 div[data-testid="stFileUploaderDropzone"] button:hover {
-  background: var(--cpmm-action-fill-hover) !important;
-  border-color: var(--cpmm-action-border-hover) !important;
+  background: #d9eafe !important;
+  border-color: #1d6fe7 !important;
 }
 
 /* Labels for user input points and selectable/editable controls. */
@@ -523,10 +523,10 @@ div[data-testid="stImage"] {
   border-radius: 9px !important;
 }
 div[data-testid="stMetric"] {
-  background: linear-gradient(180deg, #0b2545 0%, #123a67 100%) !important;
-  border: 1px solid #194b7a !important;
-  box-shadow: 0 4px 12px var(--cpmm-theme-shadow) !important;
-  padding: 0.62rem 0.78rem !important;
+  background: linear-gradient(135deg, #175cd3 0%, #1d6fe7 100%) !important;
+  border: 1px solid rgba(29, 111, 231, 0.42) !important;
+  box-shadow: 0 3px 10px rgba(29, 111, 231, 0.12) !important;
+  padding: 0.42rem 0.58rem !important;
 }
 div[data-testid="stMetric"] label,
 div[data-testid="stMetric"] [data-testid="stMetricLabel"],
@@ -759,10 +759,10 @@ section[data-testid="stSidebar"] > div {
   margin: 0.22rem 0;
 }
 .cpmm-sidebar-sub-active-pill {
-  background: linear-gradient(135deg, #0b3a66, #164f83);
+  background: linear-gradient(135deg, #175cd3, #2f80ed);
   font-size: 0.78rem;
   padding: 0.44rem 0.58rem;
-  box-shadow: 0 7px 16px rgba(11, 58, 102, 0.18);
+  box-shadow: 0 7px 16px rgba(23, 92, 211, 0.20);
 }
 .cpmm-sidebar-status {
   border: 1px solid rgba(11, 58, 102, 0.20);
@@ -920,9 +920,13 @@ section[data-testid="stSidebar"] .cpmm-sidebar-sub-active-pill {
   font-weight: 650;
 }
 section[data-testid="stSidebar"] div[data-testid="stDownloadButton"] button {
-  background: linear-gradient(135deg, #fff4d8, #ffe9ac) !important;
-  border-color: #d8aa2e !important;
-  color: #0b3a66 !important;
+  background: linear-gradient(135deg, #1d6fe7, #175cd3) !important;
+  border-color: #1d6fe7 !important;
+  color: #ffffff !important;
+}
+section[data-testid="stSidebar"] div[data-testid="stDownloadButton"] button p,
+section[data-testid="stSidebar"] div[data-testid="stDownloadButton"] button span {
+  color: #ffffff !important;
 }
 section[data-testid="stSidebar"] div[data-testid="stFileUploader"] {
   border: 1px dashed rgba(11, 58, 102, 0.28) !important;

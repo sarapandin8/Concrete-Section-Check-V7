@@ -46,7 +46,7 @@ def test_ui_commercial_tabs4_highlights_active_segmented_tabs() -> None:
     assert "--cpmm-active-tab-fill" in source
     assert "--cpmm-active-tab-border" in source
     assert 'button[data-testid="stBaseButton-segmentedControlActive"]' in source
-    assert 'box-shadow: inset 0 -3px 0 var(--cpmm-ink-blue)' in source
+    assert 'box-shadow: inset 0 -3px 0 var(--cpmm-active-tab-accent)' in source
     assert 'label:has(input:checked)' in source
 
 
@@ -136,19 +136,20 @@ def test_ui_analysis_nav2_promotes_uls_strength_summary_to_top_level_check_tab()
     body = source[render_start:render_end]
     assert "decision_view_slot = st.container()" not in body
 
-def test_ui_action_buttons1_highlights_primary_actions_without_dark_fill() -> None:
+def test_ui_action_buttons1_highlights_primary_actions_with_blue_accent() -> None:
     app_source = Path("app.py").read_text(encoding="utf-8")
     analysis_source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text(encoding="utf-8")
     project_source = Path("concrete_pmm_pro/ui/project_page.py").read_text(encoding="utf-8")
 
     assert "UI.ACTION.BUTTONS1" in app_source
-    assert "--cpmm-action-fill: #fff4d8" in app_source
-    assert "--cpmm-action-fill-hover: #ffe9ac" in app_source
+    assert "--cpmm-action-fill: #1d6fe7" in app_source
+    assert "--cpmm-action-fill-hover: #175cd3" in app_source
     assert "button[kind=\"primary\"]" in app_source
     assert 'button[data-testid="stBaseButton-primary"]' in app_source
     assert 'div[data-testid="stFileUploaderDropzone"] button' in app_source
     assert 'div[data-testid="stFileUploader"] button,' not in app_source
     assert "uploaded-file pills also contain remove (x) buttons" in app_source
+    assert "UI.COMMERCIAL4.3.2 migrates primary/action buttons to the app blue accent" in app_source
     assert "font-weight: 850" in app_source
     assert 'type="primary"' in analysis_source and 'ui_keys1_analysis_page_button_1983' in analysis_source
     assert '"Save Project"' in project_source and 'type="primary"' in project_source
