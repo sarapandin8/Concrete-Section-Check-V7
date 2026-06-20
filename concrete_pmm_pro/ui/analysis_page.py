@@ -12243,6 +12243,13 @@ def _render_girder_sls_diagram_tensile_limit_guide(stage_label: str, df: pd.Data
             stresses=_girder_sls_diagram_stress_limit_rows(df),
             profile_key=profile_key,
             profile_options=profile_options,
+            # Lifting uses transfer/release tensile limits, but it is rendered
+            # in the same Streamlit pass as the Transfer tab.  The ACI transfer
+            # end-zone widgets intentionally keep shared state by code-limit
+            # stage, so only the true Transfer tab may render the editable
+            # widgets; Lifting reads the same state and shows the computed
+            # guide without duplicate widget keys.
+            show_end_zone_controls=(stage_label == "Transfer stage"),
         )
         if notes:
             for note in notes:
