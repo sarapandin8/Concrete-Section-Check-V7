@@ -11725,10 +11725,11 @@ def _beam_sls_load_row_summary_cards(row: Mapping[str, object]) -> list[dict[str
 def _beam_sls_stage_tab_specs() -> list[tuple[str, str, str]]:
     """Return commercial Beam/Girder SLS analysis tab metadata.
 
-    SLS.RAIL.UGIRDER7 adds a dedicated Railway U-Girder lifting tab because
-    the temporary two-point lifting check is not the same engineering state as
-    transfer/release, construction, or final service.  Other Beam/Girder
-    workflows keep the prior three-stage view to avoid adding irrelevant tabs.
+    SLS.RAIL.UGIRDER7 added a dedicated Railway U-Girder lifting tab for its
+    special one-web handling state.  SLS.LIFTING.PRECAST1 extends the same
+    stage-based workspace to generic precast girder members, but keeps the
+    engineering basis different: individual precast unit only, no wet-slab,
+    no bridge assembly width, and no composite service basis.
     """
 
     specs: list[tuple[str, str, str]] = [
@@ -11739,6 +11740,12 @@ def _beam_sls_stage_tab_specs() -> list[tuple[str, str, str]]:
             "lifting",
             "Lifting stage",
             "Railway U-Girder temporary two-point lifting: one precast web, transfer Pe, self-weight with lifting impact",
+        ))
+    elif _is_generic_precast_lifting_active_for_sls():
+        specs.append((
+            "lifting",
+            "Lifting stage",
+            "Generic precast lifting: individual precast unit, transfer Pe, self-weight with lifting impact",
         ))
     specs.extend(
         [
@@ -12776,11 +12783,16 @@ def _girder_sls4c_action_hints(
                 ]
             )
     elif stage_label == "Lifting stage":
-        hints.extend(
-            [
-                "Review lifting point a/L, lifting impact factor, temporary support hardware, and whether the one-web section controls during handling.",
-                "Check f'ci at lifting, strand release force, end-zone detailing, and lifting insert/local stresses before accepting the preview result.",
-            ]
+        if _is_railway_u_girder_active_for_sls_material_routing():
+            hints.append(
+                "Review lifting point a/L, lifting impact factor, temporary support hardware, and whether the one-web section controls during handling."
+            )
+        else:
+            hints.append(
+                "Review lifting point a/L, lifting impact factor, temporary support hardware, and confirm the individual precast unit basis controls during handling."
+            )
+        hints.append(
+            "Check f'ci at lifting, strand release force, end-zone detailing, and lifting insert/local stresses before accepting the preview result."
         )
     elif stage_label == "Construction stage":
         hints.extend(
@@ -15010,6 +15022,72 @@ def _is_railway_u_girder_active_for_sls_material_routing() -> bool:
                 return True
     return False
 
+
+
+def _is_generic_precast_lifting_active_for_sls() -> bool:
+    """Return True when the active non-rail Beam/Girder section should expose Lifting.
+
+    SLS.LIFTING.PRECAST1 is intentionally limited to individual precast unit
+    handling checks for I-girders, box beams, plank girders, and voided plank
+    girders.  Cast-in-place/RC presets and generic slab/PSC non-composite
+    bridge presets keep the prior Transfer/Construction/Service workspace.
+    Railway U-Girder remains routed through its dedicated rail-specific lifting
+    logic and is excluded here.
+    """
+
+    if _is_railway_u_girder_active_for_sls_material_routing():
+        return False
+
+    eligible_keys = {
+        "parametric_i_girder",
+        "box_section_fillet",
+        "precast_box_beam_exterior",
+        "parametric_plank_girder_interior",
+        "parametric_plank_girder_exterior",
+        "parametric_plank_girder_voided_interior",
+        "parametric_plank_girder_voided_exterior",
+    }
+    preset_key = _active_section_preset_key_for_sls_material_routing().casefold()
+    if preset_key in eligible_keys:
+        return True
+
+    geometry = st.session_state.get("section_geometry")
+    metadata = getattr(geometry, "metadata", {}) or {}
+    labels: list[str] = []
+    if isinstance(metadata, Mapping):
+        for key in ("preset", "generator", "preset_key", "section_preset_key", "display_name", "name", "girder_type"):
+            value = str(metadata.get(key) or "").strip()
+            if value:
+                labels.append(value.casefold())
+        params = metadata.get("parameters")
+        if isinstance(params, Mapping):
+            maybe_preset = str(params.get("preset") or params.get("section_preset_key") or "").strip()
+            if maybe_preset:
+                labels.append(maybe_preset.casefold())
+
+    for state_key in ("section_preset_name", "active_section_preset_name", "section_preset_key"):
+        value = str(st.session_state.get(state_key) or "").strip()
+        if value:
+            labels.append(value.casefold())
+
+    geometry_name = str(getattr(geometry, "name", "") or "").strip()
+    if geometry_name:
+        labels.append(geometry_name.casefold())
+
+    joined = " | ".join(labels)
+    if any(key in joined for key in eligible_keys):
+        return True
+    if "precast" not in joined:
+        return False
+    if "i-girder" in joined or "i girder" in joined:
+        return True
+    if "box beam" in joined:
+        return True
+    if "plank girder" in joined:
+        return True
+    if "voided plank" in joined:
+        return True
+    return False
 
 def _positive_float_or_default(value: object, default: float) -> float:
     """Return a positive finite float, otherwise a safe default."""

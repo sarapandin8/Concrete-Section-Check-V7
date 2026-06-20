@@ -57,12 +57,28 @@ def test_railway_u_girder_analysis_tabs_include_lifting_stage_only_for_railway()
     finally:
         _restore_session_state(backup)
 
-    backup = _with_session_state({"section_preset_key": "parametric_i_girder"})
+    backup = _with_session_state({"section_preset_key": "slab_bridge"})
     try:
         labels = [label for _key, label, _note in analysis_page._beam_sls_stage_tab_specs()]
         assert labels == ["Transfer stage", "Construction stage", "Service stage"]
     finally:
         _restore_session_state(backup)
+
+
+def test_generic_precast_girder_analysis_tabs_include_lifting_stage() -> None:
+    for preset_key in (
+        "parametric_i_girder",
+        "box_section_fillet",
+        "precast_box_beam_exterior",
+        "parametric_plank_girder_interior",
+        "parametric_plank_girder_voided_interior",
+    ):
+        backup = _with_session_state({"section_preset_key": preset_key})
+        try:
+            labels = [label for _key, label, _note in analysis_page._beam_sls_stage_tab_specs()]
+            assert labels == ["Transfer stage", "Lifting stage", "Construction stage", "Service stage"]
+        finally:
+            _restore_session_state(backup)
 
 
 def test_lifting_stage_uses_transfer_strength_profile_for_railway_u_girder() -> None:
