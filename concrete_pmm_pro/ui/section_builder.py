@@ -282,6 +282,78 @@ _SECTION_BUILDER_CSS = """
   line-height: 1.22;
   margin: 0.1rem 0 0.35rem 0;
 }
+
+.cpmm-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+  margin: 0.45rem 0 0.72rem 0;
+}
+.cpmm-context-card {
+  border: 1px solid #c8d8ea;
+  border-left: 5px solid #1f5f99;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f7fbff 0%, #eef6ff 100%);
+  padding: 0.78rem 0.9rem;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+  min-height: 118px;
+}
+.cpmm-context-card.section {
+  border-color: #c8ead5;
+  border-left-color: #2e7d32;
+  background: linear-gradient(180deg, #f7fff9 0%, #eefaf1 100%);
+}
+.cpmm-context-kicker {
+  color: #475467;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.28rem;
+}
+.cpmm-context-value {
+  color: #101828;
+  font-size: 1.04rem;
+  font-weight: 780;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+.cpmm-context-detail {
+  color: #667085;
+  font-size: 0.78rem;
+  line-height: 1.28;
+  margin-top: 0.28rem;
+}
+.cpmm-context-badges {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.cpmm-context-required {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.14rem 0.52rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: #1849a9;
+  color: #ffffff;
+}
+.cpmm-context-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.14rem 0.52rem;
+  font-size: 0.68rem;
+  font-weight: 760;
+  background: rgba(255, 255, 255, 0.75);
+  color: #475467;
+  border: 1px solid rgba(102, 112, 133, 0.18);
+}
+@media (max-width: 900px) {
+  .cpmm-context-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
 @media (max-width: 1200px) {
   .cpmm-section-property-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -2303,6 +2375,34 @@ def _render_commercial_section_header() -> None:
     )
 
 
+def _engineering_context_cards_html(
+    *,
+    workflow_label: str,
+    preset_label: str | None = None,
+    preset_family: str | None = None,
+) -> str:
+    """Render high-visibility master controls for Section Builder."""
+
+    section_value = preset_label or "Select a Section Type / Preset"
+    section_detail = preset_family or "Geometry basis and downstream SLS/ULS routes depend on this selection."
+    return f"""
+    <div class="cpmm-context-grid">
+      <div class="cpmm-context-card workflow">
+        <div class="cpmm-context-kicker">Active Member Workflow</div>
+        <div class="cpmm-context-value">{escape(workflow_label)}</div>
+        <div class="cpmm-context-detail">Master workflow for section filtering, design-code routing, loads, analysis, and report context.</div>
+        <div class="cpmm-context-badges"><span class="cpmm-context-required">REQUIRED</span><span class="cpmm-context-chip">Primary Control</span></div>
+      </div>
+      <div class="cpmm-context-card section">
+        <div class="cpmm-context-kicker">Section Type / Preset</div>
+        <div class="cpmm-context-value">{escape(section_value)}</div>
+        <div class="cpmm-context-detail">{escape(section_detail)}</div>
+        <div class="cpmm-context-badges"><span class="cpmm-context-required">REQUIRED</span><span class="cpmm-context-chip">Geometry Basis</span></div>
+      </div>
+    </div>
+    """
+
+
 def _commercial_panel_title_html(title: str, kicker: str, *pills: str) -> str:
     pill_html = "".join(f'<span class="cpmm-commercial-pill">{escape(str(pill))}</span>' for pill in pills if str(pill))
     return (
@@ -2341,15 +2441,25 @@ def _render_section_definition_panel(
             st.error("No section presets are available.")
             return None
 
-        st.caption(
-            f"Active workflow: {analysis_mode_label(analysis_mode_settings)} · "
-            f"{_member_type_filter_description(analysis_mode_settings)}"
-        )
-
         selector_state_key = "section_preset_selector_key"
         selector_initial_key = _initial_preset_selector_key(preset_keys)
         if st.session_state.get(selector_state_key) not in preset_keys:
             st.session_state[selector_state_key] = selector_initial_key
+
+        current_preset_key = str(st.session_state.get(selector_state_key, selector_initial_key))
+        current_preset = preset_map.get(current_preset_key, preset_map[str(selector_initial_key)])
+        current_category = str(current_preset.get("category", "General"))
+        st.markdown(
+            _engineering_context_cards_html(
+                workflow_label=analysis_mode_label(analysis_mode_settings),
+                preset_label=_workflow_specific_preset_display_name(current_preset, analysis_mode_settings),
+                preset_family=f"Geometry family: {current_category}",
+            ),
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"Workflow filter: {_member_type_filter_description(analysis_mode_settings)}"
+        )
 
         selected_preset_key = st.selectbox(
             "Section Type / Preset",

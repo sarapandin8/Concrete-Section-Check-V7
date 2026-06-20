@@ -44,6 +44,48 @@ class DashboardCard:
 
 _DASHBOARD_CSS = """
 <style>
+
+.cpmm-workflow-hero {
+  border: 1px solid #c8d8ea;
+  border-left: 5px solid #1f5f99;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #f7fbff 0%, #eef6ff 100%);
+  padding: 0.82rem 0.95rem;
+  margin: 0.42rem 0 0.72rem 0;
+  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+.cpmm-workflow-hero-kicker {
+  color: #475467;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.28rem;
+}
+.cpmm-workflow-hero-value {
+  color: #101828;
+  font-size: 1.08rem;
+  font-weight: 780;
+  line-height: 1.22;
+}
+.cpmm-workflow-hero-detail {
+  color: #667085;
+  font-size: 0.8rem;
+  line-height: 1.3;
+  margin-top: 0.3rem;
+}
+.cpmm-workflow-hero-badge {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.14rem 0.52rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: #1849a9;
+  color: #ffffff;
+  margin-top: 0.52rem;
+}
+
 .cpmm-dashboard-card {
   border: 1px solid #d9dee7;
   border-left: 4px solid #7b8794;
@@ -219,6 +261,17 @@ def _mode_guidance_lines(settings: AnalysisModeSettings) -> list[str]:
     ]
 
 
+def _workflow_hero_html(label: str) -> str:
+    return f"""
+    <div class="cpmm-workflow-hero">
+      <div class="cpmm-workflow-hero-kicker">Active Member Workflow</div>
+      <div class="cpmm-workflow-hero-value">{escape(label)}</div>
+      <div class="cpmm-workflow-hero-detail">Primary project control for section filtering, design-code routing, loads, analysis, and report context.</div>
+      <span class="cpmm-workflow-hero-badge">REQUIRED</span>
+    </div>
+    """
+
+
 def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisModeSettings:
     """Project-level Analysis Mode / Member Type selector.
 
@@ -262,6 +315,7 @@ def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisMod
         st.session_state["analysis_mode_settings"] = settings
         st.session_state[sync_key] = settings.member_type
 
+        st.markdown(_workflow_hero_html(analysis_mode_label(settings)), unsafe_allow_html=True)
         mode_cards = _analysis_configuration_cards(settings)
         st.markdown(_compact_panel_html(mode_cards, columns=2), unsafe_allow_html=True)
         st.info(analysis_mode_description(settings))
