@@ -48,6 +48,8 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     BEAM_GIRDER_SYSTEM_SETTINGS_KEY,
     DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3,
     DEFAULT_GIRDER_SPACING_M,
+    DEFAULT_LIFTING_IMPACT_FACTOR,
+    DEFAULT_LIFTING_POINT_RATIO,
     DEFAULT_NUMBER_OF_GIRDERS,
     DEFAULT_SPAN_LENGTH_M,
     system_settings_from_mapping,
@@ -728,6 +730,8 @@ def _ensure_beam_girder_system_settings_defaults() -> dict[str, Any]:
     existing.setdefault("concrete_unit_weight_kN_m3", DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3)
     existing.setdefault("tributary_width_m", existing.get("girder_spacing_m", DEFAULT_GIRDER_SPACING_M))
     existing.setdefault("use_girder_spacing_as_tributary_width", False)
+    existing.setdefault("lifting_point_ratio", DEFAULT_LIFTING_POINT_RATIO)
+    existing.setdefault("lifting_impact_factor", DEFAULT_LIFTING_IMPACT_FACTOR)
     normalized = system_settings_from_mapping(existing).as_metadata()
     st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized
     _sync_beam_girder_span_to_existing_sources(normalized)
@@ -921,6 +925,32 @@ def _render_bridge_section_assembly_panel(preset: dict[str, Any], settings: Anal
             key="section_assembly_tributary_width_m_input",
             help="Use module spacing by default unless project-specific load distribution requires an override.",
         )
+        lift_cols = st.columns(4)
+        with lift_cols[0]:
+            values["lifting_point_ratio"] = st.number_input(
+                "Lifting a/L",
+                min_value=0.05,
+                max_value=0.45,
+                step=0.01,
+                value=float(values.get("lifting_point_ratio", DEFAULT_LIFTING_POINT_RATIO)),
+                format="%.3f",
+                key="section_assembly_lifting_ratio_input",
+                help="Two-point symmetric lifting point measured from each end. Used for individual precast unit lifting only.",
+            )
+        with lift_cols[1]:
+            st.metric("Lifting a", f"{float(values['lifting_point_ratio']) * float(values['span_length_m']):.3f} m", "from each end")
+        with lift_cols[2]:
+            values["lifting_impact_factor"] = st.number_input(
+                "Lifting impact factor",
+                min_value=1.0,
+                step=0.05,
+                value=float(values.get("lifting_impact_factor", DEFAULT_LIFTING_IMPACT_FACTOR)),
+                format="%.2f",
+                key="section_assembly_lifting_impact_input",
+                help="Multiplier applied to individual precast unit self-weight during the lifting-stage stress preview.",
+            )
+        with lift_cols[3]:
+            st.metric("Lifting basis", "Individual precast unit", "not bridge assembly")
         normalized = system_settings_from_mapping(values).as_metadata()
         st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized
         _sync_beam_girder_span_to_existing_sources(normalized)
@@ -931,6 +961,7 @@ def _render_bridge_section_assembly_panel(preset: dict[str, Any], settings: Anal
             ("Load tributary width", f"{summary.effective_tributary_width_m:.3f} m"),
             ("Concrete unit weight", f"{summary.concrete_unit_weight_kN_m3:.2f} kN/m³"),
             ("Assembly count", f"{summary.number_of_girders:d}"),
+            ("Lifting", f"a = {summary.lifting_point_ratio * summary.span_length_m:.3f} m from each end | IF = {summary.lifting_impact_factor:.2f}"),
         ]
         st.markdown(_kv_panel_html(rows), unsafe_allow_html=True)
 
@@ -1000,6 +1031,32 @@ def _render_building_member_assembly_panel(preset: dict[str, Any], settings: Ana
                 key="building_member_assembly_tributary_width_m_input",
                 help="Override only for edge beams, openings, or special load paths.",
             )
+        lift_cols = st.columns(4)
+        with lift_cols[0]:
+            values["lifting_point_ratio"] = st.number_input(
+                "Lifting a/L",
+                min_value=0.05,
+                max_value=0.45,
+                step=0.01,
+                value=float(values.get("lifting_point_ratio", DEFAULT_LIFTING_POINT_RATIO)),
+                format="%.3f",
+                key="building_member_assembly_lifting_ratio_input",
+                help="Two-point symmetric lifting point measured from each end. Used for individual precast member lifting only.",
+            )
+        with lift_cols[1]:
+            st.metric("Lifting a", f"{float(values['lifting_point_ratio']) * float(values['span_length_m']):.3f} m", "from each end")
+        with lift_cols[2]:
+            values["lifting_impact_factor"] = st.number_input(
+                "Lifting impact factor",
+                min_value=1.0,
+                step=0.05,
+                value=float(values.get("lifting_impact_factor", DEFAULT_LIFTING_IMPACT_FACTOR)),
+                format="%.2f",
+                key="building_member_assembly_lifting_impact_input",
+                help="Multiplier applied to individual precast member self-weight during the lifting-stage stress preview.",
+            )
+        with lift_cols[3]:
+            st.metric("Lifting basis", "Individual precast member", "not floor assembly")
         values.setdefault("number_of_girders", DEFAULT_NUMBER_OF_GIRDERS)
         normalized = system_settings_from_mapping(values).as_metadata()
         st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = normalized
@@ -1012,6 +1069,7 @@ def _render_building_member_assembly_panel(preset: dict[str, Any], settings: Ana
                     ("Beam/girder spacing", f"{summary.girder_spacing_m:.3f} m"),
                     ("Load tributary width", f"{summary.effective_tributary_width_m:.3f} m"),
                     ("Concrete unit weight", f"{summary.concrete_unit_weight_kN_m3:.2f} kN/m³"),
+                    ("Lifting", f"a = {summary.lifting_point_ratio * summary.span_length_m:.3f} m from each end | IF = {summary.lifting_impact_factor:.2f}"),
                 ]
             ),
             unsafe_allow_html=True,

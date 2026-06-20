@@ -22,6 +22,8 @@ DEFAULT_OTHER_SDL_AREA_LOAD_KPA = 0.0
 DEFAULT_BUILDING_SERVICE_SDL_KN_M2 = 0.0
 DEFAULT_BUILDING_SERVICE_LL_KN_M2 = 0.0
 DEFAULT_BUILDING_ADDITIONAL_SDL_KN_M2 = 0.0
+DEFAULT_LIFTING_POINT_RATIO = 0.20
+DEFAULT_LIFTING_IMPACT_FACTOR = 1.10
 
 BEAM_GIRDER_SYSTEM_SETTINGS_KEY = "beam_girder_system_settings"
 BEAM_GIRDER_SLS_AUTO_LOAD_SETTINGS_KEY = "beam_girder_sls_auto_load_settings"
@@ -38,6 +40,8 @@ class BeamGirderSystemSettings:
     concrete_unit_weight_kN_m3: float = DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3
     tributary_width_m: float | None = None
     use_girder_spacing_as_tributary_width: bool = False
+    lifting_point_ratio: float = DEFAULT_LIFTING_POINT_RATIO
+    lifting_impact_factor: float = DEFAULT_LIFTING_IMPACT_FACTOR
 
     @property
     def effective_tributary_width_m(self) -> float:
@@ -55,6 +59,8 @@ class BeamGirderSystemSettings:
             "concrete_unit_weight_kN_m3": self.concrete_unit_weight_kN_m3,
             "tributary_width_m": self.tributary_width_m,
             "use_girder_spacing_as_tributary_width": self.use_girder_spacing_as_tributary_width,
+            "lifting_point_ratio": self.lifting_point_ratio,
+            "lifting_impact_factor": self.lifting_impact_factor,
         }
 
 
@@ -190,6 +196,8 @@ def system_settings_from_mapping(mapping: Mapping[str, Any] | None) -> BeamGirde
         concrete_unit_weight_kN_m3=_positive_float(data.get("concrete_unit_weight_kN_m3")) or DEFAULT_CONCRETE_UNIT_WEIGHT_KN_M3,
         tributary_width_m=_positive_float(data.get("tributary_width_m")),
         use_girder_spacing_as_tributary_width=bool(data.get("use_girder_spacing_as_tributary_width", False)),
+        lifting_point_ratio=min(max(_positive_float(data.get("lifting_point_ratio")) or DEFAULT_LIFTING_POINT_RATIO, 0.05), 0.45),
+        lifting_impact_factor=max(_positive_float(data.get("lifting_impact_factor")) or DEFAULT_LIFTING_IMPACT_FACTOR, 1.0),
     )
 
 
@@ -343,6 +351,46 @@ def simple_span_udl_shear_kN(w_kN_m: float, x_m: float, span_length_m: float) ->
     return max(float(w_kN_m), 0.0) * (span / 2.0 - x)
 
 
+def two_point_lifting_moment_kNm(w_kN_m: float, x_m: float, span_length_m: float, lifting_point_ratio: float) -> float:
+    """Return bending moment for symmetric two-point lifting under member self-weight.
+
+    The precast unit is lifted at x=a and x=L-a.  Positive moment follows the
+    existing SLS convention used by ``simple_span_udl_moment_kNm``; the end
+    overhang regions naturally produce negative hogging moments.
+    """
+
+    span = _positive_float(span_length_m) or DEFAULT_SPAN_LENGTH_M
+    ratio = min(max(_positive_float(lifting_point_ratio) or DEFAULT_LIFTING_POINT_RATIO, 0.05), 0.45)
+    w = max(float(w_kN_m), 0.0)
+    x = min(max(float(x_m), 0.0), span)
+    a = ratio * span
+    reaction = w * span / 2.0
+    moment = -w * x * x / 2.0
+    if x >= a:
+        moment += reaction * (x - a)
+    right_support = span - a
+    if x >= right_support:
+        moment += reaction * (x - right_support)
+    return moment
+
+
+def two_point_lifting_shear_kN(w_kN_m: float, x_m: float, span_length_m: float, lifting_point_ratio: float) -> float:
+    """Return shear for symmetric two-point lifting under member self-weight."""
+
+    span = _positive_float(span_length_m) or DEFAULT_SPAN_LENGTH_M
+    ratio = min(max(_positive_float(lifting_point_ratio) or DEFAULT_LIFTING_POINT_RATIO, 0.05), 0.45)
+    w = max(float(w_kN_m), 0.0)
+    x = min(max(float(x_m), 0.0), span)
+    a = ratio * span
+    reaction = w * span / 2.0
+    shear = -w * x
+    if x >= a:
+        shear += reaction
+    if x >= span - a:
+        shear += reaction
+    return shear
+
+
 def default_sls_station_grid(span_length_m: float, extra_stations_m: Iterable[float] | None = None, divisions: int = 20) -> list[float]:
     """Return a compact station grid for auto-generated stress diagrams."""
 
@@ -384,6 +432,10 @@ def building_auto_load_breakdown_for_stage(
     if "transfer" in stage:
         if self_weight > 0.0:
             components.append(("Precast girder self-weight", self_weight))
+    elif "lifting" in stage:
+        lifted = self_weight * max(float(system.lifting_impact_factor), 1.0)
+        if lifted > 0.0:
+            components.append(("Precast unit self-weight × lifting IF", lifted))
     elif "construction" in stage:
         if self_weight > 0.0:
             components.append(("Precast girder self-weight", self_weight))
@@ -410,6 +462,10 @@ def auto_load_breakdown_for_stage(
     if "transfer" in stage:
         if settings.include_transfer_girder_self_weight and self_weight > 0.0:
             components.append(("Girder self-weight", self_weight))
+    elif "lifting" in stage:
+        lifted = self_weight * max(float(system.lifting_impact_factor), 1.0)
+        if lifted > 0.0:
+            components.append(("Precast unit self-weight × lifting IF", lifted))
     elif "construction" in stage:
         if settings.include_construction_girder_self_weight and self_weight > 0.0:
             components.append(("Girder self-weight", self_weight))

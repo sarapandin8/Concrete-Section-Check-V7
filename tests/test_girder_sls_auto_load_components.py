@@ -16,6 +16,7 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     barrier_sidewalk_load_per_girder_kN_m,
     default_sls_station_grid,
     simple_span_udl_moment_kNm,
+    two_point_lifting_moment_kNm,
     wearing_surface_load_per_girder_kN_m,
 )
 
@@ -73,6 +74,25 @@ def test_simple_span_udl_moment_and_auto_stage_breakdown() -> None:
     assert simple_span_udl_moment_kNm(10.0, 10.0, 20.0) == pytest.approx(500.0)
 
 
+
+def test_two_point_lifting_uses_individual_precaster_unit_self_weight_with_impact() -> None:
+    system = BeamGirderSystemSettings(span_length_m=20.0, lifting_point_ratio=0.20, lifting_impact_factor=1.10)
+    settings = BeamGirderSLSAutoLoadSettings()
+    lifting = auto_load_breakdown_for_stage(
+        stage_label="Lifting stage",
+        system=system,
+        settings=settings,
+        precast_area_mm2=700_000.0,
+        topping_thickness_mm=100.0,
+    )
+
+    assert lifting.total_kN_m == pytest.approx(0.7 * 24.0 * 1.10)
+    assert two_point_lifting_moment_kNm(lifting.total_kN_m, 0.0, 20.0, 0.20) == pytest.approx(0.0)
+    assert two_point_lifting_moment_kNm(lifting.total_kN_m, 4.0, 20.0, 0.20) == pytest.approx(-lifting.total_kN_m * 4.0 * 4.0 / 2.0)
+    assert two_point_lifting_moment_kNm(lifting.total_kN_m, 10.0, 20.0, 0.20) == pytest.approx(
+        -lifting.total_kN_m * 10.0 * 10.0 / 2.0 + lifting.total_kN_m * 20.0 / 2.0 * (10.0 - 4.0)
+    )
+
 def test_default_station_grid_has_full_span_points() -> None:
     grid = default_sls_station_grid(20.0, extra_stations_m=[1.0, 19.0], divisions=20)
     assert grid[0] == pytest.approx(0.0)
@@ -91,6 +111,8 @@ def test_project_io_preserves_beam_girder_system_and_auto_load_settings() -> Non
             "number_of_girders": 8,
             "concrete_unit_weight_kN_m3": 24.0,
             "tributary_width_m": 1.5,
+            "lifting_point_ratio": 0.22,
+            "lifting_impact_factor": 1.15,
         },
         BEAM_GIRDER_SLS_AUTO_LOAD_SETTINGS_KEY: {
             "barrier_sidewalk_total_area_both_sides_m2": 1.50,
@@ -102,11 +124,13 @@ def test_project_io_preserves_beam_girder_system_and_auto_load_settings() -> Non
     project = project_from_session_state(session)
     raw = json.loads(project_to_json(project))
     assert raw["metadata"][BEAM_GIRDER_SYSTEM_SETTINGS_KEY]["number_of_girders"] == 8
+    assert raw["metadata"][BEAM_GIRDER_SYSTEM_SETTINGS_KEY]["lifting_point_ratio"] == pytest.approx(0.22)
     assert raw["metadata"][BEAM_GIRDER_SLS_AUTO_LOAD_SETTINGS_KEY]["wearing_thickness_mm"] == 80.0
 
     restored: dict[str, object] = {}
     apply_project_to_session_state(ProjectModel.model_validate(raw), restored)
     assert restored[BEAM_GIRDER_SYSTEM_SETTINGS_KEY]["span_length_m"] == pytest.approx(30.0)
+    assert restored[BEAM_GIRDER_SYSTEM_SETTINGS_KEY]["lifting_impact_factor"] == pytest.approx(1.15)
     assert restored["girder_prestress_system_settings"]["span_length_m"] == pytest.approx(30.0)
     assert restored[BEAM_GIRDER_SLS_AUTO_LOAD_SETTINGS_KEY]["include_service_other_sdl"] is True
 
@@ -115,6 +139,8 @@ def test_source_files_have_sls5a_ui_and_analysis_guardrails() -> None:
     assert "Bridge Section Assembly" in SECTION_BUILDER_SOURCE
     assert "Number of girders" in SECTION_BUILDER_SOURCE
     assert "Tributary width for load take-down" in SECTION_BUILDER_SOURCE
+    assert "Lifting a/L" in SECTION_BUILDER_SOURCE
+    assert "Individual precast unit" in SECTION_BUILDER_SOURCE
     render_project_source = PROJECT_SOURCE.split("def render_project_page() -> None:", 1)[1]
     setup_editor_source = PROJECT_SOURCE.split("def _render_project_setup_editor", 1)[1].split(
         "def _render_project_file_actions", 1
@@ -129,4 +155,5 @@ def test_source_files_have_sls5a_ui_and_analysis_guardrails() -> None:
     assert "Import LL+IM only from CSiBridge" in LOADS_SOURCE
     assert "GIRDER.SLS5A generates a span station grid" in ANALYSIS_SOURCE
     assert "Service auto load = SDL after composite only" in ANALYSIS_SOURCE
+    assert "two_point_lifting_moment_kNm" in ANALYSIS_SOURCE
     assert "Auto Mx (kN-m)" in ANALYSIS_SOURCE

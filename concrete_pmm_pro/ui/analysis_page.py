@@ -194,6 +194,8 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     default_sls_station_grid,
     simple_span_udl_moment_kNm,
     simple_span_udl_shear_kN,
+    two_point_lifting_moment_kNm,
+    two_point_lifting_shear_kN,
     system_settings_from_mapping,
 )
 
@@ -12071,8 +12073,29 @@ def _girder_full_length_sls_stage_rows(
         basis = basis_options.bases[basis_name]
         user_n_kN = _analysis_float_or_zero(raw_row.get("N"))
         user_mx_kNm = _analysis_float_or_zero(raw_row.get("Mx"))
-        auto_mx_kNm = simple_span_udl_moment_kNm(auto_breakdown.total_kN_m, x_m, span_length_m)
-        auto_vy_kN = simple_span_udl_shear_kN(auto_breakdown.total_kN_m, x_m, span_length_m)
+        system_settings = system_settings_from_mapping(st.session_state.get(BEAM_GIRDER_SYSTEM_SETTINGS_KEY))
+        if _beam_sls_stage_label_for_analysis(stage_label) == "Lifting stage":
+            auto_mx_kNm = two_point_lifting_moment_kNm(
+                auto_breakdown.total_kN_m,
+                x_m,
+                span_length_m,
+                system_settings.lifting_point_ratio,
+            )
+            auto_vy_kN = two_point_lifting_shear_kN(
+                auto_breakdown.total_kN_m,
+                x_m,
+                span_length_m,
+                system_settings.lifting_point_ratio,
+            )
+            lifting_a_m = system_settings.lifting_point_ratio * max(float(span_length_m), 0.0)
+            component_note = (
+                f"{auto_breakdown.component_label}; two-point lifting "
+                f"a={lifting_a_m:.3f} m from each end, IF={system_settings.lifting_impact_factor:.2f}"
+            )
+        else:
+            auto_mx_kNm = simple_span_udl_moment_kNm(auto_breakdown.total_kN_m, x_m, span_length_m)
+            auto_vy_kN = simple_span_udl_shear_kN(auto_breakdown.total_kN_m, x_m, span_length_m)
+            component_note = auto_breakdown.component_label
         total_mx_kNm = user_mx_kNm + auto_mx_kNm
         service = run_basic_girder_service_stress(
             basis,
@@ -12118,7 +12141,7 @@ def _girder_full_length_sls_stage_rows(
                 "Mx (kN-m)": total_mx_kNm,
                 "Auto Vy (kN)": auto_vy_kN,
                 "Auto load w (kN/m)": auto_breakdown.total_kN_m,
-                "Auto load components": auto_breakdown.component_label,
+                "Auto load components": component_note,
                 "Pe stage (kN)": pe_kN,
                 "yps eff (mm)": yps,
                 "Top service (MPa)": service.top.total_stress_MPa,
