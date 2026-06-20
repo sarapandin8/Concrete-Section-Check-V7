@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from html import escape
+
 import streamlit as st
 
+from concrete_pmm_pro.core.analysis import AnalysisModeSettings
+from concrete_pmm_pro.core.analysis_modes import analysis_mode_label
 from concrete_pmm_pro.state.dirty_state import update_dirty_state_from_session
 from concrete_pmm_pro.ui.analysis_page import render_analysis_page
 from concrete_pmm_pro.ui.loads_page import render_loads_page
@@ -661,6 +665,202 @@ div[data-testid="stMarkdownContainer"] h3 {
   color: var(--cpmm-theme-navy) !important;
 }
 
+
+/* UI.COMMERCIAL4: premium app shell, sidebar rail, and centered commercial canvas. */
+.stApp {
+  background: linear-gradient(135deg, #f4f8fd 0%, #f7fbff 48%, #eef5ff 100%) !important;
+}
+.block-container {
+  max-width: 1720px !important;
+  padding-left: 1.45rem !important;
+  padding-right: 1.45rem !important;
+}
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #f7fbff 0%, #ffffff 52%, #eef6ff 100%) !important;
+  border-right: 1px solid rgba(11, 58, 102, 0.13) !important;
+  box-shadow: 10px 0 28px rgba(7, 26, 51, 0.055) !important;
+}
+section[data-testid="stSidebar"] > div {
+  padding-top: 1.05rem !important;
+}
+.cpmm-sidebar-brand {
+  border-bottom: 1px solid rgba(11, 58, 102, 0.12);
+  padding: 0.20rem 0.20rem 0.92rem 0.20rem;
+  margin-bottom: 0.72rem;
+}
+.cpmm-sidebar-brand-title {
+  color: #08254a;
+  font-size: 1.15rem;
+  line-height: 1.08;
+  font-weight: 950;
+  letter-spacing: -0.015em;
+}
+.cpmm-sidebar-brand-subtitle {
+  margin-top: 0.42rem;
+  color: #53657a;
+  font-size: 0.76rem;
+  line-height: 1.32;
+}
+.cpmm-sidebar-section-label {
+  color: #475467;
+  font-size: 0.68rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0.82rem 0 0.38rem 0.10rem;
+}
+.cpmm-sidebar-active-pill,
+.cpmm-sidebar-sub-active-pill {
+  display: flex;
+  align-items: center;
+  gap: 0.50rem;
+  width: 100%;
+  border-radius: 11px;
+  padding: 0.55rem 0.66rem;
+  background: linear-gradient(135deg, #175cd3, #2f80ed);
+  color: #ffffff;
+  font-size: 0.86rem;
+  font-weight: 900;
+  box-shadow: 0 9px 20px rgba(23, 92, 211, 0.22);
+  margin: 0.22rem 0;
+}
+.cpmm-sidebar-sub-active-pill {
+  background: linear-gradient(135deg, #0b3a66, #164f83);
+  font-size: 0.78rem;
+  padding: 0.44rem 0.58rem;
+  box-shadow: 0 7px 16px rgba(11, 58, 102, 0.18);
+}
+.cpmm-sidebar-status {
+  border: 1px solid rgba(11, 58, 102, 0.11);
+  border-radius: 13px;
+  background: #ffffff;
+  padding: 0.70rem 0.72rem;
+  box-shadow: 0 8px 20px rgba(7, 26, 51, 0.055);
+  margin-top: 0.80rem;
+}
+.cpmm-sidebar-status-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.50rem;
+  align-items: center;
+  margin: 0.42rem 0;
+}
+.cpmm-sidebar-status-dot {
+  width: 25px;
+  height: 25px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 950;
+  font-size: 0.74rem;
+  background: #e8f1ff;
+  color: #175cd3;
+}
+.cpmm-sidebar-status-dot.ready { background: #dcfce7; color: #16833a; }
+.cpmm-sidebar-status-dot.warning { background: #fef3c7; color: #b45309; }
+.cpmm-sidebar-status-title {
+  color: #667085;
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+.cpmm-sidebar-status-value {
+  color: #071a33;
+  font-size: 0.82rem;
+  font-weight: 900;
+  margin-top: 0.04rem;
+}
+.cpmm-top-brand-shell {
+  border: 1px solid rgba(11, 58, 102, 0.11);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #ffffff 0%, #f8fbff 56%, #eef6ff 100%);
+  padding: 0.82rem 1.02rem;
+  margin: 0.20rem 0 0.82rem 0;
+  box-shadow: 0 10px 30px rgba(7, 26, 51, 0.065);
+}
+.cpmm-top-brand-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.86rem;
+}
+.cpmm-top-brand-logo {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0b3a66, #1d6fe7);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  font-weight: 950;
+  box-shadow: 0 8px 18px rgba(29, 111, 231, 0.20);
+}
+.cpmm-top-brand-title {
+  color: #071a33;
+  font-size: 1.36rem;
+  font-weight: 950;
+  line-height: 1.12;
+}
+.cpmm-top-brand-subtitle {
+  color: #526f8d;
+  font-size: 0.82rem;
+  line-height: 1.30;
+  margin-top: 0.18rem;
+}
+.cpmm-top-brand-badge {
+  border: 1px solid rgba(29, 111, 231, 0.20);
+  border-radius: 999px;
+  background: #e8f1ff;
+  color: #0b3a66;
+  padding: 0.28rem 0.72rem;
+  font-size: 0.70rem;
+  font-weight: 950;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+.cpmm-context-summary-shell {
+  border: 1px solid rgba(11, 58, 102, 0.10);
+  border-radius: 16px;
+  background: #ffffff;
+  box-shadow: 0 8px 22px rgba(7, 26, 51, 0.055);
+  padding: 0.72rem 0.82rem;
+  margin: 0.35rem 0 0.80rem 0;
+}
+.cpmm-context-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.50rem;
+}
+.cpmm-context-summary-item {
+  border-right: 1px solid #e3eaf3;
+  padding: 0.12rem 0.66rem;
+  min-width: 0;
+}
+.cpmm-context-summary-item:last-child { border-right: 0; }
+.cpmm-context-summary-label {
+  color: #526f8d;
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 0.16rem;
+}
+.cpmm-context-summary-value {
+  color: #071a33;
+  font-size: 0.86rem;
+  font-weight: 900;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 1100px) {
+  .cpmm-context-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cpmm-context-summary-item { border-right: 0; border-bottom: 1px solid #e3eaf3; padding-bottom: 0.42rem; }
+}
+
 </style>
 """
 
@@ -687,6 +887,168 @@ def _safe_choice(label: str, options: list[str], *, key: str, horizontal: bool =
 
     return render_active_choice(label, options, key=key, horizontal=horizontal)
 
+
+
+def _commercial_workspace_icon(workspace: str) -> str:
+    return {
+        "Setup": "⚙",
+        "Sections": "▦",
+        "Loads": "⇩",
+        "Analysis": "⌁",
+        "Results": "▤",
+    }.get(str(workspace), "•")
+
+
+def _commercial_subpage_icon(subpage: str) -> str:
+    return {
+        "Project": "▣",
+        "Materials": "⚗",
+        "Section Builder": "◇",
+        "Rebar": "#",
+        "Prestress": "PT",
+        "ULS Strength": "ULS",
+        "SLS / Stress & Cracking": "SLS",
+        "SLS Deflection / Camber": "δ",
+        "Report / QA": "QA",
+    }.get(str(subpage), "•")
+
+
+def _analysis_mode_from_session_for_chrome() -> AnalysisModeSettings:
+    value = st.session_state.get("analysis_mode_settings")
+    if isinstance(value, AnalysisModeSettings):
+        return value
+    if isinstance(value, dict):
+        try:
+            return AnalysisModeSettings.model_validate(value)
+        except Exception:
+            return AnalysisModeSettings()
+    return AnalysisModeSettings()
+
+
+def _current_section_label_for_chrome() -> str:
+    return str(st.session_state.get("section_preset_name") or st.session_state.get("section_preset_selector_key") or "Not selected")
+
+
+def _project_code_label_for_chrome() -> str:
+    code = str(st.session_state.get("design_code") or st.session_state.get("project_design_code") or "ACI 318")
+    edition = str(st.session_state.get("code_edition") or st.session_state.get("project_code_edition") or "")
+    return f"{code} {edition}".strip()
+
+
+def _render_commercial_sidebar(active_workspace: str | None = None) -> None:
+    """Render a visual navigation rail without changing the existing page contracts.
+
+    UI.COMMERCIAL4 keeps the top navigation available for backward
+    compatibility, but adds a premium sidebar rail that writes to the same
+    Streamlit session-state navigation keys when used.
+    """
+    if st.session_state.get("_nav_active_workspace") not in WORKSPACE_NAVIGATION:
+        st.session_state["_nav_active_workspace"] = "Setup"
+    active = str(active_workspace or st.session_state.get("_nav_active_workspace", "Setup"))
+
+    st.sidebar.markdown(
+        """
+<div class="cpmm-sidebar-brand">
+  <div class="cpmm-sidebar-brand-title">Concrete Section Pro</div>
+  <div class="cpmm-sidebar-brand-subtitle">Concrete section analysis and design-review workspace.</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+    st.sidebar.markdown('<div class="cpmm-sidebar-section-label">Workspace</div>', unsafe_allow_html=True)
+    for workspace in WORKSPACE_NAVIGATION:
+        if workspace == active:
+            st.sidebar.markdown(
+                f'<div class="cpmm-sidebar-active-pill"><span>{_commercial_workspace_icon(workspace)}</span><span>{workspace}</span></div>',
+                unsafe_allow_html=True,
+            )
+        else:
+            if st.sidebar.button(f"{_commercial_workspace_icon(workspace)}  {workspace}", key=f"_sidebar_workspace_{workspace}", use_container_width=True):
+                st.session_state["_nav_active_workspace"] = workspace
+                rerun = getattr(st, "rerun", None)
+                if callable(rerun):
+                    rerun()
+
+    subpages = WORKSPACE_NAVIGATION.get(active, [])
+    if len(subpages) > 1:
+        subpage_key = {
+            "Setup": "_nav_setup_subpage",
+            "Sections": "_nav_sections_subpage",
+            "Analysis": "_nav_analysis_subpage",
+        }.get(active)
+        if subpage_key:
+            if st.session_state.get(subpage_key) not in subpages:
+                st.session_state[subpage_key] = subpages[0]
+            active_subpage = str(st.session_state.get(subpage_key, subpages[0]))
+            st.sidebar.markdown('<div class="cpmm-sidebar-section-label">Subpage</div>', unsafe_allow_html=True)
+            for subpage in subpages:
+                if subpage == active_subpage:
+                    st.sidebar.markdown(
+                        f'<div class="cpmm-sidebar-sub-active-pill"><span>{_commercial_subpage_icon(subpage)}</span><span>{subpage}</span></div>',
+                        unsafe_allow_html=True,
+                    )
+                else:
+                    if st.sidebar.button(f"{_commercial_subpage_icon(subpage)}  {subpage}", key=f"_sidebar_subpage_{active}_{subpage}", use_container_width=True):
+                        st.session_state[subpage_key] = subpage
+                        rerun = getattr(st, "rerun", None)
+                        if callable(rerun):
+                            rerun()
+
+    mode = _analysis_mode_from_session_for_chrome()
+    st.sidebar.markdown(
+        f"""
+<div class="cpmm-sidebar-status">
+  <div class="cpmm-sidebar-section-label" style="margin-top:0;">Project Status</div>
+  <div class="cpmm-sidebar-status-row">
+    <span class="cpmm-sidebar-status-dot ready">✓</span>
+    <div><div class="cpmm-sidebar-status-title">Workflow</div><div class="cpmm-sidebar-status-value">{escape(analysis_mode_label(mode))}</div></div>
+  </div>
+  <div class="cpmm-sidebar-status-row">
+    <span class="cpmm-sidebar-status-dot">SEC</span>
+    <div><div class="cpmm-sidebar-status-title">Section</div><div class="cpmm-sidebar-status-value">{escape(_current_section_label_for_chrome())}</div></div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_commercial_brand_header(active_workspace: str) -> None:
+    st.markdown(
+        f"""
+<div class="cpmm-top-brand-shell">
+  <div class="cpmm-top-brand-row">
+    <div class="cpmm-top-brand-logo">CS</div>
+    <div>
+      <div class="cpmm-top-brand-title">Concrete Section Pro</div>
+      <div class="cpmm-top-brand-subtitle">Professional concrete section analysis and design-review workspace · Internal units: mm, MPa, N, N-mm.</div>
+    </div>
+    <div class="cpmm-top-brand-badge">{escape(active_workspace)} Workspace</div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_engineering_context_summary(active_workspace: str) -> None:
+    mode = _analysis_mode_from_session_for_chrome()
+    section_label = _current_section_label_for_chrome()
+    code_label = _project_code_label_for_chrome()
+    st.markdown(
+        f"""
+<div class="cpmm-context-summary-shell">
+  <div class="cpmm-context-summary-grid">
+    <div class="cpmm-context-summary-item"><div class="cpmm-context-summary-label">Workspace</div><div class="cpmm-context-summary-value">{escape(active_workspace)}</div></div>
+    <div class="cpmm-context-summary-item"><div class="cpmm-context-summary-label">Active Workflow</div><div class="cpmm-context-summary-value">{escape(analysis_mode_label(mode))}</div></div>
+    <div class="cpmm-context-summary-item"><div class="cpmm-context-summary-label">Section Type / Preset</div><div class="cpmm-context-summary-value">{escape(section_label)}</div></div>
+    <div class="cpmm-context-summary-item"><div class="cpmm-context-summary-label">Design Code</div><div class="cpmm-context-summary-value">{escape(code_label)}</div></div>
+    <div class="cpmm-context-summary-item"><div class="cpmm-context-summary-label">Units</div><div class="cpmm-context-summary-value">mm, MPa, N, N-mm</div></div>
+  </div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 def render_setup_workspace() -> None:
     active = _safe_choice("Setup workspace", WORKSPACE_NAVIGATION["Setup"], key="_nav_setup_subpage")
@@ -719,9 +1081,11 @@ def render_results_workspace() -> None:
 
 
 def main() -> None:
-    st.set_page_config(page_title="Concrete Section Pro", layout="wide")
+    st.set_page_config(page_title="Concrete Section Pro", layout="wide", initial_sidebar_state="expanded")
     _render_global_commercial_tab_styles()
     install_streamlit_plotly_readability_patch(st)
+    # Keep the canonical Streamlit title call for brand continuity and tests;
+    # the premium app shell below carries the visible commercial header.
     st.title("Concrete Section Pro")
     st.caption(
         "Concrete section analysis and design-review workspace. "
@@ -730,11 +1094,17 @@ def main() -> None:
 
     update_dirty_state_from_session(st.session_state)
 
+    if st.session_state.get("_nav_active_workspace") not in WORKSPACE_NAVIGATION:
+        st.session_state["_nav_active_workspace"] = "Setup"
+    _render_commercial_sidebar(str(st.session_state.get("_nav_active_workspace", "Setup")))
+    _render_commercial_brand_header(str(st.session_state.get("_nav_active_workspace", "Setup")))
+
     active_workspace = _safe_choice(
         "Workspace",
         list(WORKSPACE_NAVIGATION.keys()),
         key="_nav_active_workspace",
     )
+    _render_engineering_context_summary(active_workspace)
     if active_workspace == "Setup":
         render_setup_workspace()
     elif active_workspace == "Sections":
