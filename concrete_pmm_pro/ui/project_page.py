@@ -46,27 +46,31 @@ _DASHBOARD_CSS = """
 <style>
 
 .cpmm-workflow-hero {
-  border: 1px solid #c8d8ea;
-  border-left: 5px solid #1f5f99;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #f7fbff 0%, #eef6ff 100%);
-  padding: 0.82rem 0.95rem;
-  margin: 0.42rem 0 0.72rem 0;
-  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
+  position: relative;
+  border: 2px solid #7ab7ff;
+  border-left: 9px solid #175cd3;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 18px 18px, rgba(23, 92, 211, 0.12), transparent 28px),
+    linear-gradient(135deg, #eff7ff 0%, #ffffff 52%, #eaf3ff 100%);
+  padding: 1.05rem 1.15rem 1.0rem 1.15rem;
+  margin: 0.50rem 0 0.86rem 0;
+  box-shadow: 0 8px 24px rgba(23, 92, 211, 0.14), 0 0 0 3px rgba(23, 92, 211, 0.05);
 }
 .cpmm-workflow-hero-kicker {
-  color: #475467;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  color: #1849a9;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.075em;
   text-transform: uppercase;
-  margin-bottom: 0.28rem;
+  margin-bottom: 0.34rem;
 }
 .cpmm-workflow-hero-value {
-  color: #101828;
-  font-size: 1.08rem;
-  font-weight: 780;
-  line-height: 1.22;
+  color: #0b2f6b;
+  font-size: 1.26rem;
+  font-weight: 850;
+  line-height: 1.18;
+  padding-right: 6.7rem;
 }
 .cpmm-workflow-hero-detail {
   color: #667085;
@@ -75,15 +79,18 @@ _DASHBOARD_CSS = """
   margin-top: 0.3rem;
 }
 .cpmm-workflow-hero-badge {
+  position: absolute;
+  right: 1.0rem;
+  top: 0.95rem;
   display: inline-block;
   border-radius: 999px;
-  padding: 0.14rem 0.52rem;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  background: #1849a9;
+  padding: 0.20rem 0.68rem;
+  font-size: 0.70rem;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  background: #175cd3;
   color: #ffffff;
-  margin-top: 0.52rem;
+  box-shadow: 0 3px 10px rgba(23, 92, 211, 0.22);
 }
 
 .cpmm-dashboard-card {
@@ -303,8 +310,9 @@ def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisMod
             "Select the primary engineering workflow before defining sections, loads, and analysis. "
             "Workflow controls design-code routing and hides assumptions that do not belong to the selected member family."
         )
+        st.markdown(_workflow_hero_html(analysis_mode_label(current)), unsafe_allow_html=True)
         selected_label = st.selectbox(
-            "Active member workflow",
+            "Change active member workflow",
             labels,
             key=widget_key,
             help="Bridge Beam/Girder activates guarded AASHTO LRFD bridge girder tools. Building Beam/Girder activates guarded ACI 318 beam/girder tools. Column/Pier can use ACI 318 or AASHTO LRFD with capability guards.",
@@ -315,7 +323,6 @@ def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisMod
         st.session_state["analysis_mode_settings"] = settings
         st.session_state[sync_key] = settings.member_type
 
-        st.markdown(_workflow_hero_html(analysis_mode_label(settings)), unsafe_allow_html=True)
         mode_cards = _analysis_configuration_cards(settings)
         st.markdown(_compact_panel_html(mode_cards, columns=2), unsafe_allow_html=True)
         st.info(analysis_mode_description(settings))

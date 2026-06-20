@@ -286,38 +286,46 @@ _SECTION_BUILDER_CSS = """
 .cpmm-context-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.72rem;
-  margin: 0.45rem 0 0.72rem 0;
+  gap: 0.86rem;
+  margin: 0.58rem 0 0.88rem 0;
 }
 .cpmm-context-card {
-  border: 1px solid #c8d8ea;
-  border-left: 5px solid #1f5f99;
-  border-radius: 12px;
-  background: linear-gradient(180deg, #f7fbff 0%, #eef6ff 100%);
-  padding: 0.78rem 0.9rem;
-  box-shadow: 0 1px 3px rgba(16, 24, 40, 0.06);
-  min-height: 118px;
+  position: relative;
+  border: 2px solid #7ab7ff;
+  border-left: 9px solid #175cd3;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 18px 18px, rgba(23, 92, 211, 0.12), transparent 28px),
+    linear-gradient(135deg, #eff7ff 0%, #ffffff 54%, #eaf3ff 100%);
+  padding: 1.0rem 1.1rem;
+  box-shadow: 0 8px 24px rgba(23, 92, 211, 0.13), 0 0 0 3px rgba(23, 92, 211, 0.05);
+  min-height: 132px;
 }
 .cpmm-context-card.section {
-  border-color: #c8ead5;
-  border-left-color: #2e7d32;
-  background: linear-gradient(180deg, #f7fff9 0%, #eefaf1 100%);
+  border-color: #8ee2a6;
+  border-left-color: #16833a;
+  background:
+    radial-gradient(circle at 18px 18px, rgba(22, 131, 58, 0.14), transparent 28px),
+    linear-gradient(135deg, #effff4 0%, #ffffff 54%, #e9faee 100%);
+  box-shadow: 0 8px 24px rgba(22, 131, 58, 0.13), 0 0 0 3px rgba(22, 131, 58, 0.06);
 }
 .cpmm-context-kicker {
-  color: #475467;
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
+  color: #1849a9;
+  font-size: 0.74rem;
+  font-weight: 900;
+  letter-spacing: 0.075em;
   text-transform: uppercase;
-  margin-bottom: 0.28rem;
+  margin-bottom: 0.34rem;
 }
+.cpmm-context-card.section .cpmm-context-kicker { color: #166534; }
 .cpmm-context-value {
-  color: #101828;
-  font-size: 1.04rem;
-  font-weight: 780;
-  line-height: 1.22;
+  color: #0b2f6b;
+  font-size: 1.22rem;
+  font-weight: 850;
+  line-height: 1.18;
   overflow-wrap: anywhere;
 }
+.cpmm-context-card.section .cpmm-context-value { color: #14532d; }
 .cpmm-context-detail {
   color: #667085;
   font-size: 0.78rem;
@@ -333,13 +341,15 @@ _SECTION_BUILDER_CSS = """
 .cpmm-context-required {
   display: inline-block;
   border-radius: 999px;
-  padding: 0.14rem 0.52rem;
+  padding: 0.18rem 0.62rem;
   font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+  font-weight: 900;
+  letter-spacing: 0.055em;
   background: #1849a9;
   color: #ffffff;
+  box-shadow: 0 3px 10px rgba(24, 73, 169, 0.18);
 }
+.cpmm-context-card.section .cpmm-context-required { background: #16833a; box-shadow: 0 3px 10px rgba(22, 131, 58, 0.18); }
 .cpmm-context-chip {
   display: inline-block;
   border-radius: 999px;
@@ -2462,7 +2472,7 @@ def _render_section_definition_panel(
         )
 
         selected_preset_key = st.selectbox(
-            "Section Type / Preset",
+            "Change Section Type / Preset",
             preset_keys,
             index=preset_keys.index(selector_initial_key),
             format_func=lambda key: label_map.get(str(key), str(key)),
