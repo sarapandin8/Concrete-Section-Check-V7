@@ -811,6 +811,68 @@ section[data-testid="stSidebar"] > div {
 .cpmm-sidebar-status-title { color: #526f8d !important; }
 .cpmm-sidebar-active-pill, .cpmm-sidebar-active-pill *,
 .cpmm-sidebar-sub-active-pill, .cpmm-sidebar-sub-active-pill * { color: #ffffff !important; }
+
+/* UI.COMMERCIAL4.2: harden sidebar contrast and mini-status readability. */
+section[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #eef6ff 0%, #ffffff 44%, #eaf3ff 100%) !important;
+}
+section[data-testid="stSidebar"] .stMarkdown,
+section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"],
+section[data-testid="stSidebar"] div[data-testid="stMarkdownContainer"] * {
+  opacity: 1 !important;
+  filter: none !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-brand {
+  background: rgba(255, 255, 255, 0.72) !important;
+  border: 1px solid rgba(11, 58, 102, 0.16) !important;
+  border-radius: 14px !important;
+  padding: 0.70rem 0.72rem 0.76rem 0.72rem !important;
+  margin-bottom: 0.84rem !important;
+  box-shadow: 0 8px 20px rgba(7, 26, 51, 0.07) !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-brand-title {
+  color: #062348 !important;
+  font-size: 1.18rem !important;
+  font-weight: 950 !important;
+  opacity: 1 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-brand-subtitle {
+  color: #243b53 !important;
+  font-size: 0.78rem !important;
+  font-weight: 750 !important;
+  opacity: 1 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-section-label,
+section[data-testid="stSidebar"] .cpmm-sidebar-status .cpmm-sidebar-section-label {
+  color: #073763 !important;
+  font-weight: 950 !important;
+  opacity: 1 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-status {
+  background: linear-gradient(180deg, #ffffff 0%, #f2f8ff 100%) !important;
+  border: 1px solid rgba(7, 55, 99, 0.30) !important;
+  box-shadow: 0 12px 26px rgba(7, 26, 51, 0.12) !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-status-title {
+  color: #34536f !important;
+  font-weight: 950 !important;
+  opacity: 1 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-status-value {
+  color: #061b35 !important;
+  font-weight: 950 !important;
+  opacity: 1 !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-status-dot {
+  opacity: 1 !important;
+  border: 1px solid rgba(23, 92, 211, 0.16) !important;
+}
+section[data-testid="stSidebar"] .cpmm-sidebar-active-pill,
+section[data-testid="stSidebar"] .cpmm-sidebar-sub-active-pill {
+  opacity: 1 !important;
+  filter: none !important;
+}
+
 .cpmm-top-brand-shell {
   border: 1px solid rgba(11, 58, 102, 0.11);
   border-radius: 18px;
