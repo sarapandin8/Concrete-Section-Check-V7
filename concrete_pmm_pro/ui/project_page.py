@@ -45,6 +45,73 @@ class DashboardCard:
 _DASHBOARD_CSS = """
 <style>
 
+.cpmm-setup-page-hero {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  border: 1px solid rgba(23, 92, 211, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(239, 246, 255, 0.92), #ffffff 62%);
+  padding: 0.95rem 1.1rem;
+  margin: 0.35rem 0 1.0rem 0;
+  box-shadow: 0 9px 28px rgba(16, 24, 40, 0.07);
+}
+.cpmm-setup-page-icon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #175cd3, #2f80ed);
+  color: #ffffff;
+  font-size: 1.35rem;
+  font-weight: 950;
+  box-shadow: 0 8px 20px rgba(23, 92, 211, 0.24);
+}
+.cpmm-setup-page-title {
+  color: #092454;
+  font-size: 1.24rem;
+  font-weight: 900;
+  line-height: 1.15;
+  margin: 0.05rem 0 0.2rem 0;
+}
+.cpmm-setup-page-subtitle {
+  color: #475467;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+.cpmm-commercial-step-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.25rem 0 0.18rem 0;
+}
+.cpmm-commercial-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #175cd3, #2f80ed);
+  font-weight: 950;
+  box-shadow: 0 5px 14px rgba(23, 92, 211, 0.22);
+}
+.cpmm-commercial-step-heading {
+  color: #101828;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+.cpmm-commercial-step-note {
+  color: #475467;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  margin: 0 0 0.72rem 2.3rem;
+}
+
 .cpmm-workflow-hero {
   position: relative;
   border: 2px solid #7ab7ff;
@@ -127,24 +194,140 @@ _DASHBOARD_CSS = """
   letter-spacing: 0.055em;
 }
 
+
+/* UI.COMMERCIAL1: commercial master-control container styling.
+   These rules target only Streamlit border containers that include the marker
+   elements below, so regular containers and solver output widgets remain unchanged. */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) {
+  border: 2px solid #1d6fe7 !important;
+  border-radius: 20px !important;
+  background:
+    radial-gradient(circle at 42px 44px, rgba(47, 128, 237, 0.20), transparent 62px),
+    linear-gradient(135deg, #edf6ff 0%, #ffffff 54%, #e8f2ff 100%) !important;
+  box-shadow: 0 16px 36px rgba(23, 92, 211, 0.18), 0 0 0 5px rgba(47, 128, 237, 0.07) !important;
+  padding: 0.84rem 0.92rem !important;
+  margin-top: 0.35rem !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) div[data-testid="stSelectbox"] {
+  border: 1px solid rgba(23, 92, 211, 0.32);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 0.40rem 0.68rem 0.58rem 0.68rem;
+  box-shadow: 0 8px 22px rgba(23, 92, 211, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) div[data-testid="stSelectbox"] label {
+  color: #1849a9 !important;
+  font-size: 0.76rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+  border: 2px solid rgba(23, 92, 211, 0.48) !important;
+  border-radius: 13px !important;
+  min-height: 3.05rem !important;
+  background: linear-gradient(135deg, #ffffff 0%, #f7fbff 100%) !important;
+  box-shadow: 0 5px 15px rgba(23, 92, 211, 0.08) !important;
+}
+.cpmm-commercial-control-workflow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.15rem;
+  margin: 0.06rem 0 0.82rem 0;
+}
+.cpmm-commercial-control-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.72rem;
+  font-weight: 950;
+  background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+  color: #175cd3;
+  box-shadow: 0 7px 18px rgba(23, 92, 211, 0.16);
+}
+.cpmm-commercial-control-copy { min-width: 0; }
+.cpmm-commercial-control-kicker {
+  color: #175cd3;
+  font-size: 0.80rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.14rem;
+}
+.cpmm-commercial-control-value {
+  color: #0b2f6b;
+  font-size: 1.26rem;
+  font-weight: 950;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+.cpmm-commercial-control-detail {
+  color: #344054;
+  font-size: 0.90rem;
+  line-height: 1.36;
+  margin-top: 0.30rem;
+}
+.cpmm-commercial-control-badge {
+  align-self: start;
+  border-radius: 999px;
+  padding: 0.22rem 0.68rem;
+  background: #175cd3;
+  color: #ffffff;
+  font-size: 0.70rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  box-shadow: 0 4px 12px rgba(23, 92, 211, 0.22);
+}
+@media (max-width: 900px) {
+  .cpmm-commercial-control-workflow { grid-template-columns: auto minmax(0, 1fr); }
+  .cpmm-commercial-control-badge { grid-column: 2; justify-self: start; }
+}
+
 .cpmm-dashboard-card {
-  border: 1px solid #d9dee7;
-  border-left: 4px solid #7b8794;
-  border-radius: 8px;
-  padding: 0.85rem 0.95rem;
-  background: #ffffff;
-  min-height: 112px;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.80rem;
+  align-items: flex-start;
+  border: 1px solid #d9e2f2;
+  border-left: 5px solid #7b8794;
+  border-radius: 14px;
+  padding: 0.98rem 1.0rem;
+  background: linear-gradient(135deg, #ffffff 0%, #fbfdff 100%);
+  min-height: 118px;
+  box-shadow: 0 9px 24px rgba(16, 24, 40, 0.07);
 }
 .cpmm-dashboard-card.primary {
   min-height: 132px;
   background: #fbfcfe;
 }
-.cpmm-dashboard-card.ready { border-left-color: #2e7d32; }
-.cpmm-dashboard-card.warning { border-left-color: #b7791f; }
-.cpmm-dashboard-card.danger { border-left-color: #b42318; }
-.cpmm-dashboard-card.info { border-left-color: #8ea3c8; }
-.cpmm-dashboard-card.neutral { border-left-color: #7b8794; }
+.cpmm-dashboard-card.ready { border-left-color: #24a148; background: linear-gradient(135deg, #ffffff 0%, #f0fff5 100%); }
+.cpmm-dashboard-card.warning { border-left-color: #f59e0b; background: linear-gradient(135deg, #ffffff 0%, #fffbeb 100%); }
+.cpmm-dashboard-card.danger { border-left-color: #d92d20; background: linear-gradient(135deg, #ffffff 0%, #fff3f2 100%); }
+.cpmm-dashboard-card.info { border-left-color: #2f80ed; background: linear-gradient(135deg, #ffffff 0%, #eff6ff 100%); }
+.cpmm-dashboard-card.neutral { border-left-color: #7b8794; background: linear-gradient(135deg, #ffffff 0%, #f8fafc 100%); }
+.cpmm-card-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 950;
+  font-size: 1.16rem;
+  background: #eef1f5;
+  color: #475467;
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.08);
+}
+.cpmm-dashboard-card.ready .cpmm-card-icon { background: #dcfce7; color: #16833a; }
+.cpmm-dashboard-card.warning .cpmm-card-icon { background: #fef3c7; color: #b45309; }
+.cpmm-dashboard-card.danger .cpmm-card-icon { background: #fee4e2; color: #b42318; }
+.cpmm-dashboard-card.info .cpmm-card-icon { background: #dbeafe; color: #175cd3; }
+.cpmm-card-body { min-width: 0; }
 .cpmm-summary-strip {
   border: 1px solid #d9dee7;
   border-radius: 8px;
@@ -174,15 +357,15 @@ _DASHBOARD_CSS = """
 }
 .cpmm-card-title {
   color: #475467;
-  font-size: 0.78rem;
-  font-weight: 650;
+  font-size: 0.72rem;
+  font-weight: 850;
   letter-spacing: 0;
   margin-bottom: 0.35rem;
 }
 .cpmm-card-value {
   color: #101828;
-  font-size: 1.05rem;
-  font-weight: 720;
+  font-size: 1.14rem;
+  font-weight: 900;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -313,6 +496,28 @@ def _workflow_hero_html(label: str) -> str:
     """
 
 
+def _setup_page_hero_html() -> str:
+    return """
+    <div class="cpmm-setup-page-hero">
+      <div class="cpmm-setup-page-icon">⚙</div>
+      <div>
+        <div class="cpmm-setup-page-title">Setup Workspace</div>
+        <div class="cpmm-setup-page-subtitle">Define the active engineering workflow and project-level design basis before creating sections, loads, analysis, and reports.</div>
+      </div>
+    </div>
+    """
+
+
+def _commercial_step_title_html(number: int, title: str, note: str) -> str:
+    return f"""
+    <div class="cpmm-commercial-step-title">
+      <span class="cpmm-commercial-step-number">{number}</span>
+      <span class="cpmm-commercial-step-heading">{escape(title)}</span>
+    </div>
+    <div class="cpmm-commercial-step-note">{escape(note)}</div>
+    """
+
+
 def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisModeSettings:
     """Project-level Analysis Mode / Member Type selector.
 
@@ -339,18 +544,25 @@ def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisMod
         st.session_state[sync_key] = current.member_type
 
     with st.container(border=True):
-        st.markdown("#### Analysis Mode / Member Type")
-        st.caption(
-            "Select the primary engineering workflow before defining sections, loads, and analysis. "
-            "Workflow controls design-code routing and hides assumptions that do not belong to the selected member family."
+        st.markdown(
+            _commercial_step_title_html(
+                1,
+                "Active Member Workflow",
+                "Select the primary engineering workflow. Workflow controls design-code routing and this master control determines available section presets, load workflow, analysis stages, and report context.",
+            ),
+            unsafe_allow_html=True,
         )
-        st.markdown(_workflow_hero_html(analysis_mode_label(current)), unsafe_allow_html=True)
         with st.container(border=True):
             st.markdown(
-                '''
-                <div class="cpmm-master-control-banner">
-                  <div class="cpmm-master-control-title">Change Active Member Workflow <span class="cpmm-master-control-chip">MASTER CONTROL</span></div>
-                  <div class="cpmm-master-control-text">This selection controls available section presets, design-code routing, load workflow, analysis modules, and report context.</div>
+                f'''
+                <div class="cpmm-commercial-control-workflow">
+                  <div class="cpmm-commercial-control-icon">WF</div>
+                  <div class="cpmm-commercial-control-copy">
+                    <div class="cpmm-commercial-control-kicker">Active Member Workflow</div>
+                    <div class="cpmm-commercial-control-value">{escape(analysis_mode_label(current))}</div>
+                    <div class="cpmm-commercial-control-detail">Master control for section presets, design-code routing, load workflow, analysis modules, and report context.</div>
+                  </div>
+                  <div class="cpmm-commercial-control-badge">REQUIRED</div>
                 </div>
                 ''',
                 unsafe_allow_html=True,
@@ -360,7 +572,7 @@ def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisMod
                 labels,
                 key=widget_key,
                 help="Bridge Beam/Girder activates guarded AASHTO LRFD bridge girder tools. Building Beam/Girder activates guarded ACI 318 beam/girder tools. Column/Pier can use ACI 318 or AASHTO LRFD with capability guards.",
-                label_visibility="collapsed",
+                label_visibility="visible",
             )
         note = st.session_state.get(note_key, current.note or "")
         selected_member_type = _MEMBER_TYPE_OPTIONS[_LEGACY_MEMBER_TYPE_LABELS.get(selected_label, selected_label)]
@@ -400,15 +612,25 @@ def _format_bool(value: bool | None) -> str:
 
 def _dashboard_card_html(card: DashboardCard) -> str:
     status = card.status if card.status in {"ready", "warning", "danger", "info", "neutral"} else "info"
+    icon_map = {
+        "ready": "✓",
+        "warning": "!",
+        "danger": "×",
+        "info": "↻",
+        "neutral": "–",
+    }
     detail_html = f'<div class="cpmm-card-detail">{escape(card.detail)}</div>' if card.detail else ""
     badge_html = f'<span class="cpmm-status-badge {status}">{escape(status.upper())}</span>' if card.strong else ""
     primary_class = " primary" if card.strong else ""
     return (
         f'<div class="cpmm-dashboard-card {status}{primary_class}">'
+        f'<div class="cpmm-card-icon">{escape(icon_map.get(status, "•"))}</div>'
+        '<div class="cpmm-card-body">'
         f'<div class="cpmm-card-title">{escape(card.title)}</div>'
         f'<div class="cpmm-card-value">{escape(card.value)}</div>'
         f"{detail_html}"
         f"{badge_html}"
+        '</div>'
         "</div>"
     )
 
@@ -877,7 +1099,7 @@ def render_project_page() -> None:
     _ensure_project_defaults()
 
     st.markdown(_DASHBOARD_CSS, unsafe_allow_html=True)
-    st.subheader("Project")
+    st.markdown(_setup_page_hero_html(), unsafe_allow_html=True)
 
     success_message = st.session_state.pop("_project_load_success", None)
     error_message = st.session_state.pop("_project_load_error", None)

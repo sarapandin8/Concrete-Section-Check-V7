@@ -82,6 +82,164 @@ class SectionMetric:
 
 _SECTION_BUILDER_CSS = """
 <style>
+
+
+.cpmm-section-page-hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid rgba(22, 131, 58, 0.18);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(240, 253, 244, 0.94), #ffffff 62%);
+  padding: 0.95rem 1.1rem;
+  margin: 0.35rem 0 0.95rem 0;
+  box-shadow: 0 9px 28px rgba(16, 24, 40, 0.07);
+}
+.cpmm-section-page-title {
+  color: #092454;
+  font-size: 1.20rem;
+  font-weight: 900;
+  line-height: 1.15;
+  margin-bottom: 0.2rem;
+}
+.cpmm-section-page-subtitle {
+  color: #475467;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
+.cpmm-section-page-mode {
+  flex: 0 0 auto;
+  align-self: center;
+  border: 1px solid rgba(22, 131, 58, 0.22);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #166534;
+  padding: 0.34rem 0.72rem;
+  font-size: 0.72rem;
+  font-weight: 850;
+  box-shadow: 0 4px 12px rgba(22, 131, 58, 0.08);
+}
+.cpmm-commercial-section-step-title {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0.25rem 0 0.16rem 0;
+}
+.cpmm-commercial-section-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #16833a, #22a447);
+  font-weight: 950;
+  box-shadow: 0 5px 14px rgba(22, 131, 58, 0.22);
+}
+.cpmm-commercial-section-step-heading {
+  color: #101828;
+  font-size: 1.05rem;
+  font-weight: 900;
+}
+.cpmm-commercial-section-step-note {
+  color: #475467;
+  font-size: 0.84rem;
+  line-height: 1.35;
+  margin: 0 0 0.72rem 2.3rem;
+}
+
+/* UI.COMMERCIAL1/2: commercial section preset master-control styling. */
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-section) {
+  border: 2px solid #22a447 !important;
+  border-radius: 20px !important;
+  background:
+    radial-gradient(circle at 42px 44px, rgba(34, 164, 71, 0.20), transparent 62px),
+    linear-gradient(135deg, #effff4 0%, #ffffff 54%, #e9f9ef 100%) !important;
+  box-shadow: 0 16px 36px rgba(22, 131, 58, 0.17), 0 0 0 5px rgba(34, 164, 71, 0.07) !important;
+  padding: 0.84rem 0.92rem !important;
+  margin-top: 0.35rem !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-section) div[data-testid="stSelectbox"] {
+  border: 1px solid rgba(22, 131, 58, 0.34);
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.88);
+  padding: 0.40rem 0.68rem 0.58rem 0.68rem;
+  box-shadow: 0 8px 22px rgba(22, 131, 58, 0.08), inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-section) div[data-testid="stSelectbox"] label {
+  color: #166534 !important;
+  font-size: 0.76rem !important;
+  font-weight: 950 !important;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-section) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div {
+  border: 2px solid rgba(22, 131, 58, 0.48) !important;
+  border-radius: 13px !important;
+  min-height: 3.05rem !important;
+  background: linear-gradient(135deg, #ffffff 0%, #f7fff9 100%) !important;
+  box-shadow: 0 5px 15px rgba(22, 131, 58, 0.08) !important;
+}
+.cpmm-commercial-control-section {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 1.15rem;
+  margin: 0.06rem 0 0.82rem 0;
+}
+.cpmm-commercial-section-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.72rem;
+  font-weight: 950;
+  background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+  color: #16833a;
+  box-shadow: 0 7px 18px rgba(22, 131, 58, 0.16);
+}
+.cpmm-commercial-section-copy { min-width: 0; }
+.cpmm-commercial-section-kicker {
+  color: #16833a;
+  font-size: 0.80rem;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.14rem;
+}
+.cpmm-commercial-section-value {
+  color: #14532d;
+  font-size: 1.26rem;
+  font-weight: 950;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+}
+.cpmm-commercial-section-detail {
+  color: #344054;
+  font-size: 0.90rem;
+  line-height: 1.36;
+  margin-top: 0.30rem;
+}
+.cpmm-commercial-section-badge {
+  align-self: start;
+  border-radius: 999px;
+  padding: 0.22rem 0.68rem;
+  background: #16833a;
+  color: #ffffff;
+  font-size: 0.70rem;
+  font-weight: 950;
+  letter-spacing: 0.06em;
+  box-shadow: 0 4px 12px rgba(22, 131, 58, 0.22);
+}
+@media (max-width: 900px) {
+  .cpmm-commercial-control-section { grid-template-columns: auto minmax(0, 1fr); }
+  .cpmm-commercial-section-badge { grid-column: 2; justify-self: start; }
+}
+
 .cpmm-section-badge {
   display: inline-block;
   border-radius: 999px;
@@ -2404,14 +2562,12 @@ def _render_commercial_section_header() -> None:
     settings = _analysis_mode_from_session_state()
     st.markdown(
         f'''
-        <div class="cpmm-commercial-section-hero">
-          <div class="cpmm-commercial-section-topline">
-            <div>
-              <div class="cpmm-commercial-section-title">Section Builder</div>
-              <div class="cpmm-commercial-section-subtitle">Definition workspace for section geometry, material basis, and analysis-ready gross properties.</div>
-            </div>
-            <div class="cpmm-commercial-section-mode">{escape(analysis_mode_label(settings))}</div>
+        <div class="cpmm-section-page-hero">
+          <div>
+            <div class="cpmm-section-page-title">Section Builder</div>
+            <div class="cpmm-section-page-subtitle">Definition workspace for the active section preset, geometry, material basis, and analysis-ready gross properties for the selected workflow.</div>
           </div>
+          <div class="cpmm-section-page-mode">{escape(analysis_mode_label(settings))}</div>
         </div>
         ''',
         unsafe_allow_html=True,
@@ -2475,7 +2631,13 @@ def _render_section_definition_panel(
             unsafe_allow_html=True,
         )
         st.markdown(
-            '<div class="cpmm-section-note">Select the active concrete section. The main dimension editor is shown below beside the live section preview.</div>',
+            """
+            <div class="cpmm-commercial-section-step-title">
+              <span class="cpmm-commercial-section-step-number">2</span>
+              <span class="cpmm-commercial-section-step-heading">Section Type / Preset</span>
+            </div>
+            <div class="cpmm-commercial-section-step-note">Choose the concrete section type or preset. This master control defines geometry family, available dimensions, section basis, and downstream SLS/ULS workflow.</div>
+            """,
             unsafe_allow_html=True,
         )
 
@@ -2506,10 +2668,15 @@ def _render_section_definition_panel(
 
         with st.container(border=True):
             st.markdown(
-                '''
-                <div class="cpmm-section-master-control-banner">
-                  <div class="cpmm-section-master-control-title">Change Section Type / Preset <span class="cpmm-section-master-control-chip">MASTER CONTROL</span></div>
-                  <div class="cpmm-section-master-control-text">This selection defines the geometry family, available dimensions, section basis, and downstream SLS/ULS workflow.</div>
+                f'''
+                <div class="cpmm-commercial-control-section">
+                  <div class="cpmm-commercial-section-icon">SEC</div>
+                  <div class="cpmm-commercial-section-copy">
+                    <div class="cpmm-commercial-section-kicker">Section Type / Preset</div>
+                    <div class="cpmm-commercial-section-value">{escape(_workflow_specific_preset_display_name(current_preset, analysis_mode_settings))}</div>
+                    <div class="cpmm-commercial-section-detail">Master control for geometry family, available dimensions, section basis, and downstream SLS/ULS workflow.</div>
+                  </div>
+                  <div class="cpmm-commercial-section-badge">REQUIRED</div>
                 </div>
                 ''',
                 unsafe_allow_html=True,
@@ -2524,7 +2691,7 @@ def _render_section_definition_panel(
                     "Select the actual section geometry directly. The geometry family/category is shown "
                     "after the dot for reference only."
                 ),
-                label_visibility="collapsed",
+                label_visibility="visible",
             )
         preset = preset_map[str(selected_preset_key)]
         selected_category = str(preset.get("category", "General"))
