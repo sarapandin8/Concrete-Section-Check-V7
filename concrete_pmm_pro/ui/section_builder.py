@@ -350,6 +350,39 @@ _SECTION_BUILDER_CSS = """
   box-shadow: 0 3px 10px rgba(24, 73, 169, 0.18);
 }
 .cpmm-context-card.section .cpmm-context-required { background: #16833a; box-shadow: 0 3px 10px rgba(22, 131, 58, 0.18); }
+.cpmm-section-master-control-banner {
+  border: 1px solid #86efac;
+  border-left: 7px solid #16833a;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #effff4 0%, #ffffff 58%, #e9faee 100%);
+  padding: 0.72rem 0.86rem;
+  margin: 0.30rem 0 0.54rem 0;
+  box-shadow: 0 5px 16px rgba(22, 131, 58, 0.12), 0 0 0 2px rgba(22, 131, 58, 0.05);
+}
+.cpmm-section-master-control-title {
+  color: #166534;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: 0.18rem;
+}
+.cpmm-section-master-control-text {
+  color: #344054;
+  font-size: 0.82rem;
+  line-height: 1.32;
+}
+.cpmm-section-master-control-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.12rem 0.52rem;
+  margin-left: 0.42rem;
+  background: #16833a;
+  color: #ffffff;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+}
 .cpmm-context-chip {
   display: inline-block;
   border-radius: 999px;
@@ -2471,17 +2504,28 @@ def _render_section_definition_panel(
             f"Workflow filter: {_member_type_filter_description(analysis_mode_settings)}"
         )
 
-        selected_preset_key = st.selectbox(
-            "Change Section Type / Preset",
-            preset_keys,
-            index=preset_keys.index(selector_initial_key),
-            format_func=lambda key: label_map.get(str(key), str(key)),
-            key=selector_state_key,
-            help=(
-                "Select the actual section geometry directly. The geometry family/category is shown "
-                "after the dot for reference only."
-            ),
-        )
+        with st.container(border=True):
+            st.markdown(
+                '''
+                <div class="cpmm-section-master-control-banner">
+                  <div class="cpmm-section-master-control-title">Change Section Type / Preset <span class="cpmm-section-master-control-chip">MASTER CONTROL</span></div>
+                  <div class="cpmm-section-master-control-text">This selection defines the geometry family, available dimensions, section basis, and downstream SLS/ULS workflow.</div>
+                </div>
+                ''',
+                unsafe_allow_html=True,
+            )
+            selected_preset_key = st.selectbox(
+                "Change Section Type / Preset",
+                preset_keys,
+                index=preset_keys.index(selector_initial_key),
+                format_func=lambda key: label_map.get(str(key), str(key)),
+                key=selector_state_key,
+                help=(
+                    "Select the actual section geometry directly. The geometry family/category is shown "
+                    "after the dot for reference only."
+                ),
+                label_visibility="collapsed",
+            )
         preset = preset_map[str(selected_preset_key)]
         selected_category = str(preset.get("category", "General"))
 

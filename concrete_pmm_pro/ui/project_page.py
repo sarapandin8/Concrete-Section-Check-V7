@@ -93,6 +93,40 @@ _DASHBOARD_CSS = """
   box-shadow: 0 3px 10px rgba(23, 92, 211, 0.22);
 }
 
+.cpmm-master-control-banner {
+  border: 1px solid #93c5fd;
+  border-left: 7px solid #175cd3;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #eff6ff 0%, #ffffff 58%, #eaf3ff 100%);
+  padding: 0.72rem 0.86rem;
+  margin: 0.28rem 0 0.54rem 0;
+  box-shadow: 0 5px 16px rgba(23, 92, 211, 0.12), 0 0 0 2px rgba(23, 92, 211, 0.04);
+}
+.cpmm-master-control-title {
+  color: #1849a9;
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: 0.18rem;
+}
+.cpmm-master-control-text {
+  color: #344054;
+  font-size: 0.82rem;
+  line-height: 1.32;
+}
+.cpmm-master-control-chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 0.12rem 0.52rem;
+  margin-left: 0.42rem;
+  background: #175cd3;
+  color: #ffffff;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+}
+
 .cpmm-dashboard-card {
   border: 1px solid #d9dee7;
   border-left: 4px solid #7b8794;
@@ -311,12 +345,23 @@ def _render_analysis_mode_selector(current: AnalysisModeSettings) -> AnalysisMod
             "Workflow controls design-code routing and hides assumptions that do not belong to the selected member family."
         )
         st.markdown(_workflow_hero_html(analysis_mode_label(current)), unsafe_allow_html=True)
-        selected_label = st.selectbox(
-            "Change active member workflow",
-            labels,
-            key=widget_key,
-            help="Bridge Beam/Girder activates guarded AASHTO LRFD bridge girder tools. Building Beam/Girder activates guarded ACI 318 beam/girder tools. Column/Pier can use ACI 318 or AASHTO LRFD with capability guards.",
-        )
+        with st.container(border=True):
+            st.markdown(
+                '''
+                <div class="cpmm-master-control-banner">
+                  <div class="cpmm-master-control-title">Change Active Member Workflow <span class="cpmm-master-control-chip">MASTER CONTROL</span></div>
+                  <div class="cpmm-master-control-text">This selection controls available section presets, design-code routing, load workflow, analysis modules, and report context.</div>
+                </div>
+                ''',
+                unsafe_allow_html=True,
+            )
+            selected_label = st.selectbox(
+                "Change active member workflow",
+                labels,
+                key=widget_key,
+                help="Bridge Beam/Girder activates guarded AASHTO LRFD bridge girder tools. Building Beam/Girder activates guarded ACI 318 beam/girder tools. Column/Pier can use ACI 318 or AASHTO LRFD with capability guards.",
+                label_visibility="collapsed",
+            )
         note = st.session_state.get(note_key, current.note or "")
         selected_member_type = _MEMBER_TYPE_OPTIONS[_LEGACY_MEMBER_TYPE_LABELS.get(selected_label, selected_label)]
         settings = AnalysisModeSettings(member_type=selected_member_type, note=note or None)
