@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pandas as pd
 
 from concrete_pmm_pro.ui.rebar_page import (
@@ -79,3 +81,13 @@ def test_apply_generated_perimeter_layout_matches_editor_contract_after_commit()
     applied = apply_generated_perimeter_layout_state(state, _generated_table())
 
     assert rebar_editor_tables_equal(applied, state["rebar_table"])
+
+
+def test_auto_perimeter_bar_center_offset_default_is_50_mm() -> None:
+    source = Path("concrete_pmm_pro/ui/rebar_page.py").read_text(encoding="utf-8")
+
+    offset_label = source.index('"Bar center offset (mm)"')
+    offset_control = source[offset_label : offset_label + 260]
+
+    assert "value=50.0" in offset_control
+    assert "Default controls: 50 mm to bar center" in source

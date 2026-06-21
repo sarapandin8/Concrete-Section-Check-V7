@@ -1010,7 +1010,7 @@ def _render_auto_perimeter_controls(rebar_db: pd.DataFrame, geometry: SectionGeo
         edge_offset_mm = st.number_input(
             "Bar center offset (mm)",
             min_value=1.0,
-            value=75.0,
+            value=50.0,
             step=5.0,
             key="rebar_perimeter_edge_offset_mm",
         )
@@ -1036,7 +1036,7 @@ def _render_auto_perimeter_controls(rebar_db: pd.DataFrame, geometry: SectionGeo
         label_prefix = st.text_input("Label prefix", value="B", key="rebar_perimeter_label_prefix")
     with prefix_cols[1]:
         st.caption(
-            "Default controls: 75 mm to bar center and 150 mm target spacing. Use the preview as an engineering starting layout, then adjust manually if needed."
+            "Default controls: 50 mm to bar center and 150 mm target spacing. Use the preview as an engineering starting layout, then adjust manually if needed."
         )
 
     result = generate_perimeter_rebar_layout(
