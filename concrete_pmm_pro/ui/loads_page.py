@@ -8,6 +8,7 @@ Parsing helpers therefore accept both the current column names and legacy aliase
 from __future__ import annotations
 
 from dataclasses import dataclass
+from html import escape
 from io import BytesIO
 import re
 from typing import Any
@@ -89,6 +90,96 @@ BEAM_LOAD_COMPONENT_OPTIONS = [
     "Total SLS resultant",
     "User-defined",
 ]
+
+_LOAD_COMPACT_CARD_CSS = """
+<style>
+.cpmm-load-compact-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 0.50rem;
+  margin: 0.48rem 0 0.38rem 0;
+}
+.cpmm-load-compact-grid.columns-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cpmm-load-compact-grid.columns-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cpmm-load-compact-grid.columns-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.cpmm-load-compact-card {
+  border: 1px solid #cfe0ff;
+  border-left: 4px solid #1d6fe7;
+  border-radius: 11px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+  padding: 0.54rem 0.62rem;
+  min-height: 66px;
+  box-shadow: 0 3px 10px rgba(7, 26, 51, 0.040);
+}
+.cpmm-load-compact-card.ready {
+  border-left-color: #22a447;
+  background: linear-gradient(180deg, #ffffff 0%, #f5fff7 100%);
+}
+.cpmm-load-compact-card.warning {
+  border-left-color: #f59e0b;
+  background: linear-gradient(180deg, #ffffff 0%, #fffaf0 100%);
+}
+.cpmm-load-compact-card.neutral {
+  border-left-color: #98a2b3;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+}
+.cpmm-load-compact-label {
+  color: #526f8d;
+  font-size: 0.60rem;
+  font-weight: 950;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+  margin-bottom: 0.15rem;
+}
+.cpmm-load-compact-value {
+  color: #0b3a66;
+  font-size: 0.95rem;
+  font-weight: 900;
+  line-height: 1.12;
+  overflow-wrap: anywhere;
+}
+.cpmm-load-compact-detail {
+  color: #667085;
+  font-size: 0.66rem;
+  line-height: 1.24;
+  margin-top: 0.12rem;
+}
+@media (max-width: 900px) {
+  .cpmm-load-compact-grid.columns-3,
+  .cpmm-load-compact-grid.columns-4,
+  .cpmm-load-compact-grid.columns-5 {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+</style>
+"""
+
+
+def _render_load_compact_cards(cards: list[dict[str, object]], *, columns: int = 4) -> None:
+    """Render compact load-workspace summary cards without changing load data."""
+
+    safe_columns = max(1, min(int(columns or 4), 5))
+    card_html: list[str] = []
+    for card in cards:
+        status = str(card.get("status", "info") or "info")
+        title = escape(str(card.get("title", "")))
+        value = escape(str(card.get("value", "")))
+        detail = escape(str(card.get("detail", "")))
+        card_html.append(
+            f'<div class="cpmm-load-compact-card {status}">'
+            f'<div class="cpmm-load-compact-label">{title}</div>'
+            f'<div class="cpmm-load-compact-value">{value}</div>'
+            f'<div class="cpmm-load-compact-detail">{detail}</div>'
+            '</div>'
+        )
+    st.markdown(
+        _LOAD_COMPACT_CARD_CSS
+        + f'<div class="cpmm-load-compact-grid columns-{safe_columns}">'
+        + "".join(card_html)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
 BEAM_SECTION_BASIS_OPTIONS = ["", "Precast gross", "Composite transformed", "User-defined"]
 PRECAST_COMPOSITE_GIRDER_PRESET_KEYS = {
     "parametric_i_girder",
@@ -1972,12 +2063,16 @@ def _render_building_beam_girder_service_load_inputs() -> None:
             "Use building-style area loads. The app converts q (kN/m²) × tributary width into simple-span line load and service bending moment. "
             "Topping/slab data is taken from Section/Composite metadata; do not re-enter topping here."
         )
-        basis_cols = st.columns(5)
-        basis_cols[0].metric("Span L", f"{system.span_length_m:.3f} m")
-        basis_cols[1].metric("Beam/Girder spacing", f"{system.girder_spacing_m:.3f} m")
-        basis_cols[2].metric("Tributary width", f"{system.effective_tributary_width_m:.3f} m")
-        basis_cols[3].metric("Code basis", "ACI 318")
-        basis_cols[4].metric("Bridge SDL", "Not used")
+        _render_load_compact_cards(
+            [
+                {"title": "Span L", "value": f"{system.span_length_m:.3f} m", "detail": "from Section Builder", "status": "info"},
+                {"title": "Beam/Girder spacing", "value": f"{system.girder_spacing_m:.3f} m", "detail": "building spacing", "status": "info"},
+                {"title": "Tributary width", "value": f"{system.effective_tributary_width_m:.3f} m", "detail": "load take-down width", "status": "info"},
+                {"title": "Code basis", "value": "ACI 318", "detail": "building SLS context", "status": "info"},
+                {"title": "Bridge SDL", "value": "Not used", "detail": "hidden bridge components", "status": "neutral"},
+            ],
+            columns=5,
+        )
         st.caption("Spacing and tributary width come from Sections → Section Builder → Building Member Assembly. Change them in Section Builder, not in this Loads panel.")
 
         stage_cols = st.columns(3)
@@ -2094,11 +2189,15 @@ def _render_beam_girder_auto_sls_load_component_inputs() -> None:
             "Practical simple-span auto-load inputs for SLS stress diagrams. Transfer and Construction can use auto dead-load components; "
             "Service SDL after composite can be calculated here while LL+IM remains a user/imported action from CSiBridge."
         )
-        sys_cols = st.columns(4)
-        sys_cols[0].metric("Span L", f"{system.span_length_m:.3f} m")
-        sys_cols[1].metric("Girder spacing", f"{system.girder_spacing_m:.3f} m")
-        sys_cols[2].metric("Number of girders", f"{system.number_of_girders:d}")
-        sys_cols[3].metric("Tributary width", f"{system.effective_tributary_width_m:.3f} m")
+        _render_load_compact_cards(
+            [
+                {"title": "Span L", "value": f"{system.span_length_m:.3f} m", "detail": "from Section Builder", "status": "info"},
+                {"title": "Girder spacing", "value": f"{system.girder_spacing_m:.3f} m", "detail": "assembly spacing", "status": "info"},
+                {"title": "Number of girders", "value": f"{system.number_of_girders:d}", "detail": "assembly count", "status": "info"},
+                {"title": "Tributary width", "value": f"{system.effective_tributary_width_m:.3f} m", "detail": "load take-down width", "status": "info"},
+            ],
+            columns=4,
+        )
         st.caption("These values come from Sections → Section Builder → Bridge Section Assembly. Change them there, not inside this load-component panel.")
 
         stage_cols = st.columns(3)
@@ -2250,11 +2349,15 @@ def _render_beam_girder_load_tables(force_unit: str, moment_unit: str) -> None:
         "Beam/Girder load tables use explicit section-axis names: Mux is main vertical bending for typical girders and Vuy is vertical shear. "
         "SLS rows can be selected in Analysis for quick preview checks; ULS rows and full staged summation remain future final-design workflows."
     )
-    status_cols = st.columns(4)
-    status_cols[0].metric("Workflow", "Beam/Girder")
-    status_cols[1].metric("Load model", "ULS + SLS")
-    status_cols[2].metric("SLS Analysis", "Preview selectable")
-    status_cols[3].metric("Final staged check", "Future")
+    _render_load_compact_cards(
+        [
+            {"title": "Workflow", "value": "Beam/Girder", "detail": "selected in Setup", "status": "info"},
+            {"title": "Load model", "value": "ULS + SLS", "detail": "strength + service", "status": "info"},
+            {"title": "SLS analysis", "value": "Preview selectable", "detail": "available in Analysis", "status": "info"},
+            {"title": "Final staged check", "value": "Future", "detail": "not final-certified", "status": "neutral"},
+        ],
+        columns=4,
+    )
 
     # LOADS.COMPACT1 — keep Beam/Girder load input decision-first by separating strength and service workflows.
     uls_tab, sls_tab = st.tabs(["ULS Loads", "SLS Loads"])
@@ -2333,13 +2436,14 @@ def _render_beam_girder_load_tables(force_unit: str, moment_unit: str) -> None:
             stage_label = spec["stage"]
             stage_key = _beam_sls_stage_key(stage_label)
             with tab:
-                stage_cols = st.columns(3)
-                stage_cols[0].metric("Check stage", spec["title"])
-                stage_cols[0].caption(spec["action"])
-                stage_cols[1].metric("Recommended section basis", spec["basis"])
-                stage_cols[1].caption("Analysis tab uses the same stage routing.")
-                stage_cols[2].metric("Prestress handling", "Added in Analysis")
-                stage_cols[2].caption("Do not include prestress in the external load resultant when Pe is added separately.")
+                _render_load_compact_cards(
+                    [
+                        {"title": "Check stage", "value": spec["title"], "detail": spec["action"], "status": "info"},
+                        {"title": "Section basis", "value": spec["basis"], "detail": "same routing in Analysis", "status": "info"},
+                        {"title": "Prestress handling", "value": "Added in Analysis", "detail": "do not double-count Pe", "status": "info"},
+                    ],
+                    columns=3,
+                )
                 st.caption(spec["note"])
                 current_sls_table = _normalize_beam_sls_load_table(pd.DataFrame(st.session_state.get("beam_sls_loads_table")))
     
@@ -2461,11 +2565,15 @@ def _render_building_beam_girder_load_tables(force_unit: str, moment_unit: str) 
         "ACI 318 Building Beam/Girder load workflow. ULS uses the existing station-based girder table; "
         "SLS Transfer/Construction are auto-basis previews, while Service is generated from building SDL/LL area loads."
     )
-    status_cols = st.columns(4)
-    status_cols[0].metric("Workflow", "Building Beam/Girder")
-    status_cols[1].metric("Design code", "ACI 318")
-    status_cols[2].metric("Transfer/Construction SLS", "Auto basis")
-    status_cols[3].metric("Service SLS", "SDL/LL input")
+    _render_load_compact_cards(
+        [
+            {"title": "Workflow", "value": "Building Beam/Girder", "detail": "selected in Setup", "status": "info"},
+            {"title": "Design code", "value": "ACI 318", "detail": "building route", "status": "info"},
+            {"title": "Transfer/Construction SLS", "value": "Auto basis", "detail": "self-weight/topping", "status": "info"},
+            {"title": "Service SLS", "value": "SDL/LL input", "detail": "building service loads", "status": "info"},
+        ],
+        columns=4,
+    )
 
     # LOADS.COMPACT1 — Building uses the same compact ULS/SLS split without bridge-only SDL tools.
     uls_tab, sls_tab = st.tabs(["ULS Loads", "SLS Loads"])
