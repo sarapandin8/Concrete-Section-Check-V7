@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from html import escape
 from pathlib import Path
 from typing import Any
 
@@ -16,10 +17,188 @@ from concrete_pmm_pro.core.concrete_materials import (
     ensure_concrete_material_library,
 )
 from concrete_pmm_pro.core.models import ConcreteMaterial, PrestressSteelMaterial, RebarMaterial
+from concrete_pmm_pro.ui.commercial import render_page_header, render_section_bar
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PRESTRESS_DB_PATH = REPO_ROOT / "data" / "prestress_steel_database.csv"
 STEEL_TYPE_OPTIONS = ["wire", "strand", "prestressing_bar", "tendon_group", "custom"]
+
+_MATERIALS_DASHBOARD_CSS = """
+<style>
+.cpmm-material-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  gap: 0.58rem;
+  margin: 0.58rem 0 0.55rem 0;
+}
+.cpmm-material-card {
+  border: 1px solid #d7e2ee;
+  border-left: 4px solid #1d6fe7;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+  padding: 0.62rem 0.70rem;
+  min-height: 72px;
+  box-shadow: 0 4px 12px rgba(7, 26, 51, 0.045);
+}
+.cpmm-material-card.ready {
+  border-left-color: #22a447;
+  background: linear-gradient(180deg, #ffffff 0%, #f5fff7 100%);
+}
+.cpmm-material-card.warning {
+  border-left-color: #f59e0b;
+  background: linear-gradient(180deg, #ffffff 0%, #fffaf0 100%);
+}
+.cpmm-material-card.neutral {
+  border-left-color: #98a2b3;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+}
+.cpmm-material-label {
+  color: #526f8d;
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+  margin-bottom: 0.14rem;
+}
+.cpmm-material-value {
+  color: #0b3a66;
+  font-size: 0.98rem;
+  font-weight: 920;
+  line-height: 1.14;
+  overflow-wrap: anywhere;
+}
+.cpmm-material-detail {
+  color: #667085;
+  font-size: 0.68rem;
+  line-height: 1.28;
+  margin-top: 0.14rem;
+}
+.cpmm-material-guidance {
+  border: 1px solid #cfe0ff;
+  border-left: 4px solid #1d6fe7;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+  padding: 0.58rem 0.70rem;
+  margin: 0.38rem 0 0.64rem 0;
+  color: #0b3a66;
+  font-size: 0.76rem;
+  line-height: 1.36;
+}
+.cpmm-material-command {
+  border: 1px solid #cfe0ff;
+  border-left: 5px solid #1d6fe7;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+  padding: 0.66rem 0.75rem;
+  min-height: 70px;
+  box-shadow: 0 4px 12px rgba(7, 26, 51, 0.045);
+}
+.cpmm-material-command-kicker {
+  color: #526f8d;
+  font-size: 0.62rem;
+  font-weight: 950;
+  letter-spacing: 0.065em;
+  text-transform: uppercase;
+  margin-bottom: 0.12rem;
+}
+.cpmm-material-command-title {
+  color: #071a33;
+  font-size: 0.98rem;
+  font-weight: 920;
+  line-height: 1.16;
+}
+.cpmm-material-command-detail {
+  color: #667085;
+  font-size: 0.70rem;
+  line-height: 1.30;
+  margin-top: 0.16rem;
+}
+.cpmm-material-section-note {
+  color: #667085;
+  font-size: 0.74rem;
+  line-height: 1.34;
+  margin: 0.25rem 0 0.45rem 0;
+}
+</style>
+"""
+
+
+def _render_material_cards(cards: list[dict[str, object]]) -> None:
+    html_cards: list[str] = []
+    for card in cards:
+        status = escape(str(card.get("status", "info") or "info"))
+        title = escape(str(card.get("title", "")))
+        value = escape(str(card.get("value", "")))
+        detail = escape(str(card.get("detail", "")))
+        html_cards.append(
+            f'<div class="cpmm-material-card {status}">'
+            f'<div class="cpmm-material-label">{title}</div>'
+            f'<div class="cpmm-material-value">{value}</div>'
+            f'<div class="cpmm-material-detail">{detail}</div>'
+            '</div>'
+        )
+    st.markdown(_MATERIALS_DASHBOARD_CSS + '<div class="cpmm-material-grid">' + ''.join(html_cards) + '</div>', unsafe_allow_html=True)
+
+
+def _render_material_guidance(message: str) -> None:
+    st.markdown(
+        _MATERIALS_DASHBOARD_CSS
+        + f'<div class="cpmm-material-guidance">{escape(message)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_prestress_product_command(material: PrestressSteelMaterial) -> None:
+    area = f"{material.area_mm2:.1f} mm²" if material.area_mm2 is not None else "area not listed"
+    fpu = f"fpu {material.fpu_MPa:.0f} MPa"
+    fpy = f"fpy {material.fpy_MPa:.0f} MPa" if material.fpy_MPa is not None else "fpy not listed"
+    detail = f"{material.steel_type} · {area} · {fpy} · {fpu} · Ep {material.Ep_MPa:.0f} MPa"
+    st.markdown(
+        _MATERIALS_DASHBOARD_CSS
+        + '<div class="cpmm-material-command">'
+        + '<div class="cpmm-material-command-kicker">Selected prestress product</div>'
+        + f'<div class="cpmm-material-command-title">{escape(material.name)}</div>'
+        + f'<div class="cpmm-material-command-detail">{escape(detail)}</div>'
+        + '</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def _render_material_workspace_dashboard() -> None:
+    concrete_materials: list[ConcreteMaterial] = st.session_state.get("concrete_materials", [])
+    rebar_materials: list[RebarMaterial] = st.session_state.get("rebar_materials", [])
+    prestress_materials: list[PrestressSteelMaterial] = st.session_state.get("prestress_materials", [])
+    section_concrete = str(st.session_state.get("active_concrete_material_name") or "controlled in Section Builder")
+    topping_concrete = str(st.session_state.get("deck_topping_material_name") or "controlled in Section Builder")
+    _render_material_cards(
+        [
+            {
+                "title": "Concrete library",
+                "value": f"{len(concrete_materials):,} material(s)",
+                "detail": f"section: {section_concrete}",
+                "status": "ready" if concrete_materials else "warning",
+            },
+            {
+                "title": "Rebar library",
+                "value": f"{len(rebar_materials):,} material(s)",
+                "detail": "bar size controls standard fy in Rebar",
+                "status": "ready" if rebar_materials else "warning",
+            },
+            {
+                "title": "Prestress products",
+                "value": f"{len(prestress_materials):,} product(s)",
+                "detail": "Product controls Area, fpy, fpu, and Ep",
+                "status": "ready" if prestress_materials else "warning",
+            },
+            {
+                "title": "Deck / topping",
+                "value": topping_concrete,
+                "detail": "assigned by section/preset context",
+                "status": "info",
+            },
+        ]
+    )
+
 
 
 def load_prestress_steel_database(path: Path | str = DEFAULT_PRESTRESS_DB_PATH) -> pd.DataFrame:
@@ -222,9 +401,13 @@ def _parse_concrete_materials(df: pd.DataFrame) -> tuple[list[ConcreteMaterial],
 
 
 def _render_concrete_section() -> None:
-    st.subheader("Concrete Material Library")
-    st.info(
-        "Concrete materials are defined here as a library only. Assign the active section concrete in "
+    render_section_bar(
+        "Concrete Material Library",
+        "Library-only concrete definitions. Section-specific assignment remains in Section Builder.",
+        mark="C",
+    )
+    _render_material_guidance(
+        "Concrete materials are defined here as a library only. Assign the section concrete in "
         "Sections → Section Builder so each section/preset can use its own main, deck/topping, web, "
         "or cast-in-place slab concrete without changing the project library."
     )
@@ -307,8 +490,12 @@ def _parse_rebar_materials(df: pd.DataFrame) -> tuple[list[RebarMaterial], list[
 
 
 def _render_rebar_section() -> None:
-    st.subheader("Rebar Material Library")
-    st.info(
+    render_section_bar(
+        "Rebar Material Library",
+        "Standard bar size remains the source of truth for DB rows; custom material rows stay available for project-specific cases.",
+        mark="R",
+    )
+    _render_material_guidance(
         "Rebar materials are kept here as a library. Standard DB bar rows use the selected Bar Size as the source of truth: "
         "DB10–DB28 → SD40 / fy 390 MPa and DB32 → SD50 / fy 490 MPa. Use Custom bar size only when a project-specific material is required."
     )
@@ -340,8 +527,12 @@ def _render_rebar_section() -> None:
 
 
 def _render_prestress_section() -> None:
-    st.subheader("Prestressing Steel Material Library")
-    st.info(
+    render_section_bar(
+        "Prestressing Steel Material Library",
+        "Catalog products provide Area, fpy, fpu, and Ep; prestress force and losses remain in the Prestress workspace.",
+        mark="P",
+    )
+    _render_material_guidance(
         "Prestressing steel products are kept here as a library. In the Prestress workspace, Product is the source of truth "
         "for Area, fpy, fpu, and Ep; effective prestress force/loss input remains on the Prestress page."
     )
@@ -353,11 +544,17 @@ def _render_prestress_section() -> None:
         product = st.selectbox("Database product", [str(name) for name in db["name"].tolist()])
         row = db.loc[db["name"] == product].iloc[0]
         selected_material = prestress_material_from_database_row(row)
-        st.dataframe(pd.DataFrame([selected_material.model_dump()]), use_container_width=True, hide_index=True)
-        if st.button("Add selected product to project materials", use_container_width=True, type="primary", key="ui_keys1_materials_page_button_359"):
-            st.session_state["prestress_materials"] = _upsert_by_name(st.session_state["prestress_materials"], selected_material)
-            st.session_state["active_prestress_material_name"] = selected_material.name
-            st.success(f"Added {selected_material.name}.")
+        command_cols = st.columns([3.2, 1.0])
+        with command_cols[0]:
+            _render_prestress_product_command(selected_material)
+        with command_cols[1]:
+            st.caption("Project library action")
+            if st.button("Add selected product", use_container_width=True, type="primary", key="ui_keys1_materials_page_button_359"):
+                st.session_state["prestress_materials"] = _upsert_by_name(st.session_state["prestress_materials"], selected_material)
+                st.session_state["active_prestress_material_name"] = selected_material.name
+                st.success(f"Added {selected_material.name}.")
+        with st.expander("Selected product engineering properties", expanded=False):
+            st.dataframe(pd.DataFrame([selected_material.model_dump()]), use_container_width=True, hide_index=True)
 
     else:
         cols = st.columns(3)
@@ -411,29 +608,57 @@ def _render_prestress_section() -> None:
 
 
 def _render_summary() -> None:
-    st.subheader("Material Library Summary")
+    render_section_bar(
+        "Material Library Summary",
+        "Compact project material inventory. Section assignment remains controlled outside this library page.",
+        mark="S",
+    )
     concrete_materials: list[ConcreteMaterial] = st.session_state.get("concrete_materials", [])
-    cols = st.columns(3)
-    cols[0].metric("Concrete library", f"{len(concrete_materials):,} material(s)")
-    cols[1].metric("Rebar library", f"{len(st.session_state.get('rebar_materials', [])):,} material(s)")
-    cols[2].metric("Prestress library", f"{len(st.session_state.get('prestress_materials', [])):,} product(s)")
+    _render_material_cards(
+        [
+            {
+                "title": "Concrete library",
+                "value": f"{len(concrete_materials):,} material(s)",
+                "detail": "fc, Ec, density, beta1 basis",
+                "status": "ready" if concrete_materials else "warning",
+            },
+            {
+                "title": "Rebar library",
+                "value": f"{len(st.session_state.get('rebar_materials', [])):,} material(s)",
+                "detail": "SD40 / SD50 project defaults",
+                "status": "ready" if st.session_state.get("rebar_materials", []) else "warning",
+            },
+            {
+                "title": "Prestress library",
+                "value": f"{len(st.session_state.get('prestress_materials', [])):,} product(s)",
+                "detail": "catalog + project products",
+                "status": "ready" if st.session_state.get("prestress_materials", []) else "warning",
+            },
+        ]
+    )
     st.caption("Current section material assignment is controlled outside this library page.")
 
-    st.markdown("**Rebar materials**")
-    st.dataframe(_rebar_materials_dataframe(st.session_state["rebar_materials"]), use_container_width=True, hide_index=True)
+    with st.expander("Rebar materials — library audit", expanded=False):
+        st.dataframe(_rebar_materials_dataframe(st.session_state["rebar_materials"]), use_container_width=True, hide_index=True)
 
-    st.markdown("**Prestressing steel materials**")
-    prestress_rows = []
-    for material in st.session_state["prestress_materials"]:
-        row = material.model_dump()
-        row["PT Bar / Prestressing Bar"] = material.steel_type == "prestressing_bar"
-        prestress_rows.append(row)
-    st.dataframe(pd.DataFrame(prestress_rows), use_container_width=True, hide_index=True)
+    with st.expander("Prestressing steel materials — library audit", expanded=False):
+        prestress_rows = []
+        for material in st.session_state["prestress_materials"]:
+            row = material.model_dump()
+            row["PT Bar / Prestressing Bar"] = material.steel_type == "prestressing_bar"
+            prestress_rows.append(row)
+        st.dataframe(pd.DataFrame(prestress_rows), use_container_width=True, hide_index=True)
 
 
 def render_materials_page() -> None:
-    st.subheader("Materials")
+    render_page_header(
+        "Materials",
+        "Manage project material libraries for concrete, reinforcement, and prestressing steel without changing section-specific assignments.",
+        icon="MA",
+        badge="Library workspace",
+    )
     _ensure_material_defaults()
+    _render_material_workspace_dashboard()
     _render_concrete_section()
     st.divider()
     _render_rebar_section()
