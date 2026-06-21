@@ -522,27 +522,31 @@ div[data-testid="stPyplot"],
 div[data-testid="stImage"] {
   border-radius: 9px !important;
 }
+/* UI.COMMERCIAL4.5: soften Streamlit metric cards.  Metrics are dashboard
+   summaries, not primary actions; keep the blue accent in border/value only. */
 div[data-testid="stMetric"] {
-  background: linear-gradient(135deg, #175cd3 0%, #1d6fe7 100%) !important;
-  border: 1px solid rgba(29, 111, 231, 0.42) !important;
-  box-shadow: 0 3px 10px rgba(29, 111, 231, 0.12) !important;
-  padding: 0.42rem 0.58rem !important;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8ff 100%) !important;
+  border: 1px solid #cfe0ff !important;
+  border-left: 5px solid #1d6fe7 !important;
+  box-shadow: 0 3px 10px rgba(29, 111, 231, 0.08) !important;
+  padding: 0.50rem 0.66rem !important;
 }
 div[data-testid="stMetric"] label,
 div[data-testid="stMetric"] [data-testid="stMetricLabel"],
 div[data-testid="stMetric"] [data-testid="stMetricLabel"] p {
-  color: #bcd2e8 !important;
-  font-weight: 850 !important;
-  letter-spacing: 0.025em !important;
+  color: #526f8d !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.035em !important;
   text-transform: uppercase !important;
 }
 div[data-testid="stMetric"] [data-testid="stMetricValue"],
 div[data-testid="stMetric"] [data-testid="stMetricValue"] div {
-  color: #ffffff !important;
-  font-weight: 900 !important;
+  color: #175cd3 !important;
+  font-weight: 950 !important;
 }
 div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
-  color: #a8ecff !important;
+  color: #166534 !important;
+  font-weight: 800 !important;
 }
 /* UI.COMMERCIAL4.4: light-blue accordion system. Dark navy remains reserved for
    structural/brand emphasis; expanders now behave as lightweight group controls. */

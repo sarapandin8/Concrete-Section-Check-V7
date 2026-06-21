@@ -1,3 +1,12 @@
+
+## UI.COMMERCIAL4.5 — Soft Metric Cards and Load Workspace Hierarchy Polish
+
+Softened the dashboard summary metric cards so they no longer appear as heavy primary actions. Streamlit `st.metric` cards now use a light blue-tinted card surface with blue accent border/value typography instead of solid blue fills, keeping the Loads workspace and other metric summaries closer to the new commercial dashboard visual system.
+
+This is presentation-only UI polish. It does not change solver equations, SLS/ULS/PMM/prestress/rebar logic, report logic, widget keys, project schema, save/load behavior, or navigation state.
+
+See `docs/design/ui_commercial4_5.md`.
+
 ### UI.PLOT5 — Global Plot Readability Polish
 
 ### UI.PLOT6 — ULS Torsion Full-Length Capacity Plot Hotfix
