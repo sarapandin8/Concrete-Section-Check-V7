@@ -239,7 +239,19 @@ def create_section_preview(
         height=560,
         paper_bgcolor="white",
         plot_bgcolor="white",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
+        # Some Plotly/Streamlit combinations render a literal "undefined"
+        # text node before the first legend item when a horizontal legend is
+        # shown without an explicit title.  Force a blank title so the shared
+        # section preview helper stays clean across Section Builder, Rebar, and
+        # Prestress preview canvases for every preset.
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0,
+            title=dict(text=""),
+        ),
     )
     fig.update_xaxes(title="x (mm)", scaleanchor="y", scaleratio=1, showgrid=True, zeroline=True)
     fig.update_yaxes(title="y (mm)", showgrid=True, zeroline=True)
