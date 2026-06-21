@@ -241,12 +241,14 @@ def create_section_preview(
         plot_bgcolor="white",
         hoverlabel=dict(bgcolor="#ffffff", bordercolor="#cbd5e1", font=dict(color="#071a33", size=11)),
         # Some Plotly/Streamlit combinations render a literal "undefined"
-        # text node before the first legend item when a horizontal legend is
-        # shown without an explicit title.  Force a blank title so the shared
-        # section preview helper stays clean across Section Builder, Rebar, and
-        # Prestress preview canvases for every preset.  Keep the title font
-        # effectively invisible as a second guard for renderer versions that
-        # allocate title space even when text is blank.
+        # text node at the top-left of the SVG when the top-level Plotly title
+        # object is omitted.  This is independent from the legend title and was
+        # visible in the shared Section Builder preview canvas.  Force an
+        # explicit blank figure title, then make any renderer-reserved title
+        # space effectively invisible.
+        title=dict(text="", font=dict(size=1, color="rgba(0,0,0,0)")),
+        # Keep the legend title blank too.  The same helper is used by Section
+        # Builder, Rebar, and Prestress preview canvases for every preset.
         legend=dict(
             orientation="h",
             yanchor="bottom",

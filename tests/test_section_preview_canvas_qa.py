@@ -36,6 +36,7 @@ def test_shared_preview_canvas_theme_has_no_undefined_legend_title_for_all_prese
         dimensions = default_registry.dimensions(preset["dimensions_generator"])(**generator_params)
         fig = create_section_preview(geometry, dimensions)
 
+        assert fig.layout.title.text == ""
         assert fig.layout.legend.title.text == ""
         assert "undefined" not in _figure_text_blob(fig)
         checked += 1
@@ -63,6 +64,7 @@ def test_shared_preview_canvas_theme_applies_to_rebar_and_prestress_previews() -
         create_section_preview(geometry, prestress_elements=[prestress]),
         create_section_preview(geometry, rebars=[rebar], prestress_elements=[prestress]),
     ]:
+        assert fig.layout.title.text == ""
         assert fig.layout.legend.title.text == ""
         assert fig.layout.legend.font.size == 11
         assert fig.layout.legend.borderwidth == 1
