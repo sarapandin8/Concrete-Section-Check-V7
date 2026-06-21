@@ -544,33 +544,38 @@ div[data-testid="stMetric"] [data-testid="stMetricValue"] div {
 div[data-testid="stMetric"] [data-testid="stMetricDelta"] {
   color: #a8ecff !important;
 }
-/* Expander panels become dark-navy section bars, close to the user's preferred engineering-tool theme. */
+/* UI.COMMERCIAL4.4: light-blue accordion system. Dark navy remains reserved for
+   structural/brand emphasis; expanders now behave as lightweight group controls. */
 div[data-testid="stExpander"] details {
-  border: 1px solid var(--cpmm-theme-line) !important;
-  border-radius: 8px !important;
+  border: 1px solid #cfe0ff !important;
+  border-radius: 9px !important;
   overflow: hidden !important;
-  background: var(--cpmm-theme-panel) !important;
-  box-shadow: 0 2px 8px var(--cpmm-theme-shadow) !important;
+  background: #ffffff !important;
+  box-shadow: 0 2px 8px rgba(29, 111, 231, 0.08) !important;
 }
 div[data-testid="stExpander"] details > summary {
-  background: linear-gradient(90deg, var(--cpmm-theme-navy) 0%, var(--cpmm-theme-navy-2) 76%, var(--cpmm-theme-navy-3) 100%) !important;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.10) !important;
+  background: linear-gradient(90deg, #f4f8ff 0%, #eef5ff 82%, #e7f1ff 100%) !important;
+  border-bottom: 1px solid #cfe0ff !important;
   min-height: 2.0rem !important;
-  padding: 0.42rem 0.75rem !important;
+  padding: 0.44rem 0.75rem !important;
+}
+div[data-testid="stExpander"] details[open] > summary {
+  background: linear-gradient(90deg, #eaf2ff 0%, #e0ecff 100%) !important;
+  border-bottom-color: #b7d0ff !important;
 }
 div[data-testid="stExpander"] details > summary p,
 div[data-testid="stExpander"] details > summary span,
 div[data-testid="stExpander"] details > summary div {
-  color: #f7fbff !important;
+  color: #123a6b !important;
   font-weight: 850 !important;
-  letter-spacing: 0.01em !important;
+  letter-spacing: 0.006em !important;
 }
 div[data-testid="stExpander"] details > summary svg {
-  color: #f7fbff !important;
-  fill: #f7fbff !important;
+  color: #1d6fe7 !important;
+  fill: #1d6fe7 !important;
 }
 div[data-testid="stExpander"] details > div[role="group"] {
-  background: var(--cpmm-theme-panel) !important;
+  background: #ffffff !important;
   padding-top: 0.56rem !important;
 }
 /* Data tables/editors: stronger engineering grid chrome without touching editor behavior. */

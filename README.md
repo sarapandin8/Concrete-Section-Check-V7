@@ -1125,3 +1125,9 @@ Polished the Railway U-Girder service-stage multi-fiber SLS plot so the legend n
 Polished the global Plotly rendering layer so dashed engineering limit/capacity traces remain visibly dashed in legend swatches. The global readability wrapper now uses wider legend samples/entries and applies a minimum line width to non-solid dashed traces. This affects SLS stress diagrams, ULS shear/torsion plots, PMM/interaction plots, section/rebar/prestress previews, and report/QA Plotly figures rendered through `st.plotly_chart`.
 
 This is presentation-only polish. It does not change trace coordinates, result dataframes, solver equations, shear/torsion/flexure calculations, SLS stress limits, load routing, widget keys, or project schema.
+
+## UI.COMMERCIAL4.4 — Light-Blue Accordion System
+
+Replaced the previous solid dark-navy Streamlit expander bars with a lighter blue accordion style so secondary audit/detail sections no longer dominate the commercial dashboard visual hierarchy. Collapsed and expanded expander headers now use light-blue surfaces, blue borders, and dark readable text; navy is retained for structural/brand emphasis rather than default accordion fills.
+
+This is presentation-only UI polish. It does not change solver equations, SLS/ULS/PMM/prestress/rebar logic, project schema, widget keys, save/load behavior, or navigation state.
