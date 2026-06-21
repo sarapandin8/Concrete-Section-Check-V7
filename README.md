@@ -1,3 +1,27 @@
+### UI.COMMERCIAL4.7 — ULS Summary Spacing and Decision Table Polish
+
+Polishes the newly upgraded **Analysis → ULS Strength → Summary** dashboard for better readability and commercial presentation.
+
+#### What changed
+- Widens the overall Column/Pier ULS decision card so `REVIEW / incomplete` and similar decisions do not feel cramped.
+- Improves the ULS decision table with fixed column proportions, more readable row spacing, and cleaner typography.
+- Highlights the `Required Action` column as an action note so the engineer can see the next required step faster.
+- Keeps `Route / Scope` as a quieter technical note so it no longer competes visually with the required action.
+- Maintains the commercial blue-accent and light-card visual system introduced in UI.COMMERCIAL4.6.
+
+#### Not changed
+- No PMM solver equations.
+- No shear, torsion, or combined V+T engineering equations.
+- No load routing, project schema, save/load contract, report logic, or widget keys.
+
+#### Validation run
+```bash
+python -m py_compile concrete_pmm_pro/ui/analysis_page.py
+pytest -q tests/test_analysis_modes.py tests/test_app_commercial_tabs.py
+```
+
+All targeted tests passed.
+
 
 ## UI.COMMERCIAL4.5 — Soft Metric Cards and Load Workspace Hierarchy Polish
 

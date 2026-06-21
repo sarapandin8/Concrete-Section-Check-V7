@@ -531,7 +531,7 @@ _ANALYSIS_DASHBOARD_CSS = """
   border-left: 5px solid #1d6fe7;
   border-radius: 14px;
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  padding: 1.0rem 0.95rem;
+  padding: 1.05rem 1.05rem;
   min-height: 100%;
   box-shadow: 0 5px 14px rgba(7, 26, 51, 0.055);
 }
@@ -564,15 +564,15 @@ _ANALYSIS_DASHBOARD_CSS = """
 }
 .cpmm-summary-overall-title {
   color: #071a33;
-  font-size: 1.02rem;
-  font-weight: 900;
-  line-height: 1.22;
+  font-size: 1.10rem;
+  font-weight: 950;
+  line-height: 1.20;
   margin-bottom: 0.35rem;
 }
 .cpmm-summary-overall-detail {
   color: #475467;
-  font-size: 0.80rem;
-  line-height: 1.42;
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 .cpmm-summary-table-shell {
   border: 1px solid #d7e2ee;
@@ -584,7 +584,15 @@ _ANALYSIS_DASHBOARD_CSS = """
 .cpmm-summary-table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
+.cpmm-summary-table col.check-col { width: 12%; }
+.cpmm-summary-table col.status-col { width: 10%; }
+.cpmm-summary-table col.case-col { width: 11%; }
+.cpmm-summary-table col.demand-col { width: 9%; }
+.cpmm-summary-table col.dc-col { width: 7%; }
+.cpmm-summary-table col.route-col { width: 28%; }
+.cpmm-summary-table col.action-col { width: 23%; }
 .cpmm-summary-table thead th {
   background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
   color: #526f8d;
@@ -599,9 +607,9 @@ _ANALYSIS_DASHBOARD_CSS = """
 }
 .cpmm-summary-table tbody td {
   color: #071a33;
-  font-size: 0.80rem;
-  line-height: 1.42;
-  padding: 0.75rem 0.78rem;
+  font-size: 0.79rem;
+  line-height: 1.48;
+  padding: 0.88rem 0.82rem;
   border-bottom: 1px solid #e9eef5;
   vertical-align: top;
 }
@@ -614,6 +622,22 @@ _ANALYSIS_DASHBOARD_CSS = """
 }
 .cpmm-summary-table .muted {
   color: #667085;
+}
+.cpmm-summary-action-note {
+  border: 1px solid #d7e7ff;
+  border-left: 4px solid #1d6fe7;
+  border-radius: 9px;
+  background: #f6fbff;
+  color: #0b3a66;
+  padding: 0.46rem 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.38;
+  font-weight: 650;
+}
+.cpmm-summary-route-note {
+  color: #475467;
+  font-size: 0.78rem;
+  line-height: 1.40;
 }
 .cpmm-summary-status-pill {
   display: inline-flex;
@@ -634,6 +658,12 @@ _ANALYSIS_DASHBOARD_CSS = """
 .cpmm-summary-code-note {
   color: #475467;
   font-size: 0.78rem;
+}
+.cpmm-uls-summary-compact-note {
+  color: #667085;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin: -0.1rem 0 0.35rem 0;
 }
 @media (max-width: 900px) {
   .cpmm-summary-overall-card { margin-bottom: 0.75rem; }
@@ -10144,6 +10174,17 @@ def _column_pier_overall_decision_card_html(card: Mapping[str, object]) -> str:
 
 
 def _column_pier_uls_summary_table_html(rows: list[dict[str, object]]) -> str:
+    colgroup = (
+        '<colgroup>'
+        '<col class="check-col">'
+        '<col class="status-col">'
+        '<col class="case-col">'
+        '<col class="demand-col">'
+        '<col class="dc-col">'
+        '<col class="route-col">'
+        '<col class="action-col">'
+        '</colgroup>'
+    )
     header = (
         "<thead><tr>"
         "<th>Check</th>"
@@ -10164,11 +10205,11 @@ def _column_pier_uls_summary_table_html(rows: list[dict[str, object]]) -> str:
             f'<td>{escape(str(row.get("Governing Case", "-")))}</td>'
             f'<td>{escape(str(row.get("Demand", "-")))}</td>'
             f'<td>{escape(str(row.get("D/C", "-")))}</td>'
-            f'<td><div class="cpmm-summary-code-note">{escape(str(row.get("Route / Scope", "-")))}</div></td>'
-            f'<td>{escape(str(row.get("Required Action", "-")))}</td>'
+            f'<td><div class="cpmm-summary-route-note">{escape(str(row.get("Route / Scope", "-")))}</div></td>'
+            f'<td><div class="cpmm-summary-action-note">{escape(str(row.get("Required Action", "-")))}</div></td>'
             "</tr>"
         )
-    return '<div class="cpmm-summary-table-shell"><table class="cpmm-summary-table">' + header + '<tbody>' + ''.join(body_rows) + '</tbody></table></div>'
+    return '<div class="cpmm-summary-table-shell"><table class="cpmm-summary-table">' + colgroup + header + '<tbody>' + ''.join(body_rows) + '</tbody></table></div>'
 
 
 def _render_column_pier_uls_decision_summary() -> None:
@@ -10183,7 +10224,7 @@ def _render_column_pier_uls_decision_summary() -> None:
         "Decision-first overview for the current stored inputs. This panel does not rerun PMM; shear, torsion, and V+T are read-only previews/check gates from the current session data."
     )
     render_metric_cards(detail_cards)
-    cols = st.columns([1.25, 8.0])
+    cols = st.columns([1.75, 7.5])
     with cols[0]:
         st.markdown(_column_pier_overall_decision_card_html(overall_card), unsafe_allow_html=True)
     with cols[1]:
