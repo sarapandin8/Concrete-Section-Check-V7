@@ -526,6 +526,126 @@ _ANALYSIS_DASHBOARD_CSS = """
   font-weight: 730;
   overflow-wrap: anywhere;
 }
+
+.cpmm-beam-command-card {
+  border: 1px solid #cfe0ff;
+  border-left: 5px solid #1d6fe7;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+  padding: 0.78rem 0.9rem;
+  min-height: 72px;
+  box-shadow: 0 4px 12px rgba(7, 26, 51, 0.045);
+}
+.cpmm-beam-command-title {
+  color: #071a33;
+  font-size: 0.98rem;
+  font-weight: 900;
+  line-height: 1.2;
+  margin-bottom: 0.20rem;
+}
+.cpmm-beam-command-detail {
+  color: #475467;
+  font-size: 0.78rem;
+  line-height: 1.38;
+}
+.cpmm-beam-command-kicker {
+  color: #526f8d;
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  margin-bottom: 0.12rem;
+}
+.cpmm-beam-notice {
+  border: 1px solid #f2d58a;
+  border-left: 5px solid #f59e0b;
+  border-radius: 12px;
+  background: #fffaf0;
+  padding: 0.72rem 0.85rem;
+  margin: 0.45rem 0 0.65rem 0;
+  color: #7a4b00;
+  font-size: 0.82rem;
+  line-height: 1.42;
+}
+.cpmm-beam-check-table-shell {
+  border: 1px solid #d7e2ee;
+  border-radius: 14px;
+  background: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 5px 14px rgba(7, 26, 51, 0.045);
+  margin-top: 0.35rem;
+}
+.cpmm-beam-check-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cpmm-beam-check-table thead th {
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+  color: #526f8d;
+  font-size: 0.70rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 0.66rem 0.72rem;
+  border-bottom: 1px solid #d7e2ee;
+}
+.cpmm-beam-check-table tbody td {
+  color: #071a33;
+  font-size: 0.78rem;
+  line-height: 1.40;
+  padding: 0.70rem 0.72rem;
+  border-bottom: 1px solid #e9eef5;
+  vertical-align: top;
+}
+.cpmm-beam-check-table tbody tr:last-child td { border-bottom: 0; }
+.cpmm-beam-check-table .check-name {
+  font-weight: 850;
+  color: #0b3a66;
+}
+.cpmm-beam-check-table .technical-note {
+  color: #667085;
+  font-size: 0.76rem;
+}
+.cpmm-beam-action-note {
+  color: #0b3a66;
+  font-weight: 760;
+  font-size: 0.78rem;
+}
+.cpmm-beam-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.54rem;
+  font-size: 0.70rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.cpmm-beam-status-pill.ready { color: #166534; background: #e9f9ef; border-color: rgba(34, 164, 71, 0.18); }
+.cpmm-beam-status-pill.warning { color: #92400e; background: #fff4d6; border-color: rgba(245, 158, 11, 0.20); }
+.cpmm-beam-status-pill.danger { color: #b42318; background: #fee4e2; border-color: rgba(217, 45, 32, 0.20); }
+.cpmm-beam-status-pill.info { color: #1849a9; background: #e8f1ff; border-color: rgba(29, 111, 231, 0.18); }
+.cpmm-beam-status-pill.neutral { color: #475467; background: #eef2f6; border-color: rgba(152, 162, 179, 0.18); }
+.cpmm-beam-empty-card {
+  border: 1px dashed #b8d0f5;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+  padding: 0.85rem 0.95rem;
+  color: #0b3a66;
+  margin-top: 0.45rem;
+}
+.cpmm-beam-empty-title {
+  font-weight: 900;
+  font-size: 0.96rem;
+  margin-bottom: 0.24rem;
+}
+.cpmm-beam-empty-detail {
+  color: #475467;
+  font-size: 0.80rem;
+  line-height: 1.42;
+}
 .cpmm-summary-overall-card {
   border: 1px solid #d7e2ee;
   border-left: 5px solid #1d6fe7;
@@ -8854,6 +8974,124 @@ def _beam_uls_check_table(
     return pd.DataFrame(rows, columns=["Check", "Status", "Governing x", "Case", "Demand", "Capacity", "Utilization"])
 
 
+
+def _beam_uls_status_style(status: object) -> str:
+    text = str(status or "").strip().upper()
+    if not text:
+        return "neutral"
+    if "FAIL" in text or "BLOCKED" in text:
+        return "danger"
+    if "PASS" in text or "READY" in text or "BELOW THRESHOLD" in text or "NO DEMAND" in text:
+        return "ready"
+    if "REVIEW" in text or "REQUIRED" in text or "PLANNED" in text or "NOT CALCULATED" in text or "NOT READY" in text:
+        return "warning"
+    if "OPTIONAL" in text or "NOT ACTIVE" in text:
+        return "neutral"
+    return "info"
+
+
+def _beam_uls_status_pill_html(status: object) -> str:
+    label = str(status or "-").replace("_", " ")
+    style = _beam_uls_status_style(status)
+    return f'<span class="cpmm-beam-status-pill {style}">{escape(label)}</span>'
+
+
+def _beam_uls_action_note_for_row(row: Mapping[str, object]) -> str:
+    check = str(row.get("Check") or "-")
+    status = str(row.get("Status") or "").upper()
+    if "PASS" in status:
+        return "Review audit output before final issue."
+    if "FAIL" in status or "BLOCKED" in status:
+        return "Resolve governing strength/detailing gate."
+    if check == "Flexure" and ("PLANNED" in status or "NOT CALCULATED" in status):
+        return "Press Calculate Flexure."
+    if check == "Shear" and "LAYOUT READY" in status:
+        return "Press Calculate Shear."
+    if check == "Shear" and "LAYOUT REQUIRED" in status:
+        return "Define/confirm stirrup zones first."
+    if check == "Torsion" and "LAYOUT REQUIRED" in status:
+        return "Define closed hoops and longitudinal Al."
+    if check == "Shear + Torsion" and "NOT CALCULATED" in status:
+        return "Press Calculate Shear + Torsion."
+    if "NOT READY" in status:
+        return "Complete required inputs."
+    if "OPTIONAL" in status or "NOT ACTIVE" in status:
+        return "No action for current demand."
+    return "Review calculated gate and notes."
+
+
+def _beam_uls_check_table_html(table_df: pd.DataFrame) -> str:
+    if table_df.empty:
+        return (
+            '<div class="cpmm-beam-empty-card">'
+            '<div class="cpmm-beam-empty-title">No ULS check rows available</div>'
+            '<div class="cpmm-beam-empty-detail">Define active ULS station demands in Loads before reviewing the compact ULS check table.</div>'
+            '</div>'
+        )
+    headers = ["Check", "Status", "Governing x", "Case", "Demand", "Capacity", "Utilization", "Required Action"]
+    header_html = "<thead><tr>" + "".join(f"<th>{escape(item)}</th>" for item in headers) + "</tr></thead>"
+    body_rows: list[str] = []
+    for _, row in table_df.iterrows():
+        row_map = {str(col): row.get(col, "-") for col in table_df.columns}
+        body_rows.append(
+            "<tr>"
+            f'<td><div class="check-name">{escape(str(row_map.get("Check", "-")))}</div></td>'
+            f'<td>{_beam_uls_status_pill_html(row_map.get("Status"))}</td>'
+            f'<td>{escape(str(row_map.get("Governing x", "-")))}</td>'
+            f'<td>{escape(str(row_map.get("Case", "-")))}</td>'
+            f'<td>{escape(str(row_map.get("Demand", "-")))}</td>'
+            f'<td><div class="technical-note">{escape(str(row_map.get("Capacity", "-")))}</div></td>'
+            f'<td>{escape(str(row_map.get("Utilization", "-")))}</td>'
+            f'<td><div class="cpmm-beam-action-note">{escape(_beam_uls_action_note_for_row(row_map))}</div></td>'
+            "</tr>"
+        )
+    return (
+        '<div class="cpmm-beam-check-table-shell">'
+        '<table class="cpmm-beam-check-table">'
+        + header_html
+        + "<tbody>"
+        + "".join(body_rows)
+        + "</tbody></table></div>"
+    )
+
+
+def _beam_uls_command_panel_html(selected_check: str, selected_entry: object) -> str:
+    status = _beam_uls_manual_result_badge(selected_entry) if selected_entry is not None else "NOT CALCULATED"
+    style = _beam_uls_status_style(status)
+    detail = (
+        "The selected check has a stored result for the current input hash. Review the workspace cards, diagrams, and audit output below."
+        if selected_entry is not None
+        else "Run only this selected ULS check for the current model inputs. Other checks remain cached until model inputs change."
+    )
+    return (
+        f'<div class="cpmm-beam-command-card">'
+        f'<div class="cpmm-beam-command-kicker">Selected ULS command</div>'
+        f'<div class="cpmm-beam-command-title">{escape(selected_check)} · {_beam_uls_status_pill_html(status)}</div>'
+        f'<div class="cpmm-beam-command-detail">{escape(detail)}</div>'
+        '</div>'
+    )
+
+
+def _beam_uls_not_calculated_notice_html(selected_check: str) -> str:
+    return (
+        '<div class="cpmm-beam-notice">'
+        f'<strong>{escape(selected_check)} has not been calculated for the current inputs.</strong> '
+        'Press the Calculate button before reviewing capacity, utilization, audit tables, or diagrams.'
+        '</div>'
+    )
+
+
+def _beam_uls_empty_workspace_html(selected_check: str) -> str:
+    return (
+        '<div class="cpmm-beam-empty-card">'
+        f'<div class="cpmm-beam-empty-title">{escape(selected_check)} workspace is waiting for calculation</div>'
+        '<div class="cpmm-beam-empty-detail">'
+        'Capacity diagrams, utilization, and audit output are intentionally withheld until the selected ULS check is calculated for the current input hash.'
+        '</div></div>'
+    )
+
+
+
 def _beam_uls_summary_cards(active_df: pd.DataFrame, *, workflow_label: str, code_label: str, flexure_preview_df: pd.DataFrame | None = None, shear_check_df: pd.DataFrame | None = None, torsion_check_df: pd.DataFrame | None = None) -> list[dict[str, object]]:
     if active_df.empty:
         return [
@@ -9427,11 +9665,15 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
     st.markdown(_ANALYSIS_DASHBOARD_CSS, unsafe_allow_html=True)
     st.markdown("### ULS Beam/Girder decision summary")
     st.caption(
-        "Compact ULS workspace. Loads page is the source of truth; Analysis reads Active station rows only. "
-        "Flexure uses the strain-compatibility section engine with workflow-specific code-compatible audit basis: "
-        "Bridge → AASHTO LRFD-compatible strain compatibility; Building → ACI 318-compatible strain compatibility. "
-        "Shear uses the SHEAR.CODE2 strength/detailing gate for provided stirrup zones, Vn limit, minimum Av/s, maximum spacing, and zone coverage; torsion uses the CODE2 strength/detailing gate for φTn, longitudinal Al, closed-hoop spacing, and zone coverage. Combined V+T remains a separate interaction gate."
+        "Decision-first Beam/Girder ULS workspace. Loads remain the source of truth; Analysis reviews active station rows only."
     )
+    with st.expander("Beam/Girder ULS scope / engineering assumptions", expanded=False):
+        st.markdown(
+            "- Flexure uses the strain-compatibility section engine with workflow-specific code-compatible audit basis: Bridge → AASHTO LRFD-compatible strain compatibility; Building → ACI 318-compatible strain compatibility.\n"
+            "- Shear uses the SHEAR.CODE2 strength/detailing gate for provided stirrup zones, Vn limit, minimum Av/s, maximum spacing, and zone coverage.\n"
+            "- Torsion uses the CODE2 strength/detailing gate for φTn, longitudinal Al, closed-hoop spacing, and zone coverage.\n"
+            "- Combined V+T remains a separate interaction gate; final detailing, anchorage, development length, and project-specific exceptions remain engineering-review items."
+        )
 
     active_df = _active_beam_uls_demand_dataframe_from_session(st.session_state)
 
@@ -9470,7 +9712,20 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
         "Previously calculated checks remain cached until model inputs change."
     )
 
-    if st.button(calc_label, key=f"beam_girder_uls_calculate_{selected_check.replace(' ', '_').replace('+', 'plus')}", type="primary", use_container_width=True, help=calc_help):
+    command_cols = st.columns([3.6, 1.25])
+    with command_cols[0]:
+        st.markdown(_beam_uls_command_panel_html(selected_check, selected_entry), unsafe_allow_html=True)
+    with command_cols[1]:
+        st.caption("Primary action")
+        run_selected_check = st.button(
+            calc_label,
+            key=f"beam_girder_uls_calculate_{selected_check.replace(' ', '_').replace('+', 'plus')}",
+            type="primary",
+            use_container_width=True,
+            help=calc_help,
+        )
+
+    if run_selected_check:
         calculation_result = _beam_uls_calculate_selected_check(
             st.session_state,
             active_df,
@@ -9519,10 +9774,7 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
 
     status_text = _beam_uls_manual_result_badge(selected_entry)
     if selected_entry is None:
-        st.warning(
-            f"{selected_check} has not been calculated for the current inputs. "
-            "Press Calculate before reviewing capacity, utilization, audit tables, or diagrams."
-        )
+        st.markdown(_beam_uls_not_calculated_notice_html(selected_check), unsafe_allow_html=True)
     else:
         st.caption(f"{selected_check}: {status_text}")
 
@@ -9553,29 +9805,21 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
 
     st.markdown("#### Compact ULS check table")
     st.caption("To keep ULS responsive, only checks already calculated for the current inputs show capacity/utilization. Press Calculate in the selected mode to refresh its result. Calculate Shear + Torsion also refreshes the shear/torsion source rows needed for the combined review.")
-    st.dataframe(
-        _beam_uls_check_table(active_df, flexure_preview_df=flexure_preview_df, shear_check_df=shear_check_df, torsion_check_df=torsion_check_df, combined_vt_df=combined_vt_df, state=st.session_state),
-        use_container_width=True,
-        hide_index=True,
+    compact_uls_table = _beam_uls_check_table(
+        active_df,
+        flexure_preview_df=flexure_preview_df,
+        shear_check_df=shear_check_df,
+        torsion_check_df=torsion_check_df,
+        combined_vt_df=combined_vt_df,
+        state=st.session_state,
     )
+    st.markdown(_beam_uls_check_table_html(compact_uls_table), unsafe_allow_html=True)
 
     st.markdown("#### ULS check workspace")
     st.caption(_beam_uls_check_tab_caption() + " PERF.ULS2 runs a selected ULS check only after you press Calculate.")
 
     if selected_entry is None:
-        _render_analysis_summary_strip(
-            [
-                {
-                    "title": f"{selected_check} calculation",
-                    "value": "NOT CALCULATED",
-                    "detail": "Press the highlighted Calculate button above to run this check for the current inputs.",
-                    "status": "warning",
-                    "strong": True,
-                }
-            ],
-            columns=1,
-        )
-        st.info("Capacity diagrams, utilization, and audit output are intentionally withheld until the selected ULS check is calculated.")
+        st.markdown(_beam_uls_empty_workspace_html(selected_check), unsafe_allow_html=True)
         with st.expander("ULS demand table — audit / source data", expanded=False):
             st.caption("Read-only normalized view of Active rows from Loads. Secondary actions Muy, Vux, and Nu are kept here for audit, not default decision display.")
             st.dataframe(_beam_uls_audit_dataframe(active_df), use_container_width=True, hide_index=True)
