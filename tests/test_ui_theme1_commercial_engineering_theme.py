@@ -26,8 +26,9 @@ def test_ui_theme1_is_css_only_and_preserves_navigation_structure() -> None:
     assert source.count('"Setup": ["Project", "Materials"]') == 1
     assert source.count('"Sections": ["Section Builder", "Rebar", "Prestress"]') == 1
     assert source.count('"Loads": ["Loads"]') == 1
-    assert source.count('"Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]') == 1
+    assert source.count('"Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber"]') == 1
     assert source.count('"Results": ["Results"]') == 1
+    assert source.count('"Report / QA": ["Report / QA"]') == 1
 
 
 def test_ui_theme1_does_not_touch_dataeditor_commit_hotfix_or_solver_files() -> None:

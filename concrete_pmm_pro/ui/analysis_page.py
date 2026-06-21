@@ -231,8 +231,8 @@ from concrete_pmm_pro.verification.sls_benchmarks import (
     sls_benchmark_summary_to_dataframe,
 )
 
-ANALYSIS_SUBTABS = ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"]
-ANALYSIS_COLUMN_PIER_SUBTABS = ["ULS Strength", "Report / QA"]
+ANALYSIS_SUBTABS = ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber"]
+ANALYSIS_COLUMN_PIER_SUBTABS = ["ULS Strength"]
 COLUMN_PIER_ULS_CHECK_SUBTABS = ["Summary", "Flexural (PMM)", "Shear", "Torsion", "Shear + Torsion"]
 # Legacy source-test token retained while PERF.RERUN1 switches from eager st.tabs
 # to lazy subpage rendering: uls_tab, sls_tab, sls_deflection_tab, report_tab
@@ -18021,9 +18021,39 @@ def render_analysis_sls_deflection_camber() -> None:
 
 
 def render_analysis_report_qa() -> None:
-    st.subheader("Report / QA")
-    st.info("Report and QA tools summarize stored results only; they do not rerun PMM, SLS, or verification solvers.")
+    st.info("Report and QA tools summarize stored results only; they do not rerun PMM, SLS, ULS, or verification solvers.")
     _render_pre_report_qa_expander()
+
+
+def _commercial_report_qa_dashboard_cards(settings: AnalysisModeSettings) -> list[dict[str, object]]:
+    """Return visual-only dashboard cards for the promoted Report / QA workspace."""
+
+    workflow_label = analysis_mode_label(settings)
+    code = project_design_code_from_session(st.session_state)
+    readiness = st.session_state.get("analysis_status", "Ready to review")
+    return [
+        {"title": "Active review", "value": "Report / QA", "detail": "Reads stored results only", "status": "info"},
+        {"title": "Workflow", "value": workflow_label, "detail": "report-readiness context", "status": "ready"},
+        {"title": "Design code", "value": str(code), "detail": "Project code basis", "status": "neutral"},
+        {"title": "Runtime state", "value": str(readiness), "detail": "No solver rerun from Report / QA", "status": "info"},
+    ]
+
+
+def render_report_qa_page() -> None:
+    settings = _analysis_mode_from_session()
+    render_page_header(
+        "Report / QA",
+        "Review stored analysis results, traceability, report readiness, limitations, and export QA without rerunning solvers.",
+        icon="QA",
+        kicker="Report workspace",
+        badge="Stored results",
+        accent="blue",
+    )
+    render_metric_cards(_commercial_report_qa_dashboard_cards(settings))
+    render_section_bar("Report / QA workspace", "Report and QA tools summarize stored results only; PMM, SLS, ULS, and verification solvers are not rerun here.", mark="Q")
+    render_analysis_report_qa()
+    mark_analysis_current(st.session_state, workspace="Report / QA")
+    _render_runtime_diagnostics_expander()
 
 
 def _commercial_analysis_dashboard_cards(settings: AnalysisModeSettings, active_subpage: str) -> list[dict[str, object]]:
@@ -18057,7 +18087,7 @@ def render_analysis_page() -> None:
     settings = _analysis_mode_from_session()
     render_page_header(
         "Analysis",
-        "Run and review strength, serviceability, deflection/camber, and report-readiness workflows under the active engineering context.",
+        "Run and review strength, serviceability, and deflection/camber workflows under the active engineering context.",
         icon="AN",
         kicker="Analysis workspace",
         badge="Review",
@@ -18072,7 +18102,5 @@ def render_analysis_page() -> None:
         render_analysis_sls_stress()
     elif active_subpage == "SLS Deflection / Camber":
         render_analysis_sls_deflection_camber()
-    elif active_subpage == "Report / QA":
-        render_analysis_report_qa()
     mark_analysis_current(st.session_state, workspace=f"Analysis / {active_subpage}")
     _render_runtime_diagnostics_expander()

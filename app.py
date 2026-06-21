@@ -16,7 +16,7 @@ from concrete_pmm_pro.io.project_io import (
     project_from_session_state,
     project_to_json,
 )
-from concrete_pmm_pro.ui.analysis_page import render_analysis_page
+from concrete_pmm_pro.ui.analysis_page import render_analysis_page, render_report_qa_page
 from concrete_pmm_pro.ui.loads_page import render_loads_page
 from concrete_pmm_pro.ui.materials_page import render_materials_page
 from concrete_pmm_pro.ui.prestress_page import render_prestress_page
@@ -31,8 +31,9 @@ WORKSPACE_NAVIGATION = {
     "Setup": ["Project", "Materials"],
     "Sections": ["Section Builder", "Rebar", "Prestress"],
     "Loads": ["Loads"],
-    "Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber", "Report / QA"],
+    "Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber"],
     "Results": ["Results"],
+    "Report / QA": ["Report / QA"],
 }
 
 RESULTS_WORKSPACE_PLACEHOLDER = (
@@ -1140,6 +1141,7 @@ def _commercial_workspace_icon(workspace: str) -> str:
         "Loads": "⇩",
         "Analysis": "⌁",
         "Results": "▤",
+        "Report / QA": "QA",
     }.get(str(workspace), "•")
 
 
@@ -1399,6 +1401,10 @@ def render_results_workspace() -> None:
     st.info(RESULTS_WORKSPACE_PLACEHOLDER)
 
 
+def render_report_qa_workspace() -> None:
+    render_report_qa_page()
+
+
 def main() -> None:
     st.set_page_config(page_title="Concrete Section Pro", layout="wide", initial_sidebar_state="expanded")
     _render_global_commercial_tab_styles()
@@ -1434,6 +1440,8 @@ def main() -> None:
         render_analysis_workspace()
     elif active_workspace == "Results":
         render_results_workspace()
+    elif active_workspace == "Report / QA":
+        render_report_qa_workspace()
 
 
 if __name__ == "__main__":
