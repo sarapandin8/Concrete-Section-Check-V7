@@ -22,6 +22,7 @@ from concrete_pmm_pro.ui.materials_page import render_materials_page
 from concrete_pmm_pro.ui.prestress_page import render_prestress_page
 from concrete_pmm_pro.ui.project_page import render_project_page
 from concrete_pmm_pro.ui.navigation import render_active_choice
+from concrete_pmm_pro.ui.commercial import render_metric_cards, render_page_header, render_section_bar
 from concrete_pmm_pro.ui.rebar_page import render_rebar_page
 from concrete_pmm_pro.ui.section_builder import render_section_builder
 from concrete_pmm_pro.visualization.plot_readability import install_streamlit_plotly_readability_patch
@@ -1398,7 +1399,39 @@ def render_analysis_workspace() -> None:
 
 
 def render_results_workspace() -> None:
-    st.info(RESULTS_WORKSPACE_PLACEHOLDER)
+    render_page_header(
+        "Results",
+        "Read stored analysis outputs and future result summaries without rerunning the engineering solvers.",
+        icon="RS",
+        badge="Stored results",
+    )
+    render_metric_cards(
+        [
+            {
+                "title": "Result source",
+                "value": "Stored outputs",
+                "detail": "analysis workspaces remain the source of calculations",
+                "status": "info",
+            },
+            {
+                "title": "Solver behavior",
+                "value": "Read-only",
+                "detail": "opening Results does not rerun PMM, ULS, or SLS",
+                "status": "ready",
+            },
+            {
+                "title": "Current scope",
+                "value": "Placeholder",
+                "detail": "summary tables and report preview are planned",
+                "status": "warning",
+            },
+        ]
+    )
+    render_section_bar(
+        "Results workspace foundation",
+        RESULTS_WORKSPACE_PLACEHOLDER,
+        mark="R",
+    )
 
 
 def render_report_qa_workspace() -> None:
