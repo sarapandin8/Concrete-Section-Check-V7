@@ -9004,15 +9004,15 @@ def _beam_uls_action_note_for_row(row: Mapping[str, object]) -> str:
     if "FAIL" in status or "BLOCKED" in status:
         return "Resolve governing strength/detailing gate."
     if check == "Flexure" and ("PLANNED" in status or "NOT CALCULATED" in status):
-        return "Press Calculate Flexure."
+        return "Run Flexure strength check."
     if check == "Shear" and "LAYOUT READY" in status:
-        return "Press Calculate Shear."
+        return "Run Shear strength/detailing check."
     if check == "Shear" and "LAYOUT REQUIRED" in status:
         return "Define/confirm stirrup zones first."
     if check == "Torsion" and "LAYOUT REQUIRED" in status:
-        return "Define closed hoops and longitudinal Al."
+        return "Define torsion reinforcement before torsion check."
     if check == "Shear + Torsion" and "NOT CALCULATED" in status:
-        return "Press Calculate Shear + Torsion."
+        return "Run Shear + Torsion interaction check."
     if "NOT READY" in status:
         return "Complete required inputs."
     if "OPTIONAL" in status or "NOT ACTIVE" in status:
@@ -9316,10 +9316,17 @@ def _make_beam_uls_flexure_preview_figure(active_df: pd.DataFrame, flexure_previ
                 x=[float(row["__x_m"])],
                 y=[sign * capacity],
                 mode="markers+text",
-                text=[f"{status} · D/C {utilization:.3f}"],
-                textposition="top center",
+                text=[f"D/C {utilization:.3f}"],
+                textposition="bottom center" if sign > 0.0 else "top center",
+                textfont=dict(size=10),
+                marker=dict(size=9),
+                cliponaxis=False,
                 name="Governing flexure check",
-                hovertemplate="x=%{x:.3f} m<br>Governing φMn=%{y:.3f} kN-m<extra></extra>",
+                hovertemplate=(
+                    "x=%{x:.3f} m<br>"
+                    f"Status={status}<br>"
+                    "Governing φMn=%{y:.3f} kN-m<extra></extra>"
+                ),
             )
         )
 
@@ -9714,7 +9721,7 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
 
     command_cols = st.columns([3.6, 1.25])
     with command_cols[0]:
-        st.markdown(_beam_uls_command_panel_html(selected_check, selected_entry), unsafe_allow_html=True)
+        command_status_slot = st.empty()
     with command_cols[1]:
         st.caption("Primary action")
         run_selected_check = st.button(
@@ -9770,7 +9777,7 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
                     input_hash=uls_input_hash,
                     result=torsion_source,
                 )
-        st.success(f"{selected_check} calculated for current inputs.")
+    command_status_slot.markdown(_beam_uls_command_panel_html(selected_check, selected_entry), unsafe_allow_html=True)
 
     status_text = _beam_uls_manual_result_badge(selected_entry)
     if selected_entry is None:
