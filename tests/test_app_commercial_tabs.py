@@ -129,8 +129,9 @@ def test_ui_analysis_nav2_promotes_uls_strength_summary_to_top_level_check_tab()
     assert 'COLUMN_PIER_ULS_CHECK_SUBTABS = ["Summary", "Flexural (PMM)", "Shear", "Torsion", "Shear + Torsion"]' in source
     assert "def _render_column_pier_uls_summary_workspace" in source
     assert 'if active_check == "Summary":' in source
-    assert '_render_project_design_code_guard(workflow="pmm")' in source
-    assert "_render_column_pier_analysis_decision_view()" in source
+    assert 'render_metric_cards(_project_design_code_status_cards(workflow="pmm"))' in source
+    assert 'render_metric_cards(_column_pier_analysis_scope_cards())' in source
+    assert '_render_column_pier_uls_decision_summary()' in source
     render_start = source.index("def render_analysis_uls_pmm() -> None:")
     render_end = source.index("def render_analysis_sls_stress() -> None:", render_start)
     body = source[render_start:render_end]

@@ -526,6 +526,118 @@ _ANALYSIS_DASHBOARD_CSS = """
   font-weight: 730;
   overflow-wrap: anywhere;
 }
+.cpmm-summary-overall-card {
+  border: 1px solid #d7e2ee;
+  border-left: 5px solid #1d6fe7;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  padding: 1.0rem 0.95rem;
+  min-height: 100%;
+  box-shadow: 0 5px 14px rgba(7, 26, 51, 0.055);
+}
+.cpmm-summary-overall-card.ready {
+  border-left-color: #22a447;
+  background: linear-gradient(180deg, #ffffff 0%, #f4fff7 100%);
+}
+.cpmm-summary-overall-card.warning {
+  border-left-color: #f59e0b;
+  background: linear-gradient(180deg, #ffffff 0%, #fffaf0 100%);
+}
+.cpmm-summary-overall-card.danger {
+  border-left-color: #d92d20;
+  background: linear-gradient(180deg, #ffffff 0%, #fff6f5 100%);
+}
+.cpmm-summary-overall-card.info {
+  border-left-color: #1d6fe7;
+}
+.cpmm-summary-overall-card.neutral {
+  border-left-color: #98a2b3;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+}
+.cpmm-summary-overall-eyebrow {
+  color: #526f8d;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 0.35rem;
+}
+.cpmm-summary-overall-title {
+  color: #071a33;
+  font-size: 1.02rem;
+  font-weight: 900;
+  line-height: 1.22;
+  margin-bottom: 0.35rem;
+}
+.cpmm-summary-overall-detail {
+  color: #475467;
+  font-size: 0.80rem;
+  line-height: 1.42;
+}
+.cpmm-summary-table-shell {
+  border: 1px solid #d7e2ee;
+  border-radius: 14px;
+  background: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 5px 14px rgba(7, 26, 51, 0.045);
+}
+.cpmm-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cpmm-summary-table thead th {
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+  color: #526f8d;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 0.72rem 0.78rem;
+  border-bottom: 1px solid #d7e2ee;
+  vertical-align: bottom;
+}
+.cpmm-summary-table tbody td {
+  color: #071a33;
+  font-size: 0.80rem;
+  line-height: 1.42;
+  padding: 0.75rem 0.78rem;
+  border-bottom: 1px solid #e9eef5;
+  vertical-align: top;
+}
+.cpmm-summary-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.cpmm-summary-table .check-name {
+  font-weight: 800;
+  color: #0b3a66;
+}
+.cpmm-summary-table .muted {
+  color: #667085;
+}
+.cpmm-summary-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.56rem;
+  font-size: 0.72rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.cpmm-summary-status-pill.ready { color: #166534; background: #e9f9ef; border-color: rgba(34, 164, 71, 0.18); }
+.cpmm-summary-status-pill.warning { color: #92400e; background: #fff4d6; border-color: rgba(245, 158, 11, 0.20); }
+.cpmm-summary-status-pill.danger { color: #b42318; background: #fee4e2; border-color: rgba(217, 45, 32, 0.20); }
+.cpmm-summary-status-pill.info { color: #1849a9; background: #e8f1ff; border-color: rgba(29, 111, 231, 0.18); }
+.cpmm-summary-status-pill.neutral { color: #475467; background: #eef2f6; border-color: rgba(152, 162, 179, 0.18); }
+.cpmm-summary-code-note {
+  color: #475467;
+  font-size: 0.78rem;
+}
+@media (max-width: 900px) {
+  .cpmm-summary-overall-card { margin-bottom: 0.75rem; }
+}
 </style>
 """
 
@@ -10011,19 +10123,72 @@ def _column_pier_uls_decision_summary_cards(
     ]
 
 
+def _column_pier_status_badge_html(status: object) -> str:
+    label = str(status or "-").replace("_", " ")
+    style = _column_pier_status_style(status)
+    return f'<span class="cpmm-summary-status-pill {style}">{escape(label)}</span>'
+
+
+def _column_pier_overall_decision_card_html(card: Mapping[str, object]) -> str:
+    status = str(card.get("status", "info") or "info")
+    title = escape(str(card.get("value", "")))
+    detail = escape(str(card.get("detail", "")))
+    eyebrow = escape(str(card.get("title", "Overall decision")))
+    return (
+        f'<div class="cpmm-summary-overall-card {status}">'
+        f'<div class="cpmm-summary-overall-eyebrow">{eyebrow}</div>'
+        f'<div class="cpmm-summary-overall-title">{title}</div>'
+        f'<div class="cpmm-summary-overall-detail">{detail}</div>'
+        '</div>'
+    )
+
+
+def _column_pier_uls_summary_table_html(rows: list[dict[str, object]]) -> str:
+    header = (
+        "<thead><tr>"
+        "<th>Check</th>"
+        "<th>Status</th>"
+        "<th>Governing Case</th>"
+        "<th>Demand</th>"
+        "<th>D/C</th>"
+        "<th>Route / Scope</th>"
+        "<th>Required Action</th>"
+        "</tr></thead>"
+    )
+    body_rows: list[str] = []
+    for row in rows:
+        body_rows.append(
+            "<tr>"
+            f'<td><div class="check-name">{escape(str(row.get("Check", "-")))}</div></td>'
+            f'<td>{_column_pier_status_badge_html(row.get("Status"))}</td>'
+            f'<td>{escape(str(row.get("Governing Case", "-")))}</td>'
+            f'<td>{escape(str(row.get("Demand", "-")))}</td>'
+            f'<td>{escape(str(row.get("D/C", "-")))}</td>'
+            f'<td><div class="cpmm-summary-code-note">{escape(str(row.get("Route / Scope", "-")))}</div></td>'
+            f'<td>{escape(str(row.get("Required Action", "-")))}</td>'
+            "</tr>"
+        )
+    return '<div class="cpmm-summary-table-shell"><table class="cpmm-summary-table">' + header + '<tbody>' + ''.join(body_rows) + '</tbody></table></div>'
+
+
 def _render_column_pier_uls_decision_summary() -> None:
     analysis_input = _serviceability_analysis_input_from_session()
     rows = _column_pier_check_decision_rows(st.session_state, analysis_input)
+    decision_cards = _column_pier_uls_decision_summary_cards(rows, analysis_input, st.session_state)
+    overall_card = decision_cards[0]
+    detail_cards = decision_cards[1:]
+
     st.markdown("#### Column/Pier ULS Decision Summary")
     st.caption(
         "Decision-first overview for the current stored inputs. This panel does not rerun PMM; shear, torsion, and V+T are read-only previews/check gates from the current session data."
     )
-    _render_analysis_summary_strip(_column_pier_uls_decision_summary_cards(rows, analysis_input, st.session_state), columns=4)
-    summary_df = pd.DataFrame(
-        rows,
-        columns=["Check", "Status", "Governing Case", "Demand", "D/C", "Route / Scope", "Required Action"],
-    )
-    st.dataframe(summary_df, use_container_width=True, hide_index=True)
+    render_metric_cards(detail_cards)
+    cols = st.columns([1.25, 8.0])
+    with cols[0]:
+        st.markdown(_column_pier_overall_decision_card_html(overall_card), unsafe_allow_html=True)
+    with cols[1]:
+        st.markdown(_column_pier_uls_summary_table_html(rows), unsafe_allow_html=True)
+
     warning_rows = [row for row in rows if _column_pier_status_style(row.get("Status")) in {"danger", "warning"}]
     if warning_rows:
         with st.expander("Column/Pier ULS action items", expanded=False):
@@ -10058,12 +10223,20 @@ def _column_pier_uls_check_choice() -> str:
 
 
 def _render_column_pier_uls_summary_workspace() -> None:
-    st.markdown("#### Summary")
-    st.caption(
-        "ULS Strength overview for the selected member family. This summary collects the project code basis, scoped workflow capability, and Column/Pier decision table before the individual strength-check workspaces."
+    st.markdown(_ANALYSIS_DASHBOARD_CSS, unsafe_allow_html=True)
+    render_section_bar(
+        "Summary",
+        "ULS Strength overview for the selected member family. This summary collects the project code basis, scoped workflow capability, and Column/Pier decision table before the individual strength-check workspaces.",
+        mark="S",
     )
-    _render_project_design_code_guard(workflow="pmm")
-    _render_column_pier_analysis_decision_view()
+    render_metric_cards(_project_design_code_status_cards(workflow="pmm"))
+    render_section_bar(
+        "Column / Pier / Wall / Pylon Decision View",
+        "Commercial workflow focus: run PMM interaction for Pu-Mux-Muy strength, then review scoped ACI RC shear, torsion, and V+T gates without extending them to unsupported routes.",
+        mark="D",
+    )
+    render_metric_cards(_column_pier_analysis_scope_cards())
+    _render_column_pier_uls_decision_summary()
 
 
 def _column_pier_guarded_strength_check_cards(check_name: str) -> list[dict[str, object]]:

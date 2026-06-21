@@ -205,5 +205,7 @@ def test_column_pier_decision_summary_is_first_class_uls_strength_summary_tab() 
     summary_start = source.index("def _render_column_pier_uls_summary_workspace()")
     summary_end = source.index("def _column_pier_guarded_strength_check_cards", summary_start)
     summary_body = source[summary_start:summary_end]
-    assert '_render_project_design_code_guard(workflow="pmm")' in summary_body
-    assert "_render_column_pier_analysis_decision_view()" in summary_body
+    assert 'render_metric_cards(_project_design_code_status_cards(workflow="pmm"))' in summary_body
+    assert 'render_metric_cards(_column_pier_analysis_scope_cards())' in summary_body
+    assert '_render_column_pier_uls_decision_summary()' in summary_body
+    assert 'render_section_bar(' in summary_body
