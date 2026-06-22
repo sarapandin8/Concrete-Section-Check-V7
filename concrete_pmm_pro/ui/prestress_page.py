@@ -4908,259 +4908,372 @@ def _render_girder_advisory_debonding_recommendation(
             rerun()
 
 
-def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: SectionGeometry | None) -> go.Figure:
-    """Return a clean cross-section strand layout preview.
 
-    The previous version drew every strand twice (shape circle + marker trace)
-    and attached one row label at each strand-row y-coordinate.  Dense Railway
-    U-girder layouts made those labels overlap and clip at the right edge.
-    This view keeps the strand geometry true to scale, uses one marker layer,
-    and moves row information into a compact right-side summary panel.
+def _girder_strand_cross_section_row_info(table: pd.DataFrame) -> dict[str, dict[str, Any]]:
+    """Return row-level strand/debond metadata used by cross-section dashboards."""
+
+    row_info: dict[str, dict[str, Any]] = {}
+    active_rows = _active_girder_strand_layout_rows(table)
+    if active_rows.empty:
+        return row_info
+    for _, row in active_rows.iterrows():
+        group = str(row.get("Group ID") or "strand group")
+        row_dict = row.to_dict()
+        status, _ = _debond_status_from_row(row)
+        left = float(_to_float(row.get("Left debond m")) or 0.0)
+        right = float(_to_float(row.get("Right debond m")) or 0.0)
+        count = int(_to_float(row.get("No. Strands")) or 0)
+        debonded_numbers = tuple(debonded_strand_numbers_for_row(row_dict))
+        explicit_numbers = tuple(explicit_debonded_strand_numbers(row_dict))
+        row_info[group] = {
+            "status": status,
+            "left": left,
+            "right": right,
+            "count": count,
+            "debonded_numbers": debonded_numbers,
+            "explicit": bool(explicit_numbers),
+            "group": group,
+        }
+    return row_info
+
+
+def _strand_cross_section_hover(point: pd.Series, row_info: dict[str, dict[str, Any]]) -> str:
+    """Return compact hover text for strand dashboard plots."""
+
+    group = str(point.get("Group ID") or "strand group")
+    info = row_info.get(group, {"status": "Fully bonded", "left": 0.0, "right": 0.0})
+    state = "Debonded" if bool(point.get("Debonded selected")) else "Bonded"
+    details = [
+        f"{group} · strand #{int(float(point.get('Strand no.') or 0))}",
+        f"State = {state}",
+        f"x = {float(point.get('x_mm') or 0.0):.1f} mm",
+        f"y = {float(point.get('y_mm_abs') or 0.0):.1f} mm",
+    ]
+    drawing_length = int(float(point.get("Drawing debond length mm") or 0.0))
+    if drawing_length > 0:
+        details.append(f"Drawing debond symbol = {drawing_length} mm")
+    left = float(info.get("left") or 0.0)
+    right = float(info.get("right") or 0.0)
+    if left > 1e-9 or right > 1e-9:
+        details.append(f"Row status = {info.get('status') or 'Review'}")
+        details.append(f"Debond L/R = {left:.3f} / {right:.3f} m")
+    return "<br>".join(details)
+
+
+def _add_concrete_schematic_trace(
+    fig: go.Figure,
+    geometry: SectionGeometry | None,
+    *,
+    showlegend: bool = True,
+    fillcolor: str = "rgba(15, 76, 129, 0.055)",
+    linecolor: str = "rgba(15, 76, 129, 0.58)",
+    linewidth: float = 1.6,
+) -> tuple[float, float, float, float] | None:
+    """Add a low-contrast concrete outline and return polygon bounds."""
+
+    if geometry is None:
+        return None
+    try:
+        polygon = to_shapely_polygon(geometry)
+    except Exception:
+        return None
+    try:
+        x, y = polygon.exterior.xy
+        fig.add_trace(
+            go.Scatter(
+                x=list(x),
+                y=list(y),
+                mode="lines",
+                fill="toself",
+                fillcolor=fillcolor,
+                line={"color": linecolor, "width": linewidth},
+                name="Concrete",
+                hoverinfo="skip",
+                showlegend=showlegend,
+            )
+        )
+        for index, interior in enumerate(polygon.interiors, start=1):
+            hx, hy = interior.xy
+            fig.add_trace(
+                go.Scatter(
+                    x=list(hx),
+                    y=list(hy),
+                    mode="lines",
+                    fill="toself",
+                    fillcolor="rgba(255,255,255,0.98)",
+                    line={"color": "rgba(15, 76, 129, 0.50)", "width": max(1.0, linewidth - 0.2), "dash": "solid"},
+                    name=f"Void {index}",
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+        minx, miny, maxx, maxy = polygon.bounds
+        return float(minx), float(miny), float(maxx), float(maxy)
+    except Exception:
+        return None
+
+
+def _add_strand_state_marker_traces(
+    fig: go.Figure,
+    points: pd.DataFrame,
+    row_info: dict[str, dict[str, Any]],
+    *,
+    marker_size: int,
+    bonded_fill: str,
+    debonded_fill: str,
+    bonded_line: str = "#2563eb",
+    debonded_line: str = "#dc2626",
+    bonded_width: float = 1.8,
+    debonded_width: float = 2.0,
+    showlegend: bool = True,
+) -> None:
+    """Add bonded/debonded strand markers as two clean Plotly traces."""
+
+    if points.empty:
+        return
+    state_defs = [
+        (False, "Bonded", bonded_fill, bonded_line, bonded_width),
+        (True, "Debonded", debonded_fill, debonded_line, debonded_width),
+    ]
+    for debonded, name, fill, line, width in state_defs:
+        selected = points.loc[points["Debonded selected"].fillna(False).astype(bool) == debonded].copy()
+        if selected.empty:
+            continue
+        fig.add_trace(
+            go.Scatter(
+                x=selected["x_mm"].astype(float).tolist(),
+                y=selected["y_mm_abs"].astype(float).tolist(),
+                mode="markers",
+                marker={
+                    "size": marker_size,
+                    "color": fill,
+                    "symbol": "circle",
+                    "line": {"color": line, "width": width},
+                },
+                name=name,
+                text=[_strand_cross_section_hover(point, row_info) for _, point in selected.iterrows()],
+                hovertemplate="%{text}<extra></extra>",
+                showlegend=showlegend,
+            )
+        )
+
+
+def _add_drawing_debond_symbol_trace(
+    fig: go.Figure,
+    points: pd.DataFrame,
+    *,
+    marker_size: int = 8,
+    showlegend: bool = False,
+) -> None:
+    """Add lightweight drawing-symbol overlays only when drawing metadata exists."""
+
+    if points.empty or "Drawing debond length mm" not in points.columns:
+        return
+    drawing_symbol_traces: dict[int, list[tuple[float, float, str]]] = {}
+    for _, point in points.iterrows():
+        drawing_length = int(float(point.get("Drawing debond length mm") or 0.0))
+        if drawing_length <= 0:
+            continue
+        drawing_symbol_traces.setdefault(drawing_length, []).append(
+            (
+                float(point["x_mm"]),
+                float(point["y_mm_abs"]),
+                f"{point['Group ID']} #{int(point['Strand no.'])}<br>Drawing debond = {drawing_length} mm",
+            )
+        )
+    for drawing_length in sorted(drawing_symbol_traces):
+        label, symbol = RAILWAY_U_GIRDER_DEBOND_SYMBOLS_MM.get(drawing_length, (f"Debonded at {drawing_length} mm", "x-open"))
+        trace_points = drawing_symbol_traces[drawing_length]
+        fig.add_trace(
+            go.Scatter(
+                x=[item[0] for item in trace_points],
+                y=[item[1] for item in trace_points],
+                mode="markers",
+                marker={
+                    "size": marker_size,
+                    "color": "rgba(15, 23, 42, 0.64)",
+                    "symbol": symbol,
+                    "line": {"color": "rgba(15, 23, 42, 0.66)", "width": 0.9},
+                },
+                name=label,
+                text=[item[2] for item in trace_points],
+                hovertemplate="%{text}<br>x=%{x:.1f} mm<br>y=%{y:.1f} mm<extra></extra>",
+                showlegend=showlegend,
+            )
+        )
+
+
+def _strand_block_side_label(points: pd.DataFrame) -> str:
+    """Return a compact left/right/all label for a subset of strand points."""
+
+    if points.empty or "x_mm" not in points.columns:
+        return "All"
+    x_min = float(points["x_mm"].min())
+    x_max = float(points["x_mm"].max())
+    if x_max < 0.0:
+        return "Left"
+    if x_min > 0.0:
+        return "Right"
+    return "All"
+
+
+def _girder_strand_row_summary_dataframe(table: pd.DataFrame, geometry: SectionGeometry | None) -> pd.DataFrame:
+    """Return the dashboard row summary shown beside the overall schematic."""
+
+    points = _girder_strand_point_layout_dataframe(table, geometry)
+    if points.empty:
+        return pd.DataFrame(
+            columns=[
+                "Row",
+                "Side groups",
+                "Total strands",
+                "Bonded",
+                "Debonded",
+                "Left debond (m)",
+                "Right debond (m)",
+                "Selection",
+            ]
+        )
+    row_info = _girder_strand_cross_section_row_info(table)
+    buckets: dict[tuple[int, float], dict[str, Any]] = {}
+    for group, group_points in points.groupby("Group ID", as_index=False):
+        group_name = str(group)
+        y_value = round(float(group_points["y_mm_abs"].mean()), 6)
+        row_number = _strand_row_number_from_group_id(group_name)
+        sort_number = int(row_number) if row_number is not None else len(buckets) + 1
+        key = (sort_number, y_value)
+        info = row_info.get(group_name, {"left": 0.0, "right": 0.0, "explicit": False})
+        debonded_count = int(group_points["Debonded selected"].fillna(False).astype(bool).sum())
+        total_count = int(len(group_points.index))
+        bucket = buckets.setdefault(
+            key,
+            {
+                "row_number": row_number,
+                "groups": [],
+                "total": 0,
+                "bonded": 0,
+                "debonded": 0,
+                "left": 0.0,
+                "right": 0.0,
+                "explicit": False,
+            },
+        )
+        bucket["groups"].append(group_name)
+        bucket["total"] += total_count
+        bucket["bonded"] += max(0, total_count - debonded_count)
+        bucket["debonded"] += debonded_count
+        bucket["left"] = max(float(bucket["left"]), float(info.get("left") or 0.0))
+        bucket["right"] = max(float(bucket["right"]), float(info.get("right") or 0.0))
+        bucket["explicit"] = bool(bucket["explicit"]) or bool(info.get("explicit"))
+
+    rows: list[dict[str, Any]] = []
+    for key in sorted(buckets):
+        bucket = buckets[key]
+        groups = [str(item) for item in bucket["groups"]]
+        if bucket["row_number"] is not None:
+            row_label = f"Row {int(bucket['row_number'])}"
+        else:
+            normalized_names = [name.replace("L ", "").replace("R ", "") for name in groups]
+            row_label = normalized_names[0] if len(set(normalized_names)) == 1 else " / ".join(groups)
+        selection = "Individual" if bool(bucket["explicit"]) else ("Row fallback" if int(bucket["debonded"]) else "None")
+        rows.append(
+            {
+                "Row": row_label,
+                "Side groups": " / ".join(groups),
+                "Total strands": int(bucket["total"]),
+                "Bonded": int(bucket["bonded"]),
+                "Debonded": int(bucket["debonded"]),
+                "Left debond (m)": float(bucket["left"]),
+                "Right debond (m)": float(bucket["right"]),
+                "Selection": selection,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
+def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: SectionGeometry | None) -> go.Figure:
+    """Return the PRESTRESS.VIZ2 overall section schematic.
+
+    This plot is intentionally not the strand-detail view.  It shows where the
+    strand blocks sit in the complete section, while row counts and detailed
+    bonded/debonded reading live in the adjacent table and zoomed panels.
     """
 
     fig = go.Figure()
-    bottom_y = _section_bottom_y_from_geometry(geometry)
-    section_line_color = "#1f4e79"
-    bonded_color = "#1f77b4"
-    debonded_color = "#dc2626"
-    section_x_min: float | None = None
-    section_x_max: float | None = None
-    section_y_min: float | None = None
-    section_y_max: float | None = None
-
-    if geometry is not None:
-        try:
-            polygon = to_shapely_polygon(geometry)
-            x, y = polygon.exterior.xy
-            section_x_min, section_y_min, section_x_max, section_y_max = polygon.bounds
-            fig.add_trace(
-                go.Scatter(
-                    x=list(x),
-                    y=list(y),
-                    mode="lines",
-                    fill="toself",
-                    fillcolor="rgba(31, 78, 121, 0.14)",
-                    line={"color": section_line_color, "width": 2.4},
-                    name="Concrete",
-                    hoverinfo="skip",
-                )
-            )
-            for index, interior in enumerate(polygon.interiors, start=1):
-                hx, hy = interior.xy
-                fig.add_trace(
-                    go.Scatter(
-                        x=list(hx),
-                        y=list(hy),
-                        mode="lines",
-                        fill="toself",
-                        fillcolor="rgba(255, 255, 255, 0.96)",
-                        line={"color": section_line_color, "width": 2.0, "dash": "solid"},
-                        name=f"Void {index}",
-                        hoverinfo="skip",
-                        showlegend=False,
-                    )
-                )
-        except Exception:
-            pass
-
+    row_info = _girder_strand_cross_section_row_info(table)
     points = _girder_strand_point_layout_dataframe(table, geometry)
+    bounds = _add_concrete_schematic_trace(fig, geometry, showlegend=True)
+
     if not points.empty:
-        active_rows = _active_girder_strand_layout_rows(table).set_index("Group ID", drop=False)
-        row_info: dict[str, dict[str, Any]] = {}
-        for _, row in active_rows.iterrows():
-            group = str(row.get("Group ID") or "strand group")
-            row_dict = row.to_dict()
-            status, _ = _debond_status_from_row(row)
-            left = float(_to_float(row.get("Left debond m")) or 0.0)
-            right = float(_to_float(row.get("Right debond m")) or 0.0)
-            count = int(_to_float(row.get("No. Strands")) or 0)
-            debonded_numbers = debonded_strand_numbers_for_row(row_dict)
-            explicit_numbers = explicit_debonded_strand_numbers(row_dict)
-            row_info[group] = {
-                "status": status,
-                "left": left,
-                "right": right,
-                "count": count,
-                "debonded_numbers": debonded_numbers,
-                "explicit": bool(explicit_numbers),
-            }
-
-        bonded_points: list[tuple[pd.Series, str, float, float]] = []
-        debonded_points: list[tuple[pd.Series, str, float, float]] = []
-        for _, point in points.iterrows():
-            group = str(point.get("Group ID") or "strand group")
-            info = row_info.get(group, {"status": "Fully bonded", "left": 0.0, "right": 0.0})
-            record = (point, str(info["status"]), float(info["left"]), float(info["right"]))
-            if bool(point.get("Debonded selected")):
-                debonded_points.append(record)
-            else:
-                bonded_points.append(record)
-
-        def _point_hover(record: tuple[pd.Series, str, float, float]) -> str:
-            point, status, left, right = record
-            state = "Debonded selected" if bool(point.get("Debonded selected")) else "Bonded"
-            details = [f"{point['Group ID']} #{point['Strand no.']}", f"Status = {state}"]
-            drawing_length = int(float(point.get("Drawing debond length mm") or 0.0))
-            if drawing_length > 0:
-                details.append(f"Drawing symbol = debonded at {drawing_length} mm")
-            if left > 1e-9 or right > 1e-9:
-                details.append(f"Row debond = {status}")
-                details.append(f"L debond = {left:.3f} m")
-                details.append(f"R debond = {right:.3f} m")
-            return "<br>".join(details)
-
-        def _add_strand_trace(records: list[tuple[pd.Series, str, float, float]], *, name: str, color: str, width: float) -> None:
-            if not records:
-                return
-            fig.add_trace(
-                go.Scatter(
-                    x=[float(point["x_mm"]) for point, _, _, _ in records],
-                    y=[float(point["y_mm_abs"]) for point, _, _, _ in records],
-                    mode="markers",
-                    marker={
-                        "size": 8,
-                        "color": "rgba(255,255,255,0.0)",
-                        "symbol": "circle",
-                        "line": {"color": color, "width": width},
-                    },
-                    name=name,
-                    text=[_point_hover(record) for record in records],
-                    hovertemplate="%{text}<br>x=%{x:.1f} mm<br>y=%{y:.1f} mm<extra></extra>",
-                )
-            )
-
-        _add_strand_trace(bonded_points, name="Bonded", color=bonded_color, width=1.35)
-        _add_strand_trace(debonded_points, name="Debonded", color=debonded_color, width=1.55)
-
-        drawing_symbol_traces: dict[int, list[tuple[float, float, str]]] = {}
-        for _, point in points.iterrows():
-            drawing_length = int(float(point.get("Drawing debond length mm") or 0.0))
-            if drawing_length <= 0:
+        for side_name, subset in [
+            ("Left strand block", points.loc[points["x_mm"].astype(float) < 0.0]),
+            ("Right strand block", points.loc[points["x_mm"].astype(float) > 0.0]),
+        ]:
+            if subset.empty:
                 continue
-            drawing_symbol_traces.setdefault(drawing_length, []).append(
-                (
-                    float(point["x_mm"]),
-                    float(point["y_mm_abs"]),
-                    f"{point['Group ID']} #{int(point['Strand no.'])}<br>Drawing debond = {drawing_length} mm",
-                )
+            x_min = float(subset["x_mm"].min())
+            x_max = float(subset["x_mm"].max())
+            y_min = float(subset["y_mm_abs"].min())
+            y_max = float(subset["y_mm_abs"].max())
+            x_pad = max(55.0, 0.12 * max(x_max - x_min, 80.0))
+            y_pad = max(45.0, 0.18 * max(y_max - y_min, 80.0))
+            fig.add_shape(
+                type="rect",
+                x0=x_min - x_pad,
+                x1=x_max + x_pad,
+                y0=y_min - y_pad,
+                y1=y_max + y_pad,
+                line={"color": "rgba(37, 99, 235, 0.68)", "width": 1.6, "dash": "dash"},
+                fillcolor="rgba(37, 99, 235, 0.045)",
+                layer="below",
             )
-        for drawing_length in sorted(drawing_symbol_traces):
-            label, symbol = RAILWAY_U_GIRDER_DEBOND_SYMBOLS_MM.get(drawing_length, (f"Debonded at {drawing_length} mm", "x-open"))
-            trace_points = drawing_symbol_traces[drawing_length]
-            fig.add_trace(
-                go.Scatter(
-                    x=[item[0] for item in trace_points],
-                    y=[item[1] for item in trace_points],
-                    mode="markers",
-                    marker={
-                        "size": 8,
-                        "color": "rgba(15, 23, 42, 0.70)",
-                        "symbol": symbol,
-                        "line": {"color": "rgba(15, 23, 42, 0.72)", "width": 1.0},
-                    },
-                    name=label,
-                    text=[item[2] for item in trace_points],
-                    hovertemplate="%{text}<br>x=%{x:.1f} mm<br>y=%{y:.1f} mm<extra></extra>",
-                )
-            )
-
-        group_stats_by_y: dict[float, dict[str, Any]] = {}
-        for group, group_points in points.groupby("Group ID", as_index=False):
-            info = row_info.get(
-                str(group),
-                {"status": "Fully bonded", "left": 0.0, "right": 0.0, "count": len(group_points), "debonded_numbers": (), "explicit": False},
-            )
-            status = str(info["status"])
-            left = float(info["left"])
-            right = float(info["right"])
-            count = int(info["count"])
-            debonded_count = len(tuple(info["debonded_numbers"]))
-            bonded_count = max(0, count - debonded_count)
-            y_value = round(float(group_points["y_mm_abs"].mean()), 6)
-            row_bucket = group_stats_by_y.setdefault(
-                y_value,
-                {
-                    "groups": [],
-                    "count": 0,
-                    "bonded": 0,
-                    "debonded": 0,
-                    "statuses": [],
-                    "left": 0.0,
-                    "right": 0.0,
-                },
-            )
-            row_bucket["groups"].append(str(group))
-            row_bucket["count"] += count
-            row_bucket["bonded"] += bonded_count
-            row_bucket["debonded"] += debonded_count
-            if status != "Fully bonded":
-                row_bucket["statuses"].append(status)
-                row_bucket["left"] = max(float(row_bucket["left"]), left)
-                row_bucket["right"] = max(float(row_bucket["right"]), right)
-
-        row_summary_lines: list[str] = []
-        for y_value in sorted(group_stats_by_y):
-            row_bucket = group_stats_by_y[y_value]
-            groups = [str(item) for item in row_bucket["groups"]]
-            row_name = groups[0]
-            if len(groups) > 1:
-                normalized_names = [name.replace("L ", "").replace("R ", "") for name in groups]
-                row_name = normalized_names[0] if len(set(normalized_names)) == 1 else " / ".join(groups)
-            line = (
-                f"{row_name}: n={int(row_bucket['count'])}, "
-                f"B={int(row_bucket['bonded'])}, U={int(row_bucket['debonded'])}"
-            )
-            statuses = [str(item) for item in row_bucket["statuses"]]
-            if statuses:
-                line += f", L/R={float(row_bucket['left']):.2f}/{float(row_bucket['right']):.2f} m"
-            row_summary_lines.append(line)
-
-        if row_summary_lines:
-            max_lines = 7
-            display_lines = row_summary_lines[:max_lines]
-            if len(row_summary_lines) > max_lines:
-                display_lines.append(f"... {len(row_summary_lines) - max_lines} more row(s)")
             fig.add_annotation(
-                x=1.01,
-                y=0.98,
-                xref="paper",
-                yref="paper",
-                text="<b>Strand row summary</b><br>" + "<br>".join(display_lines),
+                x=(x_min + x_max) / 2.0,
+                y=y_max + y_pad,
+                text=side_name,
                 showarrow=False,
-                xanchor="left",
-                yanchor="top",
-                align="left",
-                font={"size": 10, "color": "#334155"},
-                bgcolor="rgba(255, 255, 255, 0.94)",
-                bordercolor="rgba(203, 213, 225, 0.90)",
+                yshift=10,
+                font={"size": 10, "color": "rgba(15, 23, 42, 0.72)"},
+                bgcolor="rgba(255,255,255,0.82)",
+                bordercolor="rgba(203,213,225,0.90)",
                 borderwidth=1,
-                borderpad=4,
+                borderpad=3,
             )
 
-        if section_x_max is None:
-            section_x_max = float(points["x_mm"].max())
-        if section_x_min is None:
-            section_x_min = float(points["x_mm"].min())
-        if section_y_max is None:
-            section_y_max = float(points["y_mm_abs"].max())
-        if section_y_min is None:
-            section_y_min = min(float(points["y_mm_abs"].min()), bottom_y)
-        section_width = max(section_x_max - section_x_min, 200.0)
-        section_depth = max(section_y_max - section_y_min, 200.0)
-        x_pad = max(280.0, 0.07 * section_width)
-        y_pad = max(220.0, 0.16 * section_depth)
-        fig.update_xaxes(range=[section_x_min - x_pad, section_x_max + x_pad])
-        fig.update_yaxes(range=[section_y_min - y_pad, section_y_max + y_pad])
+        _add_strand_state_marker_traces(
+            fig,
+            points,
+            row_info,
+            marker_size=7,
+            bonded_fill="rgba(255,255,255,0.0)",
+            debonded_fill="rgba(255,255,255,0.0)",
+            bonded_line="#2563eb",
+            debonded_line="#dc2626",
+            bonded_width=1.35,
+            debonded_width=1.55,
+            showlegend=True,
+        )
+
+    if bounds is not None:
+        section_x_min, section_y_min, section_x_max, section_y_max = bounds
+    elif not points.empty:
+        section_x_min = float(points["x_mm"].min())
+        section_x_max = float(points["x_mm"].max())
+        section_y_min = min(float(points["y_mm_abs"].min()), _section_bottom_y_from_geometry(geometry))
+        section_y_max = float(points["y_mm_abs"].max())
+    else:
+        section_x_min, section_y_min, section_x_max, section_y_max = -1000.0, -600.0, 1000.0, 600.0
+    section_width = max(section_x_max - section_x_min, 200.0)
+    section_depth = max(section_y_max - section_y_min, 200.0)
+    x_pad = max(240.0, 0.06 * section_width)
+    y_pad = max(160.0, 0.10 * section_depth)
+    fig.update_xaxes(range=[section_x_min - x_pad, section_x_max + x_pad])
+    fig.update_yaxes(range=[section_y_min - y_pad, section_y_max + y_pad])
 
     fig.update_layout(
-        title={
-            "text": "Prestress strand cross-section layout",
-            "x": 0.0,
-            "xanchor": "left",
-            "font": {"size": 15, "color": "#101828"},
-        },
-        height=560,
-        margin={"l": 50, "r": 250, "t": 74, "b": 48},
+        title={"text": "Overall section schematic", "x": 0.0, "xanchor": "left", "font": {"size": 14, "color": "#101828"}},
+        height=365,
+        margin={"l": 45, "r": 20, "t": 62, "b": 42},
         xaxis_title="section x (mm)",
         yaxis_title="section y (mm)",
         showlegend=True,
@@ -5171,14 +5284,204 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
             "xanchor": "left",
             "x": 0.0,
             "bgcolor": "rgba(255,255,255,0.92)",
-            "bordercolor": "rgba(203,213,225,0.85)",
+            "bordercolor": "rgba(203,213,225,0.80)",
             "borderwidth": 1,
+            "font": {"size": 10},
         },
         plot_bgcolor="white",
     )
-    fig.update_xaxes(gridcolor="rgba(0,0,0,0.08)", zerolinecolor="rgba(0,0,0,0.20)")
-    fig.update_yaxes(scaleanchor="x", scaleratio=1, gridcolor="rgba(0,0,0,0.08)", zerolinecolor="rgba(0,0,0,0.20)")
+    fig.update_xaxes(gridcolor="rgba(15,23,42,0.06)", zerolinecolor="rgba(15,23,42,0.16)")
+    fig.update_yaxes(scaleanchor="x", scaleratio=1, gridcolor="rgba(15,23,42,0.06)", zerolinecolor="rgba(15,23,42,0.16)")
     return fig
+
+
+def _plot_girder_strand_block_detail(
+    table: pd.DataFrame,
+    geometry: SectionGeometry | None,
+    *,
+    side: str = "All",
+) -> go.Figure:
+    """Return a zoomed strand-block panel for reading individual strand rows."""
+
+    fig = go.Figure()
+    all_points = _girder_strand_point_layout_dataframe(table, geometry)
+    row_info = _girder_strand_cross_section_row_info(table)
+    side_key = str(side or "All").strip().lower()
+    if side_key == "left":
+        points = all_points.loc[all_points["x_mm"].astype(float) < 0.0].copy() if not all_points.empty else all_points
+        title = "Left strand block detail"
+    elif side_key == "right":
+        points = all_points.loc[all_points["x_mm"].astype(float) > 0.0].copy() if not all_points.empty else all_points
+        title = "Right strand block detail"
+    else:
+        points = all_points.copy()
+        title = "Strand block detail"
+
+    if points.empty:
+        fig.update_layout(
+            title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 14, "color": "#101828"}},
+            height=360,
+            margin={"l": 40, "r": 20, "t": 56, "b": 38},
+            plot_bgcolor="white",
+        )
+        return fig
+
+    # Thin local concrete-width guides help engineers see that the strand rows
+    # are still placed in the concrete body without letting the full section
+    # dominate the zoomed detail view.
+    y_values = sorted({round(float(value), 6) for value in points["y_mm_abs"].astype(float).tolist()})
+    for y_value in y_values:
+        row_points = points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6]
+        segment = _section_horizontal_segment_for_points_at_y(geometry, y_value, row_points["x_mm"].astype(float).tolist())
+        if segment is None:
+            continue
+        left_edge, right_edge = segment
+        fig.add_trace(
+            go.Scatter(
+                x=[float(left_edge), float(right_edge)],
+                y=[float(y_value), float(y_value)],
+                mode="lines",
+                line={"color": "rgba(100,116,139,0.18)", "width": 5},
+                name="Local concrete width",
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+
+    _add_strand_state_marker_traces(
+        fig,
+        points,
+        row_info,
+        marker_size=14,
+        bonded_fill="rgba(37, 99, 235, 0.16)",
+        debonded_fill="rgba(220, 38, 38, 0.18)",
+        bonded_line="#2563eb",
+        debonded_line="#dc2626",
+        bonded_width=2.0,
+        debonded_width=2.25,
+        showlegend=False,
+    )
+    _add_drawing_debond_symbol_trace(fig, points, marker_size=8, showlegend=False)
+
+    tick_rows: list[tuple[float, str]] = []
+    for y_value in y_values:
+        groups = sorted(set(str(group) for group in points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6, "Group ID"].tolist()))
+        row_numbers = [_strand_row_number_from_group_id(group) for group in groups]
+        row_numbers = [number for number in row_numbers if number is not None]
+        if row_numbers and len(set(row_numbers)) == 1:
+            label = f"Row {int(row_numbers[0])}"
+        else:
+            normalized = [group.replace("L ", "").replace("R ", "") for group in groups]
+            label = normalized[0] if len(set(normalized)) == 1 else " / ".join(groups)
+        debonded_count = int(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6, "Debonded selected"].fillna(False).astype(bool).sum())
+        total_count = int(len(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6].index))
+        tick_rows.append((y_value, f"{label}  ·  B {total_count - debonded_count} / U {debonded_count}"))
+
+    x_min = float(points["x_mm"].min())
+    x_max = float(points["x_mm"].max())
+    y_min = float(points["y_mm_abs"].min())
+    y_max = float(points["y_mm_abs"].max())
+    x_span = max(x_max - x_min, 220.0)
+    y_span = max(y_max - y_min, 220.0)
+    fig.update_xaxes(range=[x_min - max(70.0, 0.18 * x_span), x_max + max(70.0, 0.18 * x_span)])
+    fig.update_yaxes(
+        range=[y_min - max(55.0, 0.18 * y_span), y_max + max(55.0, 0.18 * y_span)],
+        tickmode="array",
+        tickvals=[item[0] for item in tick_rows],
+        ticktext=[item[1] for item in tick_rows],
+    )
+    fig.update_layout(
+        title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 14, "color": "#101828"}},
+        height=392,
+        margin={"l": 116, "r": 18, "t": 54, "b": 42},
+        xaxis_title="strand x (mm)",
+        yaxis_title="",
+        showlegend=False,
+        plot_bgcolor="white",
+    )
+    fig.update_xaxes(gridcolor="rgba(15,23,42,0.07)", zerolinecolor="rgba(15,23,42,0.14)")
+    fig.update_yaxes(scaleanchor="x", scaleratio=1, gridcolor="rgba(15,23,42,0.07)", zerolinecolor="rgba(15,23,42,0.14)")
+    return fig
+
+
+def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry: SectionGeometry | None) -> None:
+    """Render PRESTRESS.VIZ2 split schematic + row/detail dashboard."""
+
+    points = _girder_strand_point_layout_dataframe(table, geometry)
+    row_summary = _girder_strand_row_summary_dataframe(table, geometry)
+    active_rows = _active_girder_strand_layout_rows(table)
+    bonded_count = int((~points["Debonded selected"].fillna(False).astype(bool)).sum()) if not points.empty else 0
+    debonded_count = int(points["Debonded selected"].fillna(False).astype(bool).sum()) if not points.empty else 0
+    total_count = bonded_count + debonded_count
+    status_tone = "review" if debonded_count else "ready"
+    st.markdown("#### Prestress strand dashboard")
+    st.caption(
+        "Split view: the full section is only a location schematic; row data and zoomed block panels carry the strand-reading work. "
+        "Blue = bonded/effective at the cross-section preview; red = debonded/sleeved strand selection from the row metadata."
+    )
+    st.markdown(
+        _metric_strip_html(
+            [
+                PrestressMetric("Visual model", "Split dashboard", "Overall + detail panels", "info", strong=True),
+                PrestressMetric("Bonded strands", f"{bonded_count:,}", f"of {total_count:,} total", "ready"),
+                PrestressMetric("Debonded strands", f"{debonded_count:,}", "selected by row metadata", status_tone),
+                PrestressMetric("Row groups", f"{len(active_rows):,}", "active strand groups", "neutral"),
+            ]
+        ),
+        unsafe_allow_html=True,
+    )
+
+    top_left, top_right = st.columns([1.55, 1.0])
+    with top_left:
+        st.plotly_chart(
+            _plot_girder_strand_cross_section_layout(table, geometry),
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True},
+        )
+    with top_right:
+        st.markdown("##### Strand row summary")
+        if row_summary.empty:
+            st.info("No active strand rows are available for the current section.")
+        else:
+            st.dataframe(
+                row_summary,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Total strands": st.column_config.NumberColumn("Total", format="%d"),
+                    "Bonded": st.column_config.NumberColumn("Bonded", format="%d"),
+                    "Debonded": st.column_config.NumberColumn("Debonded", format="%d"),
+                    "Left debond (m)": st.column_config.NumberColumn("L debond (m)", format="%.3f"),
+                    "Right debond (m)": st.column_config.NumberColumn("R debond (m)", format="%.3f"),
+                },
+            )
+            st.caption("B = bonded strands, U/debonded = debonded strand selections. L/R rows with the same row number are summarized together.")
+
+    if points.empty:
+        return
+    left_points = points.loc[points["x_mm"].astype(float) < 0.0]
+    right_points = points.loc[points["x_mm"].astype(float) > 0.0]
+    st.markdown("##### Zoomed strand block detail")
+    if not left_points.empty and not right_points.empty:
+        detail_left, detail_right = st.columns(2)
+        with detail_left:
+            st.plotly_chart(
+                _plot_girder_strand_block_detail(table, geometry, side="Left"),
+                use_container_width=True,
+                config={"displayModeBar": False, "responsive": True},
+            )
+        with detail_right:
+            st.plotly_chart(
+                _plot_girder_strand_block_detail(table, geometry, side="Right"),
+                use_container_width=True,
+                config={"displayModeBar": False, "responsive": True},
+            )
+    else:
+        st.plotly_chart(
+            _plot_girder_strand_block_detail(table, geometry, side="All"),
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True},
+        )
 
 def _debond_lengths_for_display(row: pd.Series | dict[str, Any], span_length_m: float) -> tuple[float, float]:
     """Return clamped left/right debond lengths for plotting and tables."""
@@ -6021,12 +6324,15 @@ def _render_girder_strand_layout_and_debonding_ui(geometry: SectionGeometry | No
         tab_stage = None
     tab_debond, tab_rules, tab_losses, tab_advisory, tab_effective = tabs[offset : offset + 5]
     with tab_layout:
-        st.plotly_chart(_plot_girder_strand_cross_section_layout(normalized, geometry), use_container_width=True)
+        _render_girder_strand_cross_section_dashboard(normalized, geometry)
         with st.expander("Plot assumptions", expanded=False):
             st.caption(
-                "Cross-section symbols show row-level debonding status from the left/right debond inputs. "
-                "Railway U-Girder drawing debond symbols (0/1000/2000/3000/4000/5000 mm) are preview metadata only until a station-based pattern milestone. "
-                "PS6A supports optional individual bonded/unbonded strand selection within a row. Blank debonded strand numbers keep the previous row-based all-strands debonding fallback."
+                "PRESTRESS.VIZ2 separates the full-section location schematic from zoomed strand-block detail. "
+                "The overall plot is not intended for reading every strand; use the row summary and block detail panels for bonded/debonded review. "
+                "Blue markers are bonded/effective strands; red markers are debonded/sleeved selections from PS6A row metadata. "
+                "Railway U-Girder drawing debond symbols (0/1000/2000/3000/4000/5000 mm) remain preview metadata only until a station-based pattern milestone. "
+                "PS6A supports optional individual bonded/unbonded strand selection within a row. "
+                "Blank debonded strand numbers keep the previous row-based all-strands debonding fallback when L/R debond length is nonzero."
             )
     if tab_stage is not None:
         with tab_stage:

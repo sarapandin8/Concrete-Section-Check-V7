@@ -32,14 +32,16 @@ def test_prestress_page_contains_strand_layout_debonding_workflow() -> None:
     assert 'format="%.0f"' in PRESTRESS_SOURCE
     assert "_auto_strand_x_positions_text" in PRESTRESS_SOURCE
     assert "Option 2 spaced symmetric pairs" in PRESTRESS_SOURCE
-    assert 'line={"color": section_line_color, "width": 2.0, "dash": "solid"}' in PRESTRESS_SOURCE
+    assert "Overall section schematic" in PRESTRESS_SOURCE
+    assert "Zoomed strand block detail" in PRESTRESS_SOURCE
     assert "Debonding elevation schematic" in PRESTRESS_SOURCE
     assert "Debonded sleeve" in PRESTRESS_SOURCE
     assert "Bonded after sleeve" in PRESTRESS_SOURCE
     assert 'xanchor="left"' in PRESTRESS_SOURCE
-    assert "row labels expand the data range" in PRESTRESS_SOURCE
+    assert "Split view: the full section is only a location schematic" in PRESTRESS_SOURCE
     assert 'xref="paper"' in PRESTRESS_SOURCE
-    assert "height=560" in PRESTRESS_SOURCE
+    assert "height=365" in PRESTRESS_SOURCE
+    assert "height=392" in PRESTRESS_SOURCE
     assert "on_change=_sync_girder_strand_layout_editor_to_table" in PRESTRESS_SOURCE
     assert "Row 1 is the bottom strand row" in PRESTRESS_SOURCE
     assert "_girder_debonding_schedule_dataframe" in PRESTRESS_SOURCE
@@ -342,6 +344,7 @@ def test_cross_section_plot_and_debond_schedule_show_row_debond_status(monkeypat
 
     from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
         _girder_debonding_schedule_dataframe,
+        _girder_strand_row_summary_dataframe,
         _normalize_girder_strand_layout_table,
         _plot_girder_strand_cross_section_layout,
     )
@@ -372,10 +375,17 @@ def test_cross_section_plot_and_debond_schedule_show_row_debond_status(monkeypat
     fig = _plot_girder_strand_cross_section_layout(table, None)
     trace_names = [trace.name for trace in fig.data]
     assert "Bonded" in trace_names or "Debonded" in trace_names
-    label_texts = [annotation.text for annotation in fig.layout.annotations]
-    assert any(getattr(annotation, "xanchor", None) == "left" for annotation in fig.layout.annotations)
-    assert all("<br>" not in label for label in label_texts)
-    assert any("Row 1 · total 2 · B=0 · U=2 · Debonded both ends · L=1.00 m · R=1.00 m" == label for label in label_texts)
+    assert fig.layout.title.text == "Overall section schematic"
+    assert not any("Row 1 · total" in str(annotation.text) for annotation in fig.layout.annotations)
+
+    summary = _girder_strand_row_summary_dataframe(table, None)
+    assert summary.loc[0, "Row"] == "Row 1"
+    assert summary.loc[0, "Total strands"] == 2
+    assert summary.loc[0, "Bonded"] == 0
+    assert summary.loc[0, "Debonded"] == 2
+    assert summary.loc[1, "Row"] == "Row 2"
+    assert summary.loc[1, "Bonded"] == 0
+    assert summary.loc[1, "Debonded"] == 2
 
     schedule = _girder_debonding_schedule_dataframe(table, span_length_m=10.0)
     assert schedule.loc[0, "Debond status"] == "Debonded both ends"
@@ -383,8 +393,6 @@ def test_cross_section_plot_and_debond_schedule_show_row_debond_status(monkeypat
     assert schedule.loc[0, "Right debond m"] == 1.0
     assert schedule.loc[1, "Debond status"] == "Right debonded"
     assert schedule.loc[1, "Bonded zone m"] == "0.000 → 8.000"
-
-
 
 
 def test_cross_section_plot_shows_individual_bonded_and_debonded_points(monkeypatch) -> None:
@@ -404,7 +412,9 @@ def test_cross_section_plot_shows_individual_bonded_and_debonded_points(monkeypa
     from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
         _girder_debonding_schedule_dataframe,
         _girder_strand_point_layout_dataframe,
+        _girder_strand_row_summary_dataframe,
         _normalize_girder_strand_layout_table,
+        _plot_girder_strand_block_detail,
         _plot_girder_strand_cross_section_layout,
     )
 
@@ -431,7 +441,14 @@ def test_cross_section_plot_shows_individual_bonded_and_debonded_points(monkeypa
     trace_names = [trace.name for trace in fig.data]
     assert "Bonded" in trace_names
     assert "Debonded" in trace_names
-    assert any("B=4 · U=2" in annotation.text for annotation in fig.layout.annotations)
+
+    detail_fig = _plot_girder_strand_block_detail(table, None, side="All")
+    tick_text = " | ".join(str(value) for value in detail_fig.layout.yaxis.ticktext)
+    assert "B 4 / U 2" in tick_text
+
+    summary = _girder_strand_row_summary_dataframe(table, None)
+    assert summary.loc[0, "Bonded"] == 4
+    assert summary.loc[0, "Debonded"] == 2
 
     schedule = _girder_debonding_schedule_dataframe(table, 10.0)
     assert schedule.loc[0, "Bonded strands"] == 4
@@ -1032,7 +1049,7 @@ def test_bp1_exterior_plank_top_pair_uses_190_mm_edge_offset(monkeypatch) -> Non
     assert row2_x == [-305.0, 305.0]
 
 
-def test_cross_section_legend_uses_open_markers_matching_section_symbols(monkeypatch) -> None:
+def test_cross_section_overall_schematic_uses_clean_bonded_debonded_markers(monkeypatch) -> None:
     import sys
     import types
 
@@ -1071,13 +1088,13 @@ def test_cross_section_legend_uses_open_markers_matching_section_symbols(monkeyp
     debonded = next(trace for trace in fig.data if trace.name == "Debonded")
     assert bonded.marker.color == "rgba(255,255,255,0.0)"
     assert debonded.marker.color == "rgba(255,255,255,0.0)"
-    assert bonded.marker.line.color == "#1f77b4"
+    assert bonded.marker.line.color == "#2563eb"
     assert debonded.marker.line.color == "#dc2626"
     assert bonded.marker.symbol == "circle"
     assert debonded.marker.symbol == "circle"
 
 
-def test_cross_section_strand_shapes_are_true_scale_circles(monkeypatch) -> None:
+def test_cross_section_detail_panel_uses_marker_traces_not_per_strand_shapes(monkeypatch) -> None:
     import sys
     import types
 
@@ -1093,7 +1110,7 @@ def test_cross_section_strand_shapes_are_true_scale_circles(monkeypatch) -> None
 
     from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
         _normalize_girder_strand_layout_table,
-        _plot_girder_strand_cross_section_layout,
+        _plot_girder_strand_block_detail,
     )
 
     raw = pd.DataFrame(
@@ -1103,7 +1120,7 @@ def test_cross_section_strand_shapes_are_true_scale_circles(monkeypatch) -> None
                 "Group ID": "Row 1",
                 "Strand Size": "12.7 mm low-relaxation strand",
                 "No. Strands": 2,
-                "x coordinates (mm)": "-25,25",
+                "Strand x positions mm": "-25,25",
                 "y_mm_from_bottom": 50.0,
                 "Left debond m": 1.0,
                 "Right debond m": 1.0,
@@ -1112,15 +1129,15 @@ def test_cross_section_strand_shapes_are_true_scale_circles(monkeypatch) -> None
         ]
     )
     table = _normalize_girder_strand_layout_table(raw, span_length_m=10.0)
-    fig = _plot_girder_strand_cross_section_layout(table, None)
+    fig = _plot_girder_strand_block_detail(table, None, side="All")
     strand_circles = [shape for shape in fig.layout.shapes if getattr(shape, "type", None) == "circle"]
-    assert len(strand_circles) == 2
-    diameters = sorted(round(float(shape.x1) - float(shape.x0), 3) for shape in strand_circles)
-    assert diameters == [12.7, 12.7]
-    line_colors = {shape.line.color for shape in strand_circles}
-    assert "#1f77b4" in line_colors
-    assert "#dc2626" in line_colors
-
+    assert strand_circles == []
+    bonded = next(trace for trace in fig.data if trace.name == "Bonded")
+    debonded = next(trace for trace in fig.data if trace.name == "Debonded")
+    assert bonded.marker.size == 14
+    assert debonded.marker.size == 14
+    assert bonded.marker.line.color == "#2563eb"
+    assert debonded.marker.line.color == "#dc2626"
 
 def test_x_coordinate_list_mismatch_warns_without_crashing(monkeypatch) -> None:
     import sys

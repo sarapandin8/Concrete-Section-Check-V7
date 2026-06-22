@@ -94,7 +94,7 @@ def test_railway_u_girder_debond_symbol_pattern_is_preview_metadata(monkeypatch)
         _girder_effective_prestress_preview_dataframe,
         _girder_strand_point_layout_dataframe,
         _normalize_girder_strand_layout_table,
-        _plot_girder_strand_cross_section_layout,
+        _plot_girder_strand_block_detail,
         _validate_girder_strand_layout,
     )
 
@@ -127,7 +127,7 @@ def test_railway_u_girder_debond_symbol_pattern_is_preview_metadata(monkeypatch)
     preview = _girder_effective_prestress_preview_dataframe(table, span_length_m=20.0)
     assert int(preview.loc[preview["x_m"] == 10.0, "Effective strands"].iloc[0]) == 6
 
-    fig = _plot_girder_strand_cross_section_layout(table, None)
+    fig = _plot_girder_strand_block_detail(table, None, side="All")
     trace_names = [trace.name for trace in fig.data]
     for label in [
         "Debonded at 1000 mm",
@@ -144,6 +144,7 @@ def test_railway_u_girder_cross_section_layout_uses_readable_inspection_viewport
 
     from concrete_pmm_pro.ui.prestress_page import (
         _normalize_girder_strand_layout_table,
+        _plot_girder_strand_block_detail,
         _plot_girder_strand_cross_section_layout,
     )
 
@@ -151,16 +152,19 @@ def test_railway_u_girder_cross_section_layout_uses_readable_inspection_viewport
     table = _normalize_girder_strand_layout_table(None, span_length_m=30.0, geometry=geometry)
     fig = _plot_girder_strand_cross_section_layout(table, geometry)
 
-    assert fig.layout.height == 560
-    assert tuple(fig.layout.xaxis.range) == (-3190.0, 3190.0)
-    assert tuple(fig.layout.yaxis.range) == (-1056.0, 1056.0)
+    assert fig.layout.height == 365
+    assert tuple(fig.layout.xaxis.range) == (-3080.0, 3080.0)
+    assert tuple(fig.layout.yaxis.range) == (-960.0, 960.0)
     assert fig.layout.yaxis.scaleanchor == "x"
     assert fig.layout.legend.orientation == "h"
 
-    row_annotations = [annotation for annotation in fig.layout.annotations if getattr(annotation, "xref", None) == "paper"]
-    assert len(row_annotations) == 5
-    assert row_annotations[0].text == "Row 1 · total 18 · B=18 · U=0"
-    assert row_annotations[-1].text == "Row 5 · total 8 · B=8 · U=0"
+    block_annotations = [annotation.text for annotation in fig.layout.annotations]
+    assert block_annotations == ["Left strand block", "Right strand block"]
+
+    left_detail = _plot_girder_strand_block_detail(table, geometry, side="Left")
+    assert left_detail.layout.height == 392
+    assert list(left_detail.layout.yaxis.ticktext)[0] == "Row 1  ·  B 9 / U 0"
+    assert list(left_detail.layout.yaxis.ticktext)[-1] == "Row 5  ·  B 4 / U 0"
 
 
 def test_project_io_preserves_strand_x_positions_and_legacy_debond_pattern_source() -> None:
