@@ -60,16 +60,12 @@ INPUT_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "section_has_prestressing_steel",
     ),
     "Rebar": (
-        "rebars",
-        "rebars_valid_for_analysis",
-        "rebar_input_mode",
+        "rebar_table",
         "beam_girder_shear_reinforcement_table",
         "beam_girder_shear_depth_settings",
     ),
     "Prestress": (
         "prestress_table",
-        "prestress_elements",
-        "prestress_valid_for_analysis",
         "girder_strand_layout_table",
         "girder_prestress_system_settings",
         "railway_u_girder_stage_settings",

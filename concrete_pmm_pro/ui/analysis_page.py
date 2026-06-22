@@ -8094,6 +8094,84 @@ def _beam_uls_state_values(
     return result
 
 
+def _beam_uls_sync_rebar_source_table_for_analysis(state: Any) -> None:
+    """Synchronize Rebar source table into parser outputs before ULS hashing.
+
+    Rebar page reruns are normal in Streamlit.  The Analysis page must not wait
+    for that subpage to materialize `rebars`; otherwise visiting Rebar after a
+    ULS calculation changes the effective Analysis state and invalidates cache.
+    """
+
+    if not ordinary_rebar_enabled(state, default=True):
+        return
+    if "rebar_table" not in state:
+        return
+    try:
+        from concrete_pmm_pro.ui.rebar_page import (
+            _ensure_rebar_table_columns,
+            load_rebar_database,
+            rebars_from_dataframe,
+            rebars_valid_for_analysis,
+            validate_rebars_against_geometry,
+        )
+
+        table = _ensure_rebar_table_columns(pd.DataFrame(state.get("rebar_table"))).reset_index(drop=True)
+        result = rebars_from_dataframe(table, load_rebar_database())
+        geometry = state.get("section_geometry")
+        geometry_errors = validate_rebars_against_geometry(result.rebars, geometry)
+        state["rebar_table"] = table
+        state["rebars"] = result.rebars
+        state["rebars_valid_for_analysis"] = rebars_valid_for_analysis(result, geometry_errors)
+        state.setdefault("rebar_input_mode", "Manual table")
+    except Exception as exc:
+        state["beam_girder_uls_rebar_sync_warning"] = f"Rebar source-table sync skipped: {type(exc).__name__}"
+
+
+def _beam_uls_sync_prestress_source_table_for_analysis(state: Any) -> None:
+    """Synchronize Prestress source table into parser outputs before ULS hashing."""
+
+    if not prestressing_steel_enabled(state, default=True):
+        return
+    if "prestress_table" not in state:
+        return
+    try:
+        from concrete_pmm_pro.ui.prestress_page import (
+            _combined_prestress_database,
+            load_prestress_steel_database,
+            normalize_prestress_table_for_effective_input_sync,
+            prestress_elements_from_dataframe,
+            prestress_valid_for_analysis,
+            validate_prestress_against_geometry,
+        )
+
+        prestress_db = _combined_prestress_database(
+            load_prestress_steel_database(),
+            list(state.get("prestress_materials", []) or []),
+        )
+        table = normalize_prestress_table_for_effective_input_sync(pd.DataFrame(state.get("prestress_table")), prestress_db).reset_index(drop=True)
+        result = prestress_elements_from_dataframe(table, prestress_db)
+        geometry = state.get("section_geometry")
+        geometry_errors = validate_prestress_against_geometry(result.elements, geometry)
+        state["prestress_table"] = table
+        state["prestress_elements"] = result.elements
+        state["prestress_valid_for_analysis"] = prestress_valid_for_analysis(result, geometry_errors)
+    except Exception as exc:
+        state["beam_girder_uls_prestress_sync_warning"] = f"Prestress source-table sync skipped: {type(exc).__name__}"
+
+
+def _beam_uls_sync_source_tables_for_analysis(state: Any) -> None:
+    """Materialize source-table parser outputs before Beam/Girder ULS review.
+
+    This makes the Analysis page and the Sections subpages agree on the same
+    effective rebar/prestress inputs.  Navigation reruns can then refresh UI
+    previews without changing the cache signature for unchanged engineering
+    source tables.
+    """
+
+    _beam_uls_sync_rebar_source_table_for_analysis(state)
+    _beam_uls_sync_prestress_source_table_for_analysis(state)
+
+
 def _beam_uls_cache_input_hash(
     state: Mapping[str, object],
     active_df: pd.DataFrame,
@@ -9964,6 +10042,8 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
     if active_df.empty:
         st.warning("No Active Beam/Girder ULS station demand rows are available. Define or import them in Loads before ULS review.")
         return
+
+    _beam_uls_sync_source_tables_for_analysis(st.session_state)
 
     selected_check_raw = st.radio(
         "ULS check to calculate",
