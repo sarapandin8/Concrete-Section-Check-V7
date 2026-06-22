@@ -677,6 +677,7 @@ def project_from_session_state(session_state: Any) -> ProjectModel:
         ORDINARY_REBAR_FLAG_KEY,
         PRESTRESSING_STEEL_FLAG_KEY,
         REINFORCEMENT_FLAGS_PRESET_KEY,
+        "section_builder_steel_systems_user_overridden",
     ):
         flag_value = _get_session_value(session_state, flag_name, None)
         if flag_value is not None:

@@ -61,6 +61,7 @@ RAILWAY_U_GIRDER_STAGE_SETTINGS_KEY = "railway_u_girder_stage_settings"
 SECTION_BUILDER_ORDINARY_REBAR_SYNC_KEY = "section_builder_ordinary_rebar_enabled"
 SECTION_BUILDER_PRESTRESS_SYNC_KEY = "section_builder_prestressing_steel_enabled"
 SECTION_BUILDER_STEEL_SYSTEMS_PRESET_KEY = "section_builder_steel_systems_preset_key"
+SECTION_BUILDER_STEEL_SYSTEMS_USER_OVERRIDE_KEY = "section_builder_steel_systems_user_overridden"
 RAILWAY_U_GIRDER_DEFAULT_WEB_FC_MPA = 45.0
 RAILWAY_U_GIRDER_DEFAULT_WEB_FCI_MPA = 36.0
 RAILWAY_U_GIRDER_DEFAULT_SLAB_FC_MPA = 35.0
@@ -1788,16 +1789,35 @@ def _ensure_reinforcement_flags_for_preset(preset: dict[str, Any]) -> None:
     preset_key = str(preset.get("key", ""))
     default_rebar, default_prestress = _default_reinforcement_flags_for_preset(preset)
     metadata = dict(st.session_state.get("project_metadata", {}) or {})
+    user_overridden = bool(metadata.get(SECTION_BUILDER_STEEL_SYSTEMS_USER_OVERRIDE_KEY, False)) or bool(
+        st.session_state.get(SECTION_BUILDER_STEEL_SYSTEMS_USER_OVERRIDE_KEY, False)
+    )
 
     # These switches are explicit engineering input, not transient UI state.
-    # Returning to Section Builder after Analysis must not silently reset them
-    # just because the preset marker was not materialized in the current rerun.
-    # Defaults only seed missing keys; saved metadata restores user choices.
-    if ORDINARY_REBAR_FLAG_KEY not in st.session_state:
-        st.session_state[ORDINARY_REBAR_FLAG_KEY] = bool(metadata.get(ORDINARY_REBAR_FLAG_KEY, default_rebar))
-    if PRESTRESSING_STEEL_FLAG_KEY not in st.session_state:
-        st.session_state[PRESTRESSING_STEEL_FLAG_KEY] = bool(metadata.get(PRESTRESSING_STEEL_FLAG_KEY, default_prestress))
+    # Returning to Section Builder after Analysis must not silently reset them.
+    #
+    # Legacy sessions/projects may contain False from the older Beam/Girder
+    # default.  When the active preset now defaults ON and the user has not
+    # explicitly overridden the steel-system switches in this session/project,
+    # upgrade the effective UI value to ON so mild longitudinal bars / torsion
+    # Al and prestressing steel remain active by default.
+    if ORDINARY_REBAR_FLAG_KEY not in st.session_state or (default_rebar and not user_overridden):
+        st.session_state[ORDINARY_REBAR_FLAG_KEY] = bool(
+            default_rebar if default_rebar and not user_overridden else metadata.get(ORDINARY_REBAR_FLAG_KEY, default_rebar)
+        )
+    if PRESTRESSING_STEEL_FLAG_KEY not in st.session_state or (default_prestress and not user_overridden):
+        st.session_state[PRESTRESSING_STEEL_FLAG_KEY] = bool(
+            default_prestress if default_prestress and not user_overridden else metadata.get(PRESTRESSING_STEEL_FLAG_KEY, default_prestress)
+        )
     st.session_state[REINFORCEMENT_FLAGS_PRESET_KEY] = preset_key
+
+
+def _on_reinforcement_flags_changed() -> None:
+    st.session_state[SECTION_BUILDER_STEEL_SYSTEMS_USER_OVERRIDE_KEY] = True
+    metadata = dict(st.session_state.get("project_metadata", {}) or {})
+    metadata[SECTION_BUILDER_STEEL_SYSTEMS_USER_OVERRIDE_KEY] = True
+    st.session_state["project_metadata"] = metadata
+    _store_reinforcement_flags_metadata()
 
 
 def _store_reinforcement_flags_metadata() -> None:
@@ -1810,7 +1830,12 @@ def _store_reinforcement_flags_metadata() -> None:
     """
 
     metadata = dict(st.session_state.get("project_metadata", {}) or {})
-    for flag_name in (ORDINARY_REBAR_FLAG_KEY, PRESTRESSING_STEEL_FLAG_KEY, REINFORCEMENT_FLAGS_PRESET_KEY):
+    for flag_name in (
+        ORDINARY_REBAR_FLAG_KEY,
+        PRESTRESSING_STEEL_FLAG_KEY,
+        REINFORCEMENT_FLAGS_PRESET_KEY,
+        SECTION_BUILDER_STEEL_SYSTEMS_USER_OVERRIDE_KEY,
+    ):
         if flag_name in st.session_state:
             metadata[flag_name] = st.session_state[flag_name]
 
@@ -1851,7 +1876,7 @@ def _render_reinforcement_prestress_system_panel(preset: dict[str, Any]) -> None
                 "When disabled, stored ordinary Rebar rows are kept but ignored by PMM/SLS analysis. "
                 "Enable this for precast girders when mild longitudinal bars should participate in flexure/effective d or torsion Al review."
             ),
-            on_change=_store_reinforcement_flags_metadata,
+            on_change=_on_reinforcement_flags_changed,
         )
     with col2:
         st.checkbox(
@@ -1859,7 +1884,7 @@ def _render_reinforcement_prestress_system_panel(preset: dict[str, Any]) -> None
             value=prestressing_steel_enabled(st.session_state, default=default_prestress),
             key=PRESTRESSING_STEEL_FLAG_KEY,
             help="When disabled, stored Prestress rows/strand layout data are kept but ignored by analysis and hidden from the default section preview.",
-            on_change=_store_reinforcement_flags_metadata,
+            on_change=_on_reinforcement_flags_changed,
         )
 
     _store_reinforcement_flags_metadata()

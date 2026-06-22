@@ -58,7 +58,6 @@ INPUT_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "include_prestress",
         "section_has_ordinary_rebar",
         "section_has_prestressing_steel",
-        "reinforcement_flags_preset_key",
     ),
     "Rebar": (
         "rebars",
@@ -148,9 +147,35 @@ def _hash_payload(payload: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def _input_hash_value(state: Mapping[str, Any], key: str) -> Any:
+    """Return normalized project-input values for dirty-state hashing.
+
+    Some section steel-system switches have workflow-aware defaults and may be
+    materialized only when Section Builder is opened.  Hash the effective value
+    instead of raw key presence so navigating Setup/Analysis/Section Builder
+    does not invalidate cached analysis results.
+    """
+
+    if key == "section_has_ordinary_rebar":
+        try:
+            from concrete_pmm_pro.core.reinforcement_system import ordinary_rebar_enabled
+
+            return ordinary_rebar_enabled(state, default=True)
+        except Exception:
+            return state.get(key)
+    if key == "section_has_prestressing_steel":
+        try:
+            from concrete_pmm_pro.core.reinforcement_system import prestressing_steel_enabled
+
+            return prestressing_steel_enabled(state, default=True)
+        except Exception:
+            return state.get(key)
+    return state.get(key)
+
+
 def input_group_hashes(state: Mapping[str, Any]) -> dict[str, str]:
     return {
-        group: _hash_payload({key: state.get(key) for key in keys})
+        group: _hash_payload({key: _input_hash_value(state, key) for key in keys})
         for group, keys in INPUT_GROUP_KEYS.items()
     }
 
