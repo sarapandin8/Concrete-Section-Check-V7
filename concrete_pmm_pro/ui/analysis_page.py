@@ -7655,6 +7655,19 @@ def _beam_uls_torsion_result_for_row(
     al_req = at_per_s * ph * cot_theta * cot_theta if math.isfinite(ph) and ph > 0.0 else float("nan")
     longitudinal_review = _beam_uls_torsion_longitudinal_review(state, al_req)
     longitudinal_status = str(longitudinal_review.get("status") or "LAYOUT REQUIRED")
+    if threshold_status == "BELOW THRESHOLD":
+        # Below the torsional cracking/threshold screen, torsional longitudinal
+        # Al is not a required acceptance gate.  Do not block a below-threshold
+        # torsion row merely because the ordinary rebar system is not enabled or
+        # no torsion-specific Al review has been requested.
+        al_req = 0.0
+        longitudinal_status = "NOT REQUIRED"
+        longitudinal_review = {
+            "status": "NOT REQUIRED",
+            "provided_mm2": float("nan"),
+            "utilization": float("nan"),
+            "description": "Longitudinal torsion Al is not required because Tu is below the torsion threshold screen.",
+        }
     at_req = abs(float(tu_kNm)) * 1.0e6 / (float(phi) * 2.0 * float(ao) * float(fy) * float(cot_theta))
     detailing_gate = _beam_uls_torsion_detailing_gate(
         zone=zone,
@@ -7681,6 +7694,8 @@ def _beam_uls_torsion_result_for_row(
     notes.append(str(detailing_gate.get("notes") or ""))
     if status == "PASS":
         notes.append("TORSION.CODE2 strength, Al, closed-hoop spacing, and zone-coverage gates pass for this station.")
+    elif status == "BELOW THRESHOLD":
+        notes.append("Tu is below the torsion threshold screen; longitudinal Al is not required by this threshold gate. Review threshold basis and detailing notes before final issue.")
     else:
         notes.append("Torsion is not final PASS until transverse strength, longitudinal Al, and closed-hoop detailing gates pass.")
 
@@ -8364,9 +8379,26 @@ def _beam_uls_combined_vt_result_for_row(
     # still read from the ordinary rebar table (single source of truth).  This
     # is intentionally a review gate, not a final flexure+shear+tension
     # longitudinal certification.
+    torsion_below_threshold = (
+        str(torsion.get("Status") or "").upper() == "BELOW THRESHOLD"
+        or str(torsion.get("Threshold status") or "").upper() == "BELOW THRESHOLD"
+    )
     longitudinal_req = torsion_req * float(ph) * float(cot_theta) * float(cot_theta)
     longitudinal_review = _beam_uls_torsion_longitudinal_review(state, longitudinal_req)
     longitudinal_status = str(longitudinal_review.get("status") or "DATA REQUIRED")
+    if torsion_below_threshold:
+        # When the separate torsion source check is below threshold, combined
+        # V+T may still show stress/transverse utilization for transparency, but
+        # it must not be blocked by a missing longitudinal Al layout.  Al becomes
+        # required only when torsion design is actually required.
+        longitudinal_req = 0.0
+        longitudinal_status = "NOT REQUIRED"
+        longitudinal_review = {
+            "status": "NOT REQUIRED",
+            "provided_mm2": float("nan"),
+            "utilization": float("nan"),
+            "description": "Longitudinal torsion Al is not required because the source torsion row is below threshold.",
+        }
     if strength_route.is_bridge:
         min_req = max(0.083 * math.sqrt(float(fc)) * float(bw_mm) / float(fy_shear), 0.35 * float(bw_mm) / float(fy_shear))
     else:
@@ -8392,7 +8424,10 @@ def _beam_uls_combined_vt_result_for_row(
     notes.append("ULS.VT.CODE1 checks combined compression-strut stress, combined transverse reinforcement, and longitudinal Al from the ordinary rebar source of truth.")
     notes.append(str(longitudinal_review.get("description") or ""))
     if status == "PASS":
-        notes.append("Combined V+T interaction/reinforcement gates pass for this station; source shear/torsion gates are evaluated separately in the source-strength gate.")
+        if torsion_below_threshold:
+            notes.append("Combined V+T stress/transverse gates pass; longitudinal Al is not required because the source torsion row is below threshold.")
+        else:
+            notes.append("Combined V+T interaction/reinforcement gates pass for this station; source shear/torsion gates are evaluated separately in the source-strength gate.")
     notes.append("Vp is treated as zero in this combined V+T screen unless already embedded in the imported ULS resultants / current SHEAR.CODE2 route.")
     return {
         "Check": "Shear + Torsion",
