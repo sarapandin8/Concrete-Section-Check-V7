@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from html import escape
 
 import pandas as pd
@@ -1498,6 +1499,64 @@ _RESULTS_DASHBOARD_CSS = """
   font-size: 0.82rem;
   line-height: 1.42;
 }
+.cpmm-results-beam-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.62rem;
+  margin: 0.50rem 0 0.78rem 0;
+}
+.cpmm-results-beam-card {
+  border: 1px solid #d7e2ee;
+  border-left: 4px solid #1d6fe7;
+  border-radius: 13px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  padding: 0.66rem 0.72rem;
+  min-height: 134px;
+  box-shadow: 0 4px 12px rgba(7, 26, 51, 0.040);
+}
+.cpmm-results-beam-card.ready { border-left-color: #22a447; background: linear-gradient(180deg, #ffffff 0%, #f5fff7 100%); }
+.cpmm-results-beam-card.warning { border-left-color: #f59e0b; background: linear-gradient(180deg, #ffffff 0%, #fffaf0 100%); }
+.cpmm-results-beam-card.danger { border-left-color: #d92d20; background: linear-gradient(180deg, #ffffff 0%, #fff6f5 100%); }
+.cpmm-results-beam-card.neutral { border-left-color: #98a2b3; background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%); }
+.cpmm-results-beam-kicker {
+  color: #526f8d;
+  font-size: 0.60rem;
+  font-weight: 950;
+  letter-spacing: 0.070em;
+  text-transform: uppercase;
+  margin-bottom: 0.12rem;
+}
+.cpmm-results-beam-title {
+  color: #071a33;
+  font-size: 0.94rem;
+  font-weight: 950;
+  line-height: 1.12;
+  margin-bottom: 0.28rem;
+}
+.cpmm-results-beam-metric {
+  color: #0b3a66;
+  font-size: 0.80rem;
+  line-height: 1.36;
+  margin-top: 0.15rem;
+}
+.cpmm-results-beam-metric strong {
+  color: #071a33;
+  font-weight: 900;
+}
+.cpmm-results-beam-action {
+  color: #667085;
+  font-size: 0.70rem;
+  line-height: 1.30;
+  margin-top: 0.34rem;
+  padding-top: 0.32rem;
+  border-top: 1px solid #e9eef5;
+}
+@media (max-width: 1200px) {
+  .cpmm-results-beam-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .cpmm-results-beam-grid { grid-template-columns: 1fr; }
+}
 @media (max-width: 1050px) {
   .cpmm-results-dashboard-grid { grid-template-columns: 1fr; }
 }
@@ -1507,14 +1566,14 @@ _RESULTS_DASHBOARD_CSS = """
 
 def _results_style_for_status(status: object) -> str:
     label = str(status or "").strip().upper()
-    if any(token in label for token in ["FAIL", "ERROR", "DANGER", "EXCEED"]):
+    if any(token in label for token in ["FAIL", "ERROR", "DANGER", "EXCEED", "BLOCKED"]):
         return "danger"
-    if any(token in label for token in ["PASS", "READY", "AVAILABLE", "CURRENT", "CALCULATED"]):
-        return "ready"
-    if any(token in label for token in ["REVIEW", "WARNING", "NOT READY", "NOT CALCULATED", "PLANNED", "PLACEHOLDER"]):
+    if any(token in label for token in ["REVIEW", "WARNING", "NOT READY", "NOT CALCULATED", "PLANNED", "PLACEHOLDER", "DATA REQUIRED"]):
         return "warning"
     if any(token in label for token in ["N/A", "NOT ACTIVE", "NONE", "NO RESULT"]):
         return "neutral"
+    if any(token in label for token in ["PASS", "READY", "AVAILABLE", "CURRENT", "CALCULATED", "BELOW THRESHOLD", "CLEAR"]):
+        return "ready"
     return "info"
 
 
@@ -1630,34 +1689,218 @@ def _results_add_pmm_rows(state: object, rows: list[dict[str, object]]) -> None:
         )
 
 
-def _results_add_beam_uls_rows(state: object, rows: list[dict[str, object]]) -> None:
-    cache = state.get("_beam_girder_uls_manual_calculation_cache")
-    if not isinstance(cache, dict):
-        return
-    for check_name in ["Flexure", "Shear", "Torsion", "Shear + Torsion"]:
-        entry = cache.get(check_name)
-        if not isinstance(entry, dict):
+
+_RESULTS_BEAM_ULS_CHECKS = ["Flexure", "Shear", "Torsion", "Shear + Torsion"]
+_RESULTS_BEAM_ULS_DF_KEYS = {
+    "Flexure": "flexure_preview_df",
+    "Shear": "shear_check_df",
+    "Torsion": "torsion_check_df",
+    "Shear + Torsion": "combined_vt_df",
+}
+
+
+def _results_scalar(value: object) -> str:
+    if value is None:
+        return "-"
+    if isinstance(value, float):
+        return "-" if pd.isna(value) else f"{value:.3f}"
+    return str(value) if str(value) else "-"
+
+
+def _results_first_existing(row: Mapping[str, object], candidates: list[str], default: object = "-") -> object:
+    for candidate in candidates:
+        value = row.get(candidate)
+        if value is None:
             continue
-        key_map = {
-            "Flexure": "flexure_preview_df",
-            "Shear": "shear_check_df",
-            "Torsion": "torsion_check_df",
-            "Shear + Torsion": "combined_vt_df",
-        }
-        best = _results_best_row(_results_dataframe(entry.get(key_map[check_name]))) or {}
+        if isinstance(value, float) and pd.isna(value):
+            continue
+        if str(value) == "":
+            continue
+        return value
+    return default
+
+
+def _results_beam_uls_cache(state: object) -> dict[str, dict[str, object]]:
+    cache = state.get("_beam_girder_uls_manual_calculation_cache") if hasattr(state, "get") else None
+    return cache if isinstance(cache, dict) else {}
+
+
+def _results_beam_uls_best_row(entry: dict[str, object] | None, check_name: str) -> dict[str, object]:
+    if not isinstance(entry, dict):
+        return {}
+    df = _results_dataframe(entry.get(_RESULTS_BEAM_ULS_DF_KEYS.get(check_name, "")))
+    if df is None or df.empty:
+        return {}
+    work_df = df.copy()
+    preferred_columns = {
+        "Flexure": ["Utilization value", "D/C value", "Overall D/C value"],
+        "Shear": ["Strength D/C value", "D/C value", "Utilization value"],
+        "Torsion": ["D/C value", "Utilization value"],
+        "Shear + Torsion": ["Overall D/C value", "Transverse D/C value", "Stress D/C value", "Longitudinal D/C value"],
+    }.get(check_name, ["Utilization value", "D/C value", "Overall D/C value"])
+    for col in preferred_columns:
+        if col in work_df.columns:
+            numeric = pd.to_numeric(work_df[col], errors="coerce")
+            if numeric.notna().any():
+                return dict(work_df.loc[numeric.idxmax()].to_dict())
+    return dict(work_df.iloc[0].to_dict())
+
+
+def _results_beam_uls_row_status(check_name: str, row: Mapping[str, object], cache: dict[str, dict[str, object]]) -> str:
+    status = str(row.get("Status") or "").strip()
+    if check_name == "Shear + Torsion":
+        shear_status = str(_results_beam_uls_best_row(cache.get("Shear"), "Shear").get("Status") or "").upper()
+        torsion_status = str(_results_beam_uls_best_row(cache.get("Torsion"), "Torsion").get("Status") or "").upper()
+        if "FAIL" in shear_status or "FAIL" in torsion_status:
+            return "SOURCE BLOCKED"
+        if status.upper() == "DATA REQUIRED":
+            return "DATA REQUIRED"
+    return status or ("CALCULATED" if row else "NOT CALCULATED")
+
+
+def _results_beam_uls_utilization(check_name: str, row: Mapping[str, object]) -> str:
+    value = _results_first_existing(
+        row,
+        {
+            "Flexure": ["Utilization", "Utilization value", "D/C value"],
+            "Shear": ["Strength D/C", "Strength D/C value", "D/C value"],
+            "Torsion": ["D/C", "D/C value", "Utilization"],
+            "Shear + Torsion": ["Overall D/C", "Overall D/C value", "Transverse D/C", "Transverse D/C value", "Stress D/C", "Stress D/C value"],
+        }.get(check_name, ["Utilization", "D/C value", "Overall D/C value"]),
+    )
+    return _results_scalar(value)
+
+
+def _results_beam_uls_demand(check_name: str, row: Mapping[str, object]) -> str:
+    if check_name == "Flexure":
+        return _results_scalar(_results_first_existing(row, ["Demand", "Mu", "Mux kN-m", "Muy kN-m"]))
+    if check_name == "Shear":
+        return _results_scalar(_results_first_existing(row, ["Demand", "Vu kN", "Vuy kN", "Vux kN"]))
+    if check_name == "Torsion":
+        return _results_scalar(_results_first_existing(row, ["Demand", "Tu kN-m"]))
+    return _results_scalar(_results_first_existing(row, ["Demand", "Vu / Tu", "Vu kN", "Tu kN-m"]))
+
+
+def _results_beam_uls_capacity(check_name: str, row: Mapping[str, object]) -> str:
+    if check_name == "Flexure":
+        return _results_scalar(_results_first_existing(row, ["Capacity", "φMn kN-m", "phiMn kN-m"]))
+    if check_name == "Shear":
+        return _results_scalar(_results_first_existing(row, ["Capacity", "φVn kN", "phiVn kN"]))
+    if check_name == "Torsion":
+        return _results_scalar(_results_first_existing(row, ["Capacity", "φTn kN-m", "phiTn kN-m"]))
+    return _results_scalar(_results_first_existing(row, ["Capacity", "Capacity / Limit", "Interaction limit", "limit"]))
+
+
+def _results_beam_uls_action(check_name: str, status: str) -> str:
+    label = status.upper()
+    if check_name == "Shear + Torsion" and ("SOURCE BLOCKED" in label or "BLOCKED" in label):
+        return "Resolve source Shear/Torsion FAIL before accepting V+T interaction."
+    if check_name == "Shear + Torsion" and "DATA REQUIRED" in label:
+        return "Complete required V+T source data before accepting interaction."
+    if "FAIL" in label:
+        return "Revise capacity/detailing in the source Analysis check."
+    if "PASS" in label or "BELOW THRESHOLD" in label:
+        return "Review audit output before final issue."
+    if "LAYOUT REQUIRED" in label:
+        return "Complete reinforcement layout before acceptance."
+    if "NOT CALCULATED" in label:
+        return f"Run {check_name} in Analysis."
+    return "Review calculated gate and notes."
+
+
+def _results_beam_uls_summary_rows(state: object) -> list[dict[str, object]]:
+    cache = _results_beam_uls_cache(state)
+    rows: list[dict[str, object]] = []
+    for check_name in _RESULTS_BEAM_ULS_CHECKS:
+        entry = cache.get(check_name)
+        row = _results_beam_uls_best_row(entry, check_name)
+        status = _results_beam_uls_row_status(check_name, row, cache)
         rows.append(
             {
                 "Module": "ULS Beam/Girder",
                 "Check": check_name,
-                "Status": best.get("Status", "CALCULATED"),
-                "Governing Case": best.get("Case", "-"),
-                "Station / Point": best.get("Governing x", best.get("Station type", "-")),
-                "Demand": best.get("Demand", best.get("Vu kN", best.get("Tu kN-m", "-"))),
-                "Capacity / Limit": best.get("Capacity", best.get("φVn kN", best.get("φTn kN-m", "-"))),
-                "D/C / Util.": best.get("Utilization", best.get("D/C value", best.get("Overall D/C value", "-"))),
+                "Status": status,
+                "Governing Case": _results_scalar(_results_first_existing(row, ["Case", "Load case", "Case Name"])),
+                "Station / Point": _results_scalar(_results_first_existing(row, ["Governing x", "Station x", "Station type"])),
+                "Demand": _results_beam_uls_demand(check_name, row),
+                "Capacity / Limit": _results_beam_uls_capacity(check_name, row),
+                "D/C / Util.": _results_beam_uls_utilization(check_name, row),
+                "Required Action": _results_beam_uls_action(check_name, status),
                 "Source": f"Analysis → ULS Strength → {check_name}",
+                "__calculated": bool(row),
             }
         )
+    return rows
+
+
+def _render_results_beam_uls_dashboard(state: object) -> None:
+    rows = _results_beam_uls_summary_rows(state)
+    if not any(bool(row.get("__calculated")) for row in rows):
+        st.markdown(
+            _RESULTS_DASHBOARD_CSS
+            + '<div class="cpmm-results-empty">No stored Beam/Girder ULS results are available yet. Run Flexure, Shear, Torsion, or Shear + Torsion in Analysis first.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    card_html: list[str] = []
+    for row in rows:
+        status = str(row.get("Status") or "-")
+        style = _results_style_for_status(status)
+        if status.upper() == "SOURCE BLOCKED":
+            style = "danger"
+        card_html.append(
+            f'<div class="cpmm-results-beam-card {style}">'
+            f'<div class="cpmm-results-beam-kicker">{escape(str(row.get("Check", "-")))}</div>'
+            f'<div class="cpmm-results-beam-title">{_results_status_pill(status)}</div>'
+            f'<div class="cpmm-results-beam-metric"><strong>Case</strong>: {escape(str(row.get("Governing Case", "-")))}</div>'
+            f'<div class="cpmm-results-beam-metric"><strong>x</strong>: {escape(str(row.get("Station / Point", "-")))}</div>'
+            f'<div class="cpmm-results-beam-metric"><strong>D/C</strong>: {escape(str(row.get("D/C / Util.", "-")))}</div>'
+            f'<div class="cpmm-results-beam-action">{escape(str(row.get("Required Action", "-")))}</div>'
+            '</div>'
+        )
+    st.markdown(_RESULTS_DASHBOARD_CSS + '<div class="cpmm-results-beam-grid">' + "".join(card_html) + '</div>', unsafe_allow_html=True)
+
+    display_rows = [
+        {
+            "Check": row["Check"],
+            "Status": row["Status"],
+            "Governing Case": row["Governing Case"],
+            "Station / Point": row["Station / Point"],
+            "Demand": row["Demand"],
+            "Capacity / Limit": row["Capacity / Limit"],
+            "D/C / Util.": row["D/C / Util."],
+            "Required Action": row["Required Action"],
+        }
+        for row in rows
+        if bool(row.get("__calculated"))
+    ]
+    st.markdown(
+        _RESULTS_DASHBOARD_CSS
+        + _results_html_table(
+            display_rows,
+            ["Check", "Status", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Required Action"],
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def _results_add_beam_uls_rows(state: object, rows: list[dict[str, object]]) -> None:
+    for row in _results_beam_uls_summary_rows(state):
+        if bool(row.get("__calculated")):
+            rows.append(
+                {
+                    "Module": row["Module"],
+                    "Check": row["Check"],
+                    "Status": row["Status"],
+                    "Governing Case": row["Governing Case"],
+                    "Station / Point": row["Station / Point"],
+                    "Demand": row["Demand"],
+                    "Capacity / Limit": row["Capacity / Limit"],
+                    "D/C / Util.": row["D/C / Util."],
+                    "Source": row["Source"],
+                }
+            )
 
 
 def _results_add_sls_rows(state: object, rows: list[dict[str, object]]) -> None:
@@ -1811,6 +2054,13 @@ def render_results_workspace() -> None:
         mark="G",
     )
     _render_results_executive_summary(governing_rows)
+
+    render_section_bar(
+        "Beam/Girder ULS Stored Results",
+        "Read-only Flexure, Shear, Torsion, and Shear + Torsion result dashboard from cached Analysis outputs.",
+        mark="B",
+    )
+    _render_results_beam_uls_dashboard(st.session_state)
 
     render_section_bar(
         "Stored Result Modules",
