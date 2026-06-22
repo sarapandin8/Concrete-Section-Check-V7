@@ -10087,8 +10087,24 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
             "φTn is the code-routed closed-hoop torsion strength line. "
             "TORSION.CODE2 also checks longitudinal Al from the ordinary rebar table plus closed-hoop spacing and zone coverage gates."
         )
-        if torsion_has_demand and torsion_result is not None and str(torsion_result.get("Status")) == "PASS":
+        torsion_status_label = str(torsion_result.get("Status") if torsion_result is not None else "").upper()
+        torsion_threshold_label = str(torsion_result.get("Threshold status") if torsion_result is not None else "").upper()
+        torsion_longitudinal_label = str(torsion_result.get("Longitudinal status") if torsion_result is not None else "").upper()
+        if torsion_has_demand and torsion_status_label == "PASS":
             st.success("Torsion strength, longitudinal Al, and compact closed-hoop detailing gates pass for the governing station.")
+        elif torsion_has_demand and (
+            torsion_status_label == "BELOW THRESHOLD" or torsion_threshold_label == "BELOW THRESHOLD"
+        ):
+            if torsion_longitudinal_label == "NOT REQUIRED":
+                st.success(
+                    "Torsion is below the design threshold at the governing station; longitudinal Al is not required for this torsion gate. "
+                    "Review φTn/threshold and detailing notes before final member acceptance."
+                )
+            else:
+                st.info(
+                    "Torsion is below the design threshold at the governing station. "
+                    "Review φTn/threshold and detailing notes before final member acceptance."
+                )
         elif torsion_has_demand:
             st.warning("Torsion demand is present. Review φTn, threshold, longitudinal Al, and detailing output before issuing final member acceptance.")
         else:
