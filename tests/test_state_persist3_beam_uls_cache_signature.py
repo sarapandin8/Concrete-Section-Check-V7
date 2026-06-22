@@ -103,5 +103,86 @@ def test_beam_uls_cache_signature_does_not_hash_raw_section_geometry() -> None:
     body = source[start:end]
 
     assert '"section_geometry"' not in body
-    assert '"section_properties"' in body
+    assert '"section_properties"' not in body
     assert "_depth > 8" in source
+
+
+def test_beam_uls_cache_signature_ignores_all_section_subpage_derived_outputs() -> None:
+    route = beam_girder_uls_strength_route(is_bridge=True, is_building=False, code_edition="AASHTO LRFD 9th Edition")
+    source_table = [
+        {
+            "Active": True,
+            "Label": "B1",
+            "x_mm": 0.0,
+            "y_mm": -500.0,
+            "Bar Size": "DB20",
+            "Diameter_mm": 20.0,
+            "Material": "SD40",
+            "Count": 1,
+        }
+    ]
+    source_prestress = [
+        {
+            "Active": True,
+            "Label": "PS1",
+            "Product": "12.7mm strand",
+            "x_mm": 0.0,
+            "y_mm": -600.0,
+            "Area_mm2": 98.7,
+            "Pe_eff_kN": 120.0,
+        }
+    ]
+    before = _bridge_girder_state()
+    before.update({"rebar_table": source_table, "prestress_table": source_prestress})
+
+    after = dict(before)
+    after.update(
+        {
+            # Section Builder derived/generated state
+            "section_geometry": {"heavy": "generated object placeholder"},
+            "section_properties": {"A_mm2": 100000.0, "Ix_mm4": 1.0},
+            "section_dimensions": [{"label": "B", "value": 5500.0}],
+            # Rebar page parser outputs
+            "rebars": [{"label": "B1", "area_mm2": 314.159}],
+            "rebars_valid_for_analysis": True,
+            "rebar_input_mode": "Manual table",
+            # Prestress page parser outputs
+            "prestress_elements": [{"label": "PS1", "pe_eff_n": 120000.0}],
+            "prestress_valid_for_analysis": True,
+            "girder_strand_layout_preview_df": [{"not": "source"}],
+        }
+    )
+
+    assert _beam_uls_cache_input_hash(before, _active_df(), strength_route=route) == _beam_uls_cache_input_hash(
+        after,
+        _active_df(),
+        strength_route=route,
+    )
+
+
+def test_beam_uls_cache_signature_changes_when_source_rebar_table_changes() -> None:
+    route = beam_girder_uls_strength_route(is_bridge=True, is_building=False, code_edition="AASHTO LRFD 9th Edition")
+    before = _bridge_girder_state()
+    before["rebar_table"] = [{"Active": True, "Label": "B1", "x_mm": 0.0, "y_mm": -500.0, "Bar Size": "DB20", "Count": 1}]
+    after = dict(before)
+    after["rebar_table"] = [{"Active": True, "Label": "B1", "x_mm": 0.0, "y_mm": -500.0, "Bar Size": "DB25", "Count": 1}]
+
+    assert _beam_uls_cache_input_hash(before, _active_df(), strength_route=route) != _beam_uls_cache_input_hash(
+        after,
+        _active_df(),
+        strength_route=route,
+    )
+
+
+def test_beam_uls_cache_signature_uses_source_tables_not_parser_outputs() -> None:
+    source = open("concrete_pmm_pro/ui/analysis_page.py", encoding="utf-8").read()
+    start = source.index("def _beam_uls_cache_input_hash")
+    end = source.index("\n\ndef _beam_uls_manual_cache", start)
+    body = source[start:end]
+
+    assert '"rebar_table"' in body
+    assert '"prestress_table"' in body
+    assert '"rebars",' not in body
+    assert '"prestress_elements"' not in body
+    assert '"rebars_valid_for_analysis"' not in body
+    assert '"prestress_valid_for_analysis"' not in body

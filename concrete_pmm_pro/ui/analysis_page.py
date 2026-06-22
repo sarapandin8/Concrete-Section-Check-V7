@@ -8073,8 +8073,25 @@ def _beam_uls_hash_payload(payload: object) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _beam_uls_state_values(state: Mapping[str, object], keys: list[str]) -> dict[str, object]:
-    return {key: state.get(key) for key in keys if key in state}
+def _beam_uls_state_values(
+    state: Mapping[str, object],
+    keys: list[str],
+    *,
+    default_empty_keys: set[str] | None = None,
+) -> dict[str, object]:
+    defaults = default_empty_keys or set()
+    result: dict[str, object] = {}
+    for key in keys:
+        if key in state:
+            value = state.get(key)
+        elif key in defaults:
+            value = []
+        else:
+            continue
+        if key in defaults and value is None:
+            value = []
+        result[key] = value
+    return result
 
 
 def _beam_uls_cache_input_hash(
@@ -8109,7 +8126,6 @@ def _beam_uls_cache_input_hash(
                 "section_category",
                 "girder_section_family",
                 "section_parameters",
-                "section_properties",
                 "composite_section_settings",
                 "effective_width_settings",
             ],
@@ -8134,22 +8150,23 @@ def _beam_uls_cache_input_hash(
                 "topping_material",
             ],
         ),
+        # Use editable/source tables in the cache signature, not derived parser
+        # outputs created when the Rebar or Prestress subpages render.  Visiting
+        # Section Builder + Rebar + Prestress must not invalidate a calculated
+        # ULS result unless the actual source-of-truth input table changed.
         "reinforcement": _beam_uls_state_values(
             state,
             [
-                "rebars",
-                "rebars_valid_for_analysis",
-                "rebar_input_mode",
+                "rebar_table",
                 "beam_girder_shear_reinforcement_table",
                 "beam_girder_shear_depth_settings",
             ],
+            default_empty_keys={"rebar_table", "beam_girder_shear_reinforcement_table"},
         ),
         "prestress": _beam_uls_state_values(
             state,
             [
                 "prestress_table",
-                "prestress_elements",
-                "prestress_valid_for_analysis",
                 "girder_strand_layout_table",
                 "girder_prestress_system_settings",
                 "railway_u_girder_stage_settings",
@@ -8157,6 +8174,7 @@ def _beam_uls_cache_input_hash(
                 "girder_prestress_code_loss_settings",
                 "prestress_loss_settings",
             ],
+            default_empty_keys={"prestress_table", "girder_strand_layout_table", "girder_prestress_force_states_table"},
         ),
         "loads": active_df,
         "analysis_settings": _beam_uls_state_values(state, ["analysis_settings"]),
