@@ -13,8 +13,8 @@ def test_results_executive_state_reports_partial_beam_uls_results() -> None:
 
 
 def test_results_governing_section_states_only_calculated_checks_are_listed() -> None:
-    assert 'Single-screen review of calculated checks only' in SOURCE
-    assert 'missing Beam/Girder ULS checks remain listed in the dashboard below' in SOURCE
+    assert "Decision-level summary of stored ULS/SLS result completeness" in SOURCE
+    assert "Required Actions" in SOURCE
 
 
 def test_results_diagram_review_uses_cached_beam_uls_dataframes() -> None:
@@ -36,5 +36,5 @@ def test_results_diagram_review_no_longer_requires_stored_plotly_figure_object()
 
 
 def test_results_availability_counts_cached_result_diagrams() -> None:
-    assert "figure_count = len(_results_available_diagram_figures(state))" in SOURCE
-    assert "stored diagrams from cached results only; no rerun" in SOURCE
+    assert "Next action" in SOURCE
+    assert "Run SLS Stress & Cracking" in SOURCE

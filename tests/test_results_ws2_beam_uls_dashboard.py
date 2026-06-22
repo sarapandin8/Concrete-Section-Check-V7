@@ -7,9 +7,9 @@ SOURCE = Path("app.py").read_text(encoding="utf-8")
 
 
 def test_results_workspace_has_beam_girder_uls_dashboard_section() -> None:
-    assert "Beam/Girder ULS Stored Results" in SOURCE
+    assert "ULS Results Dashboard" in SOURCE
     assert "_render_results_beam_uls_dashboard(st.session_state)" in SOURCE
-    assert "Read-only Flexure, Shear, Torsion, and Shear + Torsion result dashboard" in SOURCE
+    assert "Read-only strength result summary from cached Analysis outputs." in SOURCE
 
 
 def test_results_beam_uls_dashboard_uses_four_check_summary_rows() -> None:

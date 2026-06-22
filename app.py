@@ -37,7 +37,7 @@ WORKSPACE_NAVIGATION = {
     "Sections": ["Section Builder", "Rebar", "Prestress"],
     "Loads": ["Loads"],
     "Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber"],
-    "Results": ["Results"],
+    "Results": ["Summary Dashboard", "ULS Results", "SLS Results", "Traceability"],
     "Report / QA": ["Report / QA"],
 }
 
@@ -1619,13 +1619,210 @@ def _results_best_row(df: pd.DataFrame | None) -> dict[str, object] | None:
     return dict(work_df.iloc[0].to_dict())
 
 
+
+def _results_sls_available(state: object) -> bool:
+    return state.get("serviceability_summary") is not None or bool(state.get("railway_u_girder_sls_report_package_available"))
+
+
+def _results_beam_uls_completion(state: object) -> tuple[int, int, list[str]]:
+    rows = _results_beam_uls_summary_rows(state)
+    calculated = sum(1 for row in rows if bool(row.get("__calculated")))
+    missing = [str(row.get("Check")) for row in rows if not bool(row.get("__calculated"))]
+    return calculated, len(rows), missing
+
+
+def _results_next_engineering_action(state: object, rows: list[dict[str, object]] | None = None) -> dict[str, str]:
+    result_rows = rows if rows is not None else _results_governing_rows(state)
+    styles = [_results_style_for_status(row.get("Status")) for row in result_rows]
+    if "danger" in styles:
+        return {
+            "status": "danger",
+            "value": "Resolve blocking check(s)",
+            "detail": "At least one stored ULS/SLS result is FAIL, BLOCKED, or exceeds its limit.",
+        }
+
+    calculated, total, missing = _results_beam_uls_completion(state)
+    if 0 < calculated < total:
+        return {
+            "status": "warning",
+            "value": "Complete ULS checks",
+            "detail": "Run missing Beam/Girder ULS checks in Analysis: " + ", ".join(missing),
+        }
+    if calculated == 0 and not any(str(row.get("Module", "")).startswith("ULS") for row in result_rows):
+        return {
+            "status": "warning",
+            "value": "Run ULS analysis",
+            "detail": "No stored ULS result set is available for the active workflow.",
+        }
+    if not _results_sls_available(state):
+        return {
+            "status": "warning",
+            "value": "Run SLS Stress & Cracking",
+            "detail": "ULS results may be available, but SLS serviceability is still not calculated.",
+        }
+    return {
+        "status": "ready",
+        "value": "Open Report / QA",
+        "detail": "Stored ULS and SLS result summaries are available for traceability review.",
+    }
+
+
+def _results_required_action_rows(state: object, rows: list[dict[str, object]]) -> list[dict[str, object]]:
+    actions: list[dict[str, object]] = []
+    for row in rows:
+        style = _results_style_for_status(row.get("Status"))
+        if style in {"danger", "warning"}:
+            actions.append(
+                {
+                    "Priority": "High" if style == "danger" else "Medium",
+                    "Module": row.get("Module", "-"),
+                    "Issue": f"{row.get('Check', '-')} — {row.get('Status', '-')}",
+                    "Required Action": row.get("Required Action", row.get("Source", "Review source Analysis check.")),
+                }
+            )
+    calculated, total, missing = _results_beam_uls_completion(state)
+    if 0 < calculated < total:
+        actions.append(
+            {
+                "Priority": "Medium",
+                "Module": "ULS Beam/Girder",
+                "Issue": "Partial ULS result set",
+                "Required Action": "Run missing checks in Analysis: " + ", ".join(missing),
+            }
+        )
+    if not _results_sls_available(state):
+        actions.append(
+            {
+                "Priority": "High" if actions == [] else "Medium",
+                "Module": "SLS",
+                "Issue": "SLS not calculated",
+                "Required Action": "Run SLS Stress & Cracking before Report / QA.",
+            }
+        )
+    if not actions:
+        actions.append(
+            {
+                "Priority": "Review",
+                "Module": "Report / QA",
+                "Issue": "No blocking issue in stored summaries",
+                "Required Action": "Open Report / QA and review traceability, assumptions, and limitations.",
+            }
+        )
+    return actions
+
+
+def _render_results_next_action_card(state: object, rows: list[dict[str, object]]) -> None:
+    action = _results_next_engineering_action(state, rows)
+    render_metric_cards(
+        [
+            {
+                "title": "Next engineering action",
+                "value": action["value"],
+                "detail": action["detail"],
+                "status": action["status"],
+            }
+        ]
+    )
+
+
+def _render_results_required_actions(state: object, rows: list[dict[str, object]]) -> None:
+    action_rows = _results_required_action_rows(state, rows)
+    st.markdown(
+        _RESULTS_DASHBOARD_CSS
+        + _results_html_table(
+            action_rows,
+            ["Priority", "Module", "Issue", "Required Action"],
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def _results_sls_summary_cards(state: object) -> list[dict[str, object]]:
+    serviceability = state.get("serviceability_summary")
+    if serviceability is None and not bool(state.get("railway_u_girder_sls_report_package_available")):
+        return [
+            {
+                "title": "SLS status",
+                "value": "Not calculated",
+                "detail": "Run SLS Stress & Cracking in Analysis",
+                "status": "warning",
+            },
+            {
+                "title": "Governing stage",
+                "value": "-",
+                "detail": "no stored SLS stage result",
+                "status": "neutral",
+            },
+            {
+                "title": "Max utilization",
+                "value": "-",
+                "detail": "service stress utilization unavailable",
+                "status": "neutral",
+            },
+            {
+                "title": "Required action",
+                "value": "Run SLS",
+                "detail": "SLS is required before Report / QA readiness",
+                "status": "warning",
+            },
+        ]
+    status = str(getattr(serviceability, "overall_status", "AVAILABLE")) if serviceability is not None else "AVAILABLE"
+    util = getattr(serviceability, "max_utilization", None) if serviceability is not None else None
+    return [
+        {
+            "title": "SLS status",
+            "value": status,
+            "detail": "stored serviceability summary",
+            "status": _results_style_for_status(status),
+        },
+        {
+            "title": "Governing case",
+            "value": str(getattr(serviceability, "governing_combo", "-")) if serviceability is not None else "-",
+            "detail": "critical stored SLS case",
+            "status": "info",
+        },
+        {
+            "title": "Governing point",
+            "value": str(getattr(serviceability, "governing_point", "-")) if serviceability is not None else "-",
+            "detail": "critical section/station",
+            "status": "info",
+        },
+        {
+            "title": "Max utilization",
+            "value": "-" if util is None else f"{float(util):.3f}",
+            "detail": "demand / applicable service limit",
+            "status": "ready" if util is not None and float(util) <= 1.0 else ("danger" if util is not None else "neutral"),
+        },
+    ]
+
+
+def _render_results_sls_dashboard(state: object) -> None:
+    render_metric_cards(_results_sls_summary_cards(state))
+    rows: list[dict[str, object]] = []
+    _results_add_sls_rows(state, rows)
+    if rows:
+        st.markdown(
+            _RESULTS_DASHBOARD_CSS
+            + _results_html_table(
+                rows,
+                ["Module", "Check", "Status", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Source"],
+            ),
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            _RESULTS_DASHBOARD_CSS
+            + '<div class="cpmm-results-empty">No stored SLS result rows are available yet. Run SLS Stress & Cracking in Analysis before Report / QA.</div>',
+            unsafe_allow_html=True,
+        )
+
+
 def _results_availability_cards(state: object) -> list[dict[str, object]]:
     beam_cache = state.get("_beam_girder_uls_manual_calculation_cache") if isinstance(state.get("_beam_girder_uls_manual_calculation_cache"), dict) else {}
     serviceability = state.get("serviceability_summary")
     pmm_available = state.get("rc_demand_capacity_result") is not None or state.get("rc_pmm_result") is not None
     uls_count = sum(1 for entry in beam_cache.values() if isinstance(entry, dict))
     sls_available = serviceability is not None or bool(state.get("railway_u_girder_sls_report_package_available"))
-    figure_count = len(_results_available_diagram_figures(state))
     return [
         {
             "title": "ULS stored results",
@@ -1640,10 +1837,10 @@ def _results_availability_cards(state: object) -> list[dict[str, object]]:
             "status": "ready" if sls_available else "warning",
         },
         {
-            "title": "Diagram review",
-            "value": f"{figure_count:,} stored figure(s)",
-            "detail": "stored diagrams from cached results only; no rerun",
-            "status": "ready" if figure_count else "neutral",
+            "title": "Next action",
+            "value": _results_next_engineering_action(state)["value"],
+            "detail": _results_next_engineering_action(state)["detail"],
+            "status": _results_next_engineering_action(state)["status"],
         },
         {
             "title": "Report handoff",
@@ -2189,42 +2386,53 @@ def _render_results_traceability(state: object) -> None:
 def render_results_workspace() -> None:
     render_page_header(
         "Results",
-        "Executive engineering dashboard for stored PMM, ULS, SLS, and diagram outputs; opening Results does not rerun PMM, ULS, or SLS.",
+        "Engineering decision dashboard for stored ULS and SLS summaries; opening Results does not rerun PMM, ULS, or SLS.",
         icon="RS",
         badge="Stored results",
     )
-    render_metric_cards(_results_availability_cards(st.session_state))
+    active_subpage = _safe_choice(
+        "Results subpage",
+        WORKSPACE_NAVIGATION["Results"],
+        key="_results_active_subpage",
+    )
     governing_rows = _results_governing_rows(st.session_state)
-    render_section_bar(
-        "Governing Results Dashboard",
-        "Single-screen review of calculated checks only; missing Beam/Girder ULS checks remain listed in the dashboard below.",
-        mark="G",
-    )
-    _render_results_executive_summary(governing_rows, st.session_state)
 
-    render_section_bar(
-        "Beam/Girder ULS Stored Results",
-        "Read-only Flexure, Shear, Torsion, and Shear + Torsion result dashboard from cached Analysis outputs.",
-        mark="B",
-    )
-    _render_results_beam_uls_dashboard(st.session_state)
-
-    render_section_bar(
-        "Stored Result Modules",
-        "Drill into cached result tables already produced by Analysis. No calculation is triggered here.",
-        mark="M",
-    )
-    _render_results_module_tables(st.session_state)
-
-    render_section_bar(
-        "Diagram Review",
-        "Review stored figures generated upstream in Analysis. Figure rendering is read-only.",
-        mark="D",
-    )
-    _render_results_diagram_review(st.session_state)
-
-    with st.expander("Result traceability / cache state", expanded=False):
+    if active_subpage == "Summary Dashboard":
+        render_metric_cards(_results_availability_cards(st.session_state))
+        render_section_bar(
+            "Overall Result Summary",
+            "Decision-level summary of stored ULS/SLS result completeness, blocking issues, and next engineering action.",
+            mark="S",
+        )
+        _render_results_executive_summary(governing_rows, st.session_state)
+        render_section_bar(
+            "Required Actions",
+            "Prioritized actions from stored results only. No calculation is triggered here.",
+            mark="A",
+        )
+        _render_results_required_actions(st.session_state, governing_rows)
+    elif active_subpage == "ULS Results":
+        render_section_bar(
+            "ULS Results Dashboard",
+            "Read-only strength result summary from cached Analysis outputs.",
+            mark="U",
+        )
+        _render_results_beam_uls_dashboard(st.session_state)
+    elif active_subpage == "SLS Results":
+        render_section_bar(
+            "SLS Results Dashboard",
+            "Read-only serviceability result summary from cached Analysis outputs.",
+            mark="L",
+        )
+        _render_results_sls_dashboard(st.session_state)
+    elif active_subpage == "Traceability":
+        render_section_bar(
+            "Traceability / Cache State",
+            "Stored result source, cache state, and raw stored module tables for audit review.",
+            mark="T",
+        )
         _render_results_traceability(st.session_state)
+        _render_results_module_tables(st.session_state)
 
 
 def render_report_qa_workspace() -> None:
