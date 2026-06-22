@@ -8705,9 +8705,9 @@ def _make_beam_uls_combined_vt_utilization_figure(vt_df: pd.DataFrame | None, *,
 
     plot_df = _beam_uls_combined_vt_plot_dataframe(vt_df)
     traces = [
-        ("Stress interaction D/C", "Stress D/C value"),
-        ("Transverse reinforcement D/C", "Transverse D/C value"),
-        ("Longitudinal Al D/C", "Longitudinal D/C value"),
+        ("Stress D/C", "Stress D/C value"),
+        ("Transverse D/C", "Transverse D/C value"),
+        ("Long. Al D/C", "Longitudinal D/C value"),
     ]
     has_trace = False
     if not plot_df.empty:
@@ -8738,9 +8738,9 @@ def _make_beam_uls_combined_vt_utilization_figure(vt_df: pd.DataFrame | None, *,
                 x=[x_min, x_max],
                 y=[1.0, 1.0],
                 mode="lines",
-                name="Limit D/C = 1.0",
+                name="Limit = 1.0",
                 line=dict(_BEAM_ULS_CHECK_LINE_STYLE),
-                hovertemplate="Limit D/C = 1.0<extra></extra>",
+                hovertemplate="Limit = 1.0<extra></extra>",
             )
         )
         governing = _beam_uls_governing_combined_vt_row(vt_df)
@@ -8755,10 +8755,11 @@ def _make_beam_uls_combined_vt_utilization_figure(vt_df: pd.DataFrame | None, *,
                         x=[x_val],
                         y=[dc],
                         mode="markers+text",
-                        text=[f"{status} · D/C {dc:.3f}"],
-                        textposition="top center",
-                        name="Governing V+T check",
-                        marker={"symbol": "diamond", "size": 12},
+                        text=[f"Gov. D/C {dc:.3f}"],
+                        textposition="bottom center" if dc >= 0.85 else "top center",
+                        textfont={"size": 10},
+                        name="Gov. V+T",
+                        marker={"symbol": "diamond", "size": 11},
                         hovertemplate="x=%{x:.3f} m<br>Governing D/C=%{y:.3f}<extra></extra>",
                     )
                 )
@@ -9066,6 +9067,10 @@ def _beam_uls_action_note_for_row(row: Mapping[str, object]) -> str:
     status = str(row.get("Status") or "").upper()
     if "PASS" in status:
         return "Review audit output before final issue."
+    if check == "Shear + Torsion" and ("BLOCKED" in status or "SOURCE FAIL" in status):
+        return "Resolve source Shear/Torsion FAIL before accepting V+T interaction."
+    if check == "Shear + Torsion" and "DATA REQUIRED" in status:
+        return "Complete required V+T source data before accepting interaction."
     if "FAIL" in status or "BLOCKED" in status:
         return "Resolve governing strength/detailing gate."
     if check == "Flexure" and ("PLANNED" in status or "NOT CALCULATED" in status):
@@ -10077,8 +10082,20 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
         if governing_vt is not None:
             status = str(governing_vt.get("Status") or "REVIEW")
             source_gate = _beam_uls_combined_vt_source_strength_gate(shear_check_df, torsion_check_df)
+            source_blocked = bool(source_gate.get("has_blocker"))
+            source_review = bool(source_gate.get("has_review"))
+            interaction_display_status = (
+                "SOURCE BLOCKED"
+                if source_blocked
+                else ("SOURCE REVIEW" if source_review and status == "DATA REQUIRED" else status)
+            )
+            interaction_card_status = (
+                "danger"
+                if source_blocked or status == "FAIL"
+                else ("warning" if interaction_display_status in {"DATA REQUIRED", "PASS — REVIEW", "SOURCE REVIEW"} else ("ready" if status == "PASS" else "neutral"))
+            )
             vt_cards = [
-                {"title": "Combined interaction", "value": status, "detail": f"{governing_vt.get('Case', '-')} @ x={governing_vt.get('Governing x', '-')}", "status": "danger" if status == "FAIL" else ("warning" if status in {"DATA REQUIRED", "PASS — REVIEW"} else ("ready" if status == "PASS" else "neutral")), "strong": True},
+                {"title": "Combined interaction", "value": interaction_display_status, "detail": f"{governing_vt.get('Case', '-')} @ x={governing_vt.get('Governing x', '-')}", "status": interaction_card_status, "strong": True},
                 {"title": "Source strength gate", "value": str(source_gate.get("value") or "-"), "detail": str(source_gate.get("detail") or "-"), "status": str(source_gate.get("status") or "neutral"), "strong": bool(source_gate.get("has_blocker"))},
                 {"title": "Stress interaction", "value": _format_beam_uls_ratio(governing_vt.get("Stress D/C value")), "detail": str(governing_vt.get("Interaction form") or "combined stress screen"), "status": "danger" if str(governing_vt.get("Stress status")) == "FAIL" else "info"},
                 {"title": "Transverse reinforcement", "value": _format_beam_uls_ratio(governing_vt.get("Transverse D/C value")), "detail": "Checks provided (Av + 2At)/s", "status": "danger" if str(governing_vt.get("Transverse status")) == "FAIL" else "info"},
