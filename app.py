@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from html import escape
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 from concrete_pmm_pro.core.analysis import AnalysisModeSettings
@@ -25,6 +26,7 @@ from concrete_pmm_pro.ui.prestress_page import render_prestress_page
 from concrete_pmm_pro.ui.project_page import render_project_page
 from concrete_pmm_pro.ui.navigation import render_active_choice
 from concrete_pmm_pro.ui.commercial import render_metric_cards, render_page_header, render_section_bar
+from concrete_pmm_pro.visualization.plot_readability import apply_global_plot_readability
 from concrete_pmm_pro.ui.rebar_page import render_rebar_page
 from concrete_pmm_pro.ui.section_builder import render_section_builder
 from concrete_pmm_pro.visualization.plot_readability import install_streamlit_plotly_readability_patch
@@ -1623,11 +1625,7 @@ def _results_availability_cards(state: object) -> list[dict[str, object]]:
     pmm_available = state.get("rc_demand_capacity_result") is not None or state.get("rc_pmm_result") is not None
     uls_count = sum(1 for entry in beam_cache.values() if isinstance(entry, dict))
     sls_available = serviceability is not None or bool(state.get("railway_u_girder_sls_report_package_available"))
-    figure_count = sum(
-        1
-        for key in ["pmm_mux_muy_slice_figure", "pmm_interaction_surface_figure"]
-        if state.get(key) is not None
-    )
+    figure_count = len(_results_available_diagram_figures(state))
     return [
         {
             "title": "ULS stored results",
@@ -1644,7 +1642,7 @@ def _results_availability_cards(state: object) -> list[dict[str, object]]:
         {
             "title": "Diagram review",
             "value": f"{figure_count:,} stored figure(s)",
-            "detail": "stored plotly figures only; no rerun",
+            "detail": "stored diagrams from cached results only; no rerun",
             "status": "ready" if figure_count else "neutral",
         },
         {
@@ -1938,7 +1936,7 @@ def _results_governing_rows(state: object) -> list[dict[str, object]]:
     return rows
 
 
-def _results_executive_status(rows: list[dict[str, object]]) -> dict[str, str]:
+def _results_executive_status(rows: list[dict[str, object]], state: object | None = None) -> dict[str, str]:
     if not rows:
         return {
             "status": "warning",
@@ -1950,8 +1948,20 @@ def _results_executive_status(rows: list[dict[str, object]]) -> dict[str, str]:
         return {
             "status": "danger",
             "title": "Design review required",
-            "detail": "At least one stored result indicates FAIL or exceedance. Open the source Analysis check before report issue.",
+            "detail": "At least one stored result indicates FAIL, BLOCKED, or exceedance. Open the source Analysis check before report issue.",
         }
+
+    beam_rows = _results_beam_uls_summary_rows(state) if state is not None else []
+    beam_calculated = sum(1 for row in beam_rows if bool(row.get("__calculated")))
+    beam_total = len(beam_rows)
+    if 0 < beam_calculated < beam_total:
+        missing = ", ".join(str(row.get("Check")) for row in beam_rows if not bool(row.get("__calculated")))
+        return {
+            "status": "warning",
+            "title": "Partial results available",
+            "detail": f"{beam_calculated}/{beam_total} Beam/Girder ULS checks have stored results. Missing checks: {missing}.",
+        }
+
     if "warning" in styles:
         return {
             "status": "warning",
@@ -1960,13 +1970,13 @@ def _results_executive_status(rows: list[dict[str, object]]) -> dict[str, str]:
         }
     return {
         "status": "ready",
-        "title": "Stored results available",
+        "title": "Full stored results available",
         "detail": "Available stored results are ready for read-only review and downstream Report / QA traceability.",
     }
 
 
-def _render_results_executive_summary(rows: list[dict[str, object]]) -> None:
-    status = _results_executive_status(rows)
+def _render_results_executive_summary(rows: list[dict[str, object]], state: object | None = None) -> None:
+    status = _results_executive_status(rows, state)
     status_html = f"""
 <div class="cpmm-results-executive-card {escape(status["status"])}">
   <div class="cpmm-results-kicker">Executive result state</div>
@@ -2014,17 +2024,154 @@ def _render_results_module_tables(state: object) -> None:
             )
 
 
-def _render_results_diagram_review(state: object) -> None:
-    figures = {
+
+_RESULTS_STATIC_FIG_WIDTH = 980
+_RESULTS_STATIC_FIG_HEIGHT = 460
+
+
+def _results_numeric_plot_series(df: pd.DataFrame, candidates: list[str]) -> pd.Series | None:
+    for candidate in candidates:
+        if candidate not in df.columns:
+            continue
+        series = df[candidate]
+        if series.dtype == object:
+            series = series.map(lambda value: str(value).replace(" m", "").replace("kN-m", "").replace("kN", "").strip())
+        numeric = pd.to_numeric(series, errors="coerce")
+        if numeric.notna().any():
+            return numeric
+    return None
+
+
+def _results_beam_uls_cached_df(state: object, check_name: str) -> pd.DataFrame | None:
+    cache = _results_beam_uls_cache(state)
+    entry = cache.get(check_name)
+    if not isinstance(entry, dict):
+        return None
+    return _results_dataframe(entry.get(_RESULTS_BEAM_ULS_DF_KEYS.get(check_name, "")))
+
+
+def _results_add_line_if_available(fig: go.Figure, df: pd.DataFrame, x_values: pd.Series, *, columns: list[str], name: str, dash: str | None = None) -> bool:
+    y_values = _results_numeric_plot_series(df, columns)
+    if y_values is None:
+        return False
+    fig.add_trace(
+        go.Scatter(
+            x=x_values,
+            y=y_values,
+            mode="lines+markers",
+            name=name,
+            line={"dash": dash} if dash else None,
+        )
+    )
+    return True
+
+
+def _results_beam_uls_cached_figure(state: object, check_name: str) -> go.Figure | None:
+    df = _results_beam_uls_cached_df(state, check_name)
+    if df is None or df.empty:
+        return None
+    plot_df = df.copy()
+    x_values = _results_numeric_plot_series(plot_df, ["Governing x", "Station x (m)", "x (m)", "x_m"])
+    if x_values is None:
+        x_values = pd.Series(range(len(plot_df)), dtype="float64")
+    fig = go.Figure()
+    if check_name == "Flexure":
+        y_label = "Moment, Mu (kN-m)"
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["Demand kN-m", "Demand", "Mu kN-m"], name="Demand Mu")
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["Capacity kN-m", "Capacity", "φMn kN-m", "phiMn kN-m"], name="φMn", dash="dash")
+    elif check_name == "Shear":
+        y_label = "Shear, Vu (kN)"
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["Vu kN", "Vuy kN", "Vux kN", "Demand"], name="Vu")
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["φVn kN", "phiVn kN", "Capacity"], name="φVn", dash="dash")
+    elif check_name == "Torsion":
+        y_label = "Torsion, Tu (kN-m)"
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["Tu kN-m", "Demand"], name="Tu")
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["φTn kN-m", "phiTn kN-m", "Capacity"], name="φTn", dash="dash")
+    else:
+        y_label = "Demand / Capacity ratio"
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["Stress D/C value", "Stress D/C"], name="Stress D/C")
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["Transverse D/C value", "Transverse D/C"], name="Transverse D/C")
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["Longitudinal D/C value", "Longitudinal D/C"], name="Long. Al D/C")
+        _results_add_line_if_available(fig, plot_df, x_values, columns=["Overall D/C value", "Overall D/C"], name="Overall D/C")
+        fig.add_hline(y=1.0, line_dash="dash", annotation_text="Limit = 1.0", annotation_position="top left")
+    if not fig.data:
+        return None
+    fig.update_layout(
+        title=f"Stored Beam/Girder ULS — {check_name}",
+        xaxis_title="Distance from left end of member (m)",
+        yaxis_title=y_label,
+        hovermode="x unified",
+        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5),
+    )
+    return fig
+
+
+def _render_results_static_plotly_figure(fig: go.Figure, *, caption: str | None = None) -> None:
+    try:
+        apply_global_plot_readability(fig)
+        fig.update_layout(
+            autosize=False,
+            width=_RESULTS_STATIC_FIG_WIDTH,
+            height=_RESULTS_STATIC_FIG_HEIGHT,
+            margin=dict(l=76, r=30, t=78, b=86),
+            font=dict(size=11),
+            title_font=dict(size=17),
+            legend=dict(
+                font=dict(size=10),
+                orientation="h",
+                yanchor="top",
+                y=-0.18,
+                xanchor="center",
+                x=0.5,
+                itemwidth=46,
+                entrywidth=130,
+                entrywidthmode="pixels",
+            ),
+            hoverlabel=dict(font=dict(size=11)),
+        )
+        fig.update_xaxes(tickfont=dict(size=10), title_font=dict(size=12))
+        fig.update_yaxes(tickfont=dict(size=10), title_font=dict(size=12))
+        image_bytes = fig.to_image(
+            format="png",
+            width=_RESULTS_STATIC_FIG_WIDTH,
+            height=_RESULTS_STATIC_FIG_HEIGHT,
+            scale=2,
+        )
+    except Exception as exc:
+        st.warning("Static diagram rendering is not available in this environment. Stored result tables remain available below.")
+        st.caption(f"Chart export detail: {type(exc).__name__}")
+        return
+    try:
+        st.image(image_bytes, width=_RESULTS_STATIC_FIG_WIDTH, caption=caption)
+    except TypeError:
+        st.image(image_bytes, use_column_width=False, caption=caption)
+
+
+def _results_available_diagram_figures(state: object) -> dict[str, go.Figure]:
+    available: dict[str, go.Figure] = {}
+    for check_name in _RESULTS_BEAM_ULS_CHECKS:
+        fig = _results_beam_uls_cached_figure(state, check_name)
+        if fig is not None:
+            available[f"Beam/Girder ULS · {check_name}"] = fig
+    for name, fig in {
         "PMM Mux-Muy slice": state.get("pmm_mux_muy_slice_figure"),
         "PMM 3D interaction": state.get("pmm_interaction_surface_figure"),
-    }
-    available = {name: fig for name, fig in figures.items() if fig is not None}
+    }.items():
+        if isinstance(fig, go.Figure):
+            available[name] = fig
+    return available
+
+
+def _render_results_diagram_review(state: object) -> None:
+    available = _results_available_diagram_figures(state)
     if not available:
-        st.caption("No stored result figures are available yet. Generate figures in Analysis, then return here for read-only review.")
+        st.caption("No stored result diagrams are available yet. Run checks in Analysis, then return here for read-only diagram review.")
         return
     selected = st.selectbox("Stored result diagram", list(available.keys()), key="results_workspace_selected_diagram")
-    st.plotly_chart(available[selected], use_container_width=True)
+    _render_results_static_plotly_figure(
+        available[selected],
+        caption="Read-only stored result diagram. This view is generated from cached result data and does not rerun solvers.",
+    )
 
 
 def _render_results_traceability(state: object) -> None:
@@ -2050,10 +2197,10 @@ def render_results_workspace() -> None:
     governing_rows = _results_governing_rows(st.session_state)
     render_section_bar(
         "Governing Results Dashboard",
-        "Single-screen review of calculated checks, controlling cases, utilization, and source workflow.",
+        "Single-screen review of calculated checks only; missing Beam/Girder ULS checks remain listed in the dashboard below.",
         mark="G",
     )
-    _render_results_executive_summary(governing_rows)
+    _render_results_executive_summary(governing_rows, st.session_state)
 
     render_section_bar(
         "Beam/Girder ULS Stored Results",
