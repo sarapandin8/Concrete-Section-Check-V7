@@ -7938,19 +7938,56 @@ def _beam_uls_flexure_audit_dataframe(flexure_preview_df: pd.DataFrame | None) -
 
 
 
+_BEAM_ULS_STATIC_FIG_WIDTH = 980
+_BEAM_ULS_STATIC_FIG_HEIGHT = 460
+
+
 def _render_beam_uls_static_plotly_figure(fig: go.Figure, *, caption: str | None = None) -> None:
-    """Render Beam/Girder ULS diagrams as static PNG.
+    """Render Beam/Girder ULS diagrams as compact static PNG.
 
     Streamlit Cloud can occasionally fail to fetch the lazily imported
     frontend PlotlyChart JavaScript chunk after a deployment/browser-cache
     mismatch.  Beam/Girder ULS diagrams are result-review graphics, so a static
     PNG is an acceptable default and avoids the frontend dynamic-import failure.
     The figure data and calculations are unchanged.
+
+    Keep the exported image aspect ratio compact.  Full-container image scaling
+    can stretch narrow Plotly exports to the app width and make the chart look
+    like a poster.  A fixed review-width PNG
+    preserves dashboard proportions while still keeping the solver-free static
+    rendering path.
     """
 
     try:
         apply_global_plot_readability(fig)
-        image_bytes = fig.to_image(format="png", scale=2)
+        fig.update_layout(
+            autosize=False,
+            width=_BEAM_ULS_STATIC_FIG_WIDTH,
+            height=_BEAM_ULS_STATIC_FIG_HEIGHT,
+            margin=dict(l=76, r=30, t=78, b=86),
+            font=dict(size=11),
+            title_font=dict(size=17),
+            legend=dict(
+                font=dict(size=10),
+                orientation="h",
+                yanchor="top",
+                y=-0.18,
+                xanchor="center",
+                x=0.5,
+                itemwidth=46,
+                entrywidth=130,
+                entrywidthmode="pixels",
+            ),
+            hoverlabel=dict(font=dict(size=11)),
+        )
+        fig.update_xaxes(tickfont=dict(size=10), title_font=dict(size=12))
+        fig.update_yaxes(tickfont=dict(size=10), title_font=dict(size=12))
+        image_bytes = fig.to_image(
+            format="png",
+            width=_BEAM_ULS_STATIC_FIG_WIDTH,
+            height=_BEAM_ULS_STATIC_FIG_HEIGHT,
+            scale=2,
+        )
     except Exception as exc:
         st.warning(
             "Static chart rendering is not available in this environment. "
@@ -7959,9 +7996,9 @@ def _render_beam_uls_static_plotly_figure(fig: go.Figure, *, caption: str | None
         st.caption(f"Chart export detail: {type(exc).__name__}")
         return
     try:
-        st.image(image_bytes, use_container_width=True, caption=caption)
+        st.image(image_bytes, width=_BEAM_ULS_STATIC_FIG_WIDTH, caption=caption)
     except TypeError:  # Streamlit compatibility for older image API
-        st.image(image_bytes, use_column_width=True, caption=caption)
+        st.image(image_bytes, use_column_width=False, caption=caption)
 
 
 BEAM_ULS_CHECK_TAB_LABELS = ["Flexure", "Shear", "Torsion", "Shear + Torsion"]
