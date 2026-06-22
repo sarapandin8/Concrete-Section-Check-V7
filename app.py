@@ -1786,7 +1786,7 @@ def _render_results_diagram_review(state: object) -> None:
 
 def _render_results_traceability(state: object) -> None:
     trace_rows = [
-        {"Item": "Workflow", "Value": analysis_mode_label(AnalysisModeSettings.from_session_state(state))},
+        {"Item": "Workflow", "Value": analysis_mode_label(_analysis_mode_from_session_for_chrome())},
         {"Item": "Project input hash", "Value": str(state.get("project_input_hash") or state.get("analysis_input_hash") or "-")},
         {"Item": "PMM cache hash", "Value": str(state.get("pmm_last_analysis_hash") or "-")},
         {"Item": "SLS cache hash", "Value": str(state.get("serviceability_summary_hash") or "-")},
