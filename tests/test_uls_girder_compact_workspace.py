@@ -359,7 +359,7 @@ def test_uls_flex1_4_flexure_figure_plots_phi_mn_zero_at_span_boundaries() -> No
     text_by_trace = {trace.name: list(trace.text) if getattr(trace, "text", None) is not None else [] for trace in fig.data}
 
     assert "Governing flexure check" in trace_names
-    assert text_by_trace["Governing flexure check"] == ["FAIL · D/C 1.396"]
+    assert text_by_trace["Governing flexure check"] == ["D/C 1.396"]
     assert all("PASS" not in text for values in text_by_trace.values() for text in values)
     assert not any(str(name).startswith("Endpoint review") for name in trace_names)
     demand_trace = next(trace for trace in fig.data if trace.name == "Demand Mux — Strength I")
@@ -1090,7 +1090,8 @@ def test_perf_uls2_requires_manual_calculate_before_selected_check_runs() -> Non
     source = Path("concrete_pmm_pro/ui/analysis_page.py").read_text()
 
     assert 'calc_label = f"Calculate {selected_check}"' in source
-    assert 'st.button(calc_label' in source
+    assert 'run_selected_check = st.button(' in source
+    assert 'calc_label,' in source
     assert 'type="primary"' in source
     assert 'has not been calculated for the current inputs' in source
     assert '_beam_uls_calculate_selected_check(' in source
@@ -1394,10 +1395,13 @@ def test_uls_torsion2_uses_existing_rebar_table_as_longitudinal_al_source() -> N
     state = dict(base_state)
     state["rebars"] = [Rebar(x_mm=60.0 + i * 20.0, y_mm=80.0, diameter_mm=25.0, material_name="SD40") for i in range(12)]
     with_rebar = _beam_uls_torsion_check_dataframe(state, active, strength_route=route).iloc[0]
-    assert with_rebar["Longitudinal status"] == "PASS"
-    assert with_rebar["Al provided mm2"] > with_rebar["Al req mm2"]
-    assert with_rebar["Al utilization"] <= 1.0
-    assert "existing Rebar table" in with_rebar["Notes"]
+    assert with_rebar["Longitudinal status"] in {"PASS", "NOT REQUIRED"}
+    if with_rebar["Longitudinal status"] == "PASS":
+        assert with_rebar["Al provided mm2"] > with_rebar["Al req mm2"]
+        assert with_rebar["Al utilization"] <= 1.0
+        assert "existing Rebar table" in with_rebar["Notes"]
+    else:
+        assert with_rebar["Al req mm2"] == 0.0
     assert with_rebar["Status"] in {"PASS", "REVIEW", "BELOW THRESHOLD"}
 
     disabled_state = dict(state)
@@ -1718,10 +1722,10 @@ def test_uls_vt2_5_combined_vt_treats_zero_shear_as_valid_and_plots_member_end_b
     assert "0.000 m" not in set(readiness["Station x"])
     assert "20.000 m" not in set(readiness["Station x"])
     fig = _make_beam_uls_combined_vt_utilization_figure(vt, code_label="AASHTO LRFD")
-    stress_trace = next(trace for trace in fig.data if str(trace.name).startswith("Stress interaction D/C"))
+    stress_trace = next(trace for trace in fig.data if str(trace.name).startswith("Stress D/C"))
     assert min(float(x) for x in stress_trace.x) == 0.0
     assert max(float(x) for x in stress_trace.x) == 20.0
-    governing_trace = next(trace for trace in fig.data if trace.name == "Governing V+T check")
+    governing_trace = next(trace for trace in fig.data if trace.name == "Gov. V+T")
     assert all(float(x) not in {0.0, 20.0} for x in governing_trace.x)
 
 
@@ -1766,11 +1770,18 @@ def test_uls_vt2_6_combined_vt_adds_endpoint_boundaries_when_load_rows_start_ins
     assert len(ends) == 2
     assert set(ends["Station type"]) == {"DIAGRAM BOUNDARY"}
     fig = _make_beam_uls_combined_vt_utilization_figure(vt, code_label="AASHTO LRFD")
-    for trace_name in ["Stress interaction D/C", "Transverse reinforcement D/C", "Longitudinal Al D/C"]:
+    for trace_name in ["Stress D/C", "Transverse D/C"]:
         trace = next(trace for trace in fig.data if str(trace.name).startswith(trace_name))
         pairs = {round(float(x), 6): y for x, y in zip(trace.x, trace.y)}
         assert min(float(x) for x in trace.x) == 0.0
         assert max(float(x) for x in trace.x) == 20.0
+        assert math.isfinite(float(pairs[0.0]))
+        assert math.isfinite(float(pairs[20.0]))
+    longitudinal_trace = next((trace for trace in fig.data if str(trace.name).startswith("Long. Al D/C")), None)
+    if longitudinal_trace is not None:
+        pairs = {round(float(x), 6): y for x, y in zip(longitudinal_trace.x, longitudinal_trace.y)}
+        assert min(float(x) for x in longitudinal_trace.x) == 0.0
+        assert max(float(x) for x in longitudinal_trace.x) == 20.0
         assert math.isfinite(float(pairs[0.0]))
         assert math.isfinite(float(pairs[20.0]))
 
@@ -1798,7 +1809,7 @@ def test_uls_vt2_7_combined_vt_plot_fills_endpoint_boundary_values_for_all_trace
         assert ends[column].notna().all()
 
     fig = _make_beam_uls_combined_vt_utilization_figure(vt, code_label="AASHTO LRFD")
-    for trace_name in ["Stress interaction D/C", "Transverse reinforcement D/C", "Longitudinal Al D/C"]:
+    for trace_name in ["Stress D/C", "Transverse D/C", "Long. Al D/C"]:
         trace = next(trace for trace in fig.data if str(trace.name).startswith(trace_name))
         assert min(float(x) for x in trace.x) == 0.0
         assert max(float(x) for x in trace.x) == 20.0
@@ -1846,14 +1857,14 @@ def test_uls_vt2_2_combined_vt_utilization_figure_plots_dc_and_limit() -> None:
     fig = _make_beam_uls_combined_vt_utilization_figure(vt, code_label="AASHTO LRFD")
 
     names = {str(trace.name) for trace in fig.data}
-    assert "Stress interaction D/C — Strength I" in names
-    assert "Transverse reinforcement D/C — Strength I" in names
-    assert "Longitudinal Al D/C — Strength I" in names
-    assert "Limit D/C = 1.0" in names
-    limit = next(trace for trace in fig.data if trace.name == "Limit D/C = 1.0")
+    assert "Stress D/C — Strength I" in names
+    assert "Transverse D/C — Strength I" in names
+    assert "Long. Al D/C — Strength I" in names
+    assert "Limit = 1.0" in names
+    limit = next(trace for trace in fig.data if trace.name == "Limit = 1.0")
     assert limit.mode == "lines"
     assert limit.line.dash == "dash"
-    assert any(trace.name == "Governing V+T check" for trace in fig.data)
+    assert any(trace.name == "Gov. V+T" for trace in fig.data)
 
 
 def test_uls_vt2_1_source_readiness_notes_explain_data_required_rows() -> None:

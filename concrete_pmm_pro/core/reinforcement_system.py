@@ -94,10 +94,10 @@ def default_section_reinforcement_flags(
     """Return default ordinary-rebar and prestress flags for a selected section.
 
     Defaults are intentionally conservative for the two active product
-    workflows.  Column/Pier/Wall/Pylon PMM starts as ordinary RC; precast
-    composite girders start with prestressing enabled.  General/non-composite
-    girders remain unreinforced until the engineer explicitly enables rebar or
-    prestress.
+    workflows.  Column/Pier/Wall/Pylon PMM starts as ordinary RC.  Bridge
+    Beam/Girder sections start with ordinary rebar enabled so longitudinal
+    mild bars / torsion Al remain active unless the engineer explicitly turns
+    them off; prestressing is seeded on for prestressed/precast girder presets.
     """
 
     member = (member_type or "").casefold()
@@ -106,7 +106,12 @@ def default_section_reinforcement_flags(
     family = (girder_section_family or "").casefold()
 
     if member == "beam_girder":
-        ordinary_rebar = False
+        # Beam/Girder workflows often need mild longitudinal bars for flexure
+        # participation, confinement/detailing review, and torsion Al checks.
+        # Keep the data active by default; the Section Builder switch remains
+        # available when the engineer intentionally wants an unreinforced
+        # concrete-only review.
+        ordinary_rebar = True
         prestress = family == "precast_composite_girder" or category == "precast composite girder"
         # Legacy PSC I-girder is non-composite in the preset library but is still
         # a prestressed girder by intent.

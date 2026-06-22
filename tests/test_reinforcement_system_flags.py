@@ -34,7 +34,7 @@ def test_top_level_reinforcement_flags_override_project_metadata() -> None:
     assert prestressing_steel_enabled(state, default=True) is False
 
 
-def test_bridge_beam_girder_defaults_to_rebar_excluded_when_flag_missing() -> None:
+def test_bridge_beam_girder_defaults_to_rebar_included_when_flag_missing() -> None:
     state = {
         "analysis_mode_settings": {"member_type": "beam_girder"},
         "section_category": "Precast Composite Girder",
@@ -42,7 +42,7 @@ def test_bridge_beam_girder_defaults_to_rebar_excluded_when_flag_missing() -> No
         "girder_section_family": "precast_composite_girder",
     }
 
-    assert ordinary_rebar_enabled(state, default=True) is False
+    assert ordinary_rebar_enabled(state, default=True) is True
     assert prestressing_steel_enabled(state, default=False) is True
 
 

@@ -1787,14 +1787,17 @@ def _default_reinforcement_flags_for_preset(preset: dict[str, Any]) -> tuple[boo
 def _ensure_reinforcement_flags_for_preset(preset: dict[str, Any]) -> None:
     preset_key = str(preset.get("key", ""))
     default_rebar, default_prestress = _default_reinforcement_flags_for_preset(preset)
-    if (
-        st.session_state.get(REINFORCEMENT_FLAGS_PRESET_KEY) != preset_key
-        or ORDINARY_REBAR_FLAG_KEY not in st.session_state
-        or PRESTRESSING_STEEL_FLAG_KEY not in st.session_state
-    ):
-        st.session_state[ORDINARY_REBAR_FLAG_KEY] = default_rebar
-        st.session_state[PRESTRESSING_STEEL_FLAG_KEY] = default_prestress
-        st.session_state[REINFORCEMENT_FLAGS_PRESET_KEY] = preset_key
+    metadata = dict(st.session_state.get("project_metadata", {}) or {})
+
+    # These switches are explicit engineering input, not transient UI state.
+    # Returning to Section Builder after Analysis must not silently reset them
+    # just because the preset marker was not materialized in the current rerun.
+    # Defaults only seed missing keys; saved metadata restores user choices.
+    if ORDINARY_REBAR_FLAG_KEY not in st.session_state:
+        st.session_state[ORDINARY_REBAR_FLAG_KEY] = bool(metadata.get(ORDINARY_REBAR_FLAG_KEY, default_rebar))
+    if PRESTRESSING_STEEL_FLAG_KEY not in st.session_state:
+        st.session_state[PRESTRESSING_STEEL_FLAG_KEY] = bool(metadata.get(PRESTRESSING_STEEL_FLAG_KEY, default_prestress))
+    st.session_state[REINFORCEMENT_FLAGS_PRESET_KEY] = preset_key
 
 
 def _store_reinforcement_flags_metadata() -> None:

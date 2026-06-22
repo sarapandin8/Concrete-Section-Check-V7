@@ -56,6 +56,9 @@ INPUT_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "effective_width_settings",
         "include_rebars",
         "include_prestress",
+        "section_has_ordinary_rebar",
+        "section_has_prestressing_steel",
+        "reinforcement_flags_preset_key",
     ),
     "Rebar": (
         "rebars",

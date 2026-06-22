@@ -35,7 +35,7 @@ from concrete_pmm_pro.data.prestress_tendon_products import (
     is_tendon_6n_label,
     tendon_product_display_label,
 )
-from concrete_pmm_pro.serviceability.models import ServiceabilitySettings
+from concrete_pmm_pro.serviceability.models import ServiceabilitySettings, ServiceabilitySummary
 from concrete_pmm_pro.serviceability.points import stress_check_points_to_dataframe
 from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     BEAM_GIRDER_SYSTEM_SETTINGS_KEY,
@@ -93,8 +93,15 @@ def _clean_table_value(value: Any) -> Any:
         return None
     if isinstance(value, float) and pd.isna(value):
         return None
+    if isinstance(value, dict):
+        return {str(key): _clean_table_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_clean_table_value(item) for item in value]
     if hasattr(value, "item"):
-        return value.item()
+        try:
+            return value.item()
+        except Exception:
+            return value
     return value
 
 
@@ -193,30 +200,97 @@ def _demand_capacity_summary_from_metadata(value: Any) -> DemandCapacitySummary 
         return None
 
 
+
+def _dataframe_to_analysis_metadata(value: Any) -> dict[str, Any] | None:
+    """Serialize a cached analysis dataframe as plain JSON metadata."""
+
+    if not isinstance(value, pd.DataFrame):
+        return None
+    return {
+        "__kind__": "dataframe",
+        "columns": [str(column) for column in value.columns],
+        "records": value.to_dict(orient="records"),
+    }
+
+
+def _dataframe_from_analysis_metadata(value: Any) -> pd.DataFrame | None:
+    """Restore a cached analysis dataframe from project metadata."""
+
+    if not isinstance(value, dict) or value.get("__kind__") != "dataframe":
+        return None
+    records = value.get("records")
+    columns = value.get("columns")
+    if not isinstance(records, list):
+        return None
+    try:
+        df = pd.DataFrame(records)
+        if isinstance(columns, list):
+            for column in columns:
+                if column not in df.columns:
+                    df[column] = None
+            df = df[[column for column in columns if column in df.columns]]
+        return df
+    except Exception:
+        return None
+
+
+def _analysis_cache_entry_to_metadata(entry: Any) -> dict[str, Any] | None:
+    if not isinstance(entry, dict):
+        return None
+    serialized: dict[str, Any] = {}
+    for key, value in entry.items():
+        df_meta = _dataframe_to_analysis_metadata(value)
+        if df_meta is not None:
+            serialized[str(key)] = df_meta
+        else:
+            serialized[str(key)] = _clean_table_value(value)
+    return serialized
+
+
+def _analysis_cache_entry_from_metadata(entry: Any) -> dict[str, Any] | None:
+    if not isinstance(entry, dict):
+        return None
+    restored: dict[str, Any] = {}
+    for key, value in entry.items():
+        df = _dataframe_from_analysis_metadata(value)
+        restored[str(key)] = df if df is not None else value
+    return restored
+
+
+def _beam_uls_cache_metadata_from_session(session_state: Any) -> dict[str, Any]:
+    cache = _get_session_value(session_state, "_beam_girder_uls_manual_calculation_cache", None)
+    if not isinstance(cache, dict):
+        return {}
+    result: dict[str, Any] = {}
+    for check_name, entry in cache.items():
+        serialized = _analysis_cache_entry_to_metadata(entry)
+        if serialized:
+            result[str(check_name)] = serialized
+    return result
+
+
+def _beam_uls_cache_from_metadata(value: Any) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, dict):
+        return {}
+    cache: dict[str, dict[str, Any]] = {}
+    for check_name, entry in value.items():
+        restored = _analysis_cache_entry_from_metadata(entry)
+        if restored is not None:
+            cache[str(check_name)] = restored
+    return cache
+
+
 def _analysis_results_metadata_from_session(session_state: Any) -> dict[str, Any]:
     """Serialize restorable analysis outputs without rerunning solver logic.
 
-    Stored results are treated as cache artifacts, not as engineering inputs.  A
-    future load restores them only when their saved input hash still matches the
-    loaded project inputs.
+    Stored results are cache artifacts, not engineering inputs.  Result caches
+    are restored only when the loaded project input hash still matches the
+    saved inputs.
     """
-
-    result = _get_session_value(session_state, "rc_pmm_result", None)
-    if not isinstance(result, PMMSolverResult):
-        return {}
-
-    result_hash = (
-        _get_session_value(session_state, "rc_pmm_result_input_hash", None)
-        or _get_session_value(session_state, "pmm_last_analysis_hash", None)
-    )
-    if not result_hash:
-        return {}
 
     metadata: dict[str, Any] = {
         "schema_version": ANALYSIS_RESULTS_SCHEMA_VERSION,
-        "rc_pmm_result": result.model_dump(mode="json"),
-        "pmm_result_input_hash": result_hash,
-        "pmm_last_analysis_hash": _get_session_value(session_state, "pmm_last_analysis_hash", result_hash),
+        "project_input_hash": project_input_hash(session_state),
         "analysis_accuracy_preset": _get_session_value(session_state, "analysis_accuracy_preset", None),
         "analysis_runtime_last_status": _get_session_value(session_state, "analysis_runtime_last_status", None),
         "analysis_runtime_last_time_seconds": _get_session_value(session_state, "analysis_runtime_last_time_seconds", None),
@@ -224,6 +298,20 @@ def _analysis_results_metadata_from_session(session_state: Any) -> dict[str, Any
         "analysis_runtime_last_preset": _get_session_value(session_state, "analysis_runtime_last_preset", None),
         "analysis_runtime_timings": _get_session_value(session_state, "analysis_runtime_timings", None),
     }
+
+    result = _get_session_value(session_state, "rc_pmm_result", None)
+    result_hash = (
+        _get_session_value(session_state, "rc_pmm_result_input_hash", None)
+        or _get_session_value(session_state, "pmm_last_analysis_hash", None)
+    )
+    if isinstance(result, PMMSolverResult) and result_hash:
+        metadata.update(
+            {
+                "rc_pmm_result": result.model_dump(mode="json"),
+                "pmm_result_input_hash": result_hash,
+                "pmm_last_analysis_hash": _get_session_value(session_state, "pmm_last_analysis_hash", result_hash),
+            }
+        )
 
     rc_only_result = _get_session_value(session_state, "rc_only_comparison_result", None)
     if isinstance(rc_only_result, PMMSolverResult):
@@ -239,24 +327,34 @@ def _analysis_results_metadata_from_session(session_state: Any) -> dict[str, Any
         metadata["rc_demand_capacity_input_hash"] = _get_session_value(session_state, "rc_demand_capacity_input_hash", None)
         metadata["rc_demand_capacity_pmm_result_hash"] = _get_session_value(session_state, "rc_demand_capacity_pmm_result_hash", None)
 
+    beam_uls_cache = _beam_uls_cache_metadata_from_session(session_state)
+    if beam_uls_cache:
+        metadata["beam_girder_uls_manual_calculation_cache"] = beam_uls_cache
+
+    serviceability = _get_session_value(session_state, "serviceability_summary", None)
+    if isinstance(serviceability, ServiceabilitySummary):
+        metadata["serviceability_summary"] = serviceability.model_dump(mode="json")
+        metadata["serviceability_summary_hash"] = _get_session_value(session_state, "serviceability_summary_hash", None)
+        metadata["serviceability_runtime_cache_status"] = _get_session_value(session_state, "serviceability_runtime_cache_status", None)
+
+    # If there are no actual result caches, do not write a placeholder metadata block.
+    cache_payload_keys = {
+        "rc_pmm_result",
+        "rc_demand_capacity_result",
+        "beam_girder_uls_manual_calculation_cache",
+        "serviceability_summary",
+    }
+    if not any(key in metadata for key in cache_payload_keys):
+        return {}
+
     return {key: _clean_table_value(value) for key, value in metadata.items() if value is not None}
 
 
-def _restore_analysis_results_metadata(project: ProjectModel, session_state: MutableMapping[str, Any]) -> bool:
-    """Restore saved analysis cache only when it matches the loaded inputs."""
-
-    metadata = project.metadata.get(ANALYSIS_RESULTS_METADATA_KEY)
-    if not isinstance(metadata, dict):
-        return False
-    if metadata.get("schema_version") not in {ANALYSIS_RESULTS_SCHEMA_VERSION, None}:
-        return False
-
-    preset = metadata.get("analysis_accuracy_preset") or metadata.get("analysis_runtime_last_preset")
-    if isinstance(preset, str) and preset:
-        session_state["analysis_accuracy_preset"] = preset
+def _restore_pmm_analysis_results_metadata(metadata: dict[str, Any], session_state: MutableMapping[str, Any]) -> bool:
+    """Restore PMM/cache outputs from metadata when their analysis hash matches."""
 
     stored_hash = str(metadata.get("pmm_result_input_hash") or metadata.get("pmm_last_analysis_hash") or "").strip()
-    if not stored_hash:
+    if not stored_hash or metadata.get("rc_pmm_result") is None:
         return False
 
     analysis_input = build_analysis_input_from_session_state(session_state)
@@ -278,14 +376,6 @@ def _restore_analysis_results_metadata(project: ProjectModel, session_state: Mut
     session_state["analysis_force_recalculate"] = False
     session_state["analysis_runtime_cache_status"] = "Loaded cached result"
     session_state["analysis_runtime_last_status"] = "Loaded cached result"
-    if metadata.get("analysis_runtime_last_time_seconds") is not None:
-        session_state["analysis_runtime_last_time_seconds"] = metadata.get("analysis_runtime_last_time_seconds")
-    if metadata.get("analysis_runtime_last_run_at") is not None:
-        session_state["analysis_runtime_last_run_at"] = metadata.get("analysis_runtime_last_run_at")
-    if metadata.get("analysis_runtime_last_preset") is not None:
-        session_state["analysis_runtime_last_preset"] = metadata.get("analysis_runtime_last_preset")
-    if isinstance(metadata.get("analysis_runtime_timings"), dict):
-        session_state["analysis_runtime_timings"] = dict(metadata.get("analysis_runtime_timings") or {})
 
     rc_only_data = metadata.get("rc_only_comparison_result")
     if rc_only_data is not None:
@@ -310,6 +400,60 @@ def _restore_analysis_results_metadata(project: ProjectModel, session_state: Mut
         session_state["analysis_runtime_dc_cache_status"] = "Loaded cached D/C result"
 
     return True
+
+
+def _restore_analysis_results_metadata(project: ProjectModel, session_state: MutableMapping[str, Any]) -> bool:
+    """Restore saved analysis caches only when they match the loaded inputs."""
+
+    metadata = project.metadata.get(ANALYSIS_RESULTS_METADATA_KEY)
+    if not isinstance(metadata, dict):
+        return False
+    if metadata.get("schema_version") not in {ANALYSIS_RESULTS_SCHEMA_VERSION, None}:
+        return False
+
+    preset = metadata.get("analysis_accuracy_preset") or metadata.get("analysis_runtime_last_preset")
+    if isinstance(preset, str) and preset:
+        session_state["analysis_accuracy_preset"] = preset
+
+    restored_any = _restore_pmm_analysis_results_metadata(metadata, session_state)
+
+    # Beam/Girder ULS and SLS summaries are project-file cache artifacts.
+    # They are restored with the saved project inputs so users can reopen a
+    # completed design review without rerunning every Analysis subcheck.  ULS
+    # cache entries still carry their own per-check input hashes for Analysis
+    # pages to validate before reuse.
+    beam_cache = _beam_uls_cache_from_metadata(metadata.get("beam_girder_uls_manual_calculation_cache"))
+    if beam_cache:
+        session_state["_beam_girder_uls_manual_calculation_cache"] = beam_cache
+        session_state["beam_girder_uls_runtime_cache_status"] = "Loaded cached Beam/Girder ULS results"
+        restored_any = True
+
+    sls_data = metadata.get("serviceability_summary")
+    if sls_data is not None:
+        try:
+            serviceability_summary = ServiceabilitySummary.model_validate(sls_data)
+        except Exception:
+            serviceability_summary = None
+        if serviceability_summary is not None:
+            session_state["serviceability_summary"] = serviceability_summary
+            if metadata.get("serviceability_summary_hash") is not None:
+                session_state["serviceability_summary_hash"] = metadata.get("serviceability_summary_hash")
+            session_state["serviceability_runtime_cache_status"] = (
+                metadata.get("serviceability_runtime_cache_status") or "Loaded cached SLS result"
+            )
+            restored_any = True
+
+    for key in (
+        "analysis_runtime_last_time_seconds",
+        "analysis_runtime_last_run_at",
+        "analysis_runtime_last_preset",
+    ):
+        if metadata.get(key) is not None:
+            session_state[key] = metadata.get(key)
+    if isinstance(metadata.get("analysis_runtime_timings"), dict):
+        session_state["analysis_runtime_timings"] = dict(metadata.get("analysis_runtime_timings") or {})
+
+    return restored_any
 
 
 def _beam_girder_shear_reinforcement_metadata_from_session(session_state: Any) -> list[dict[str, Any]]:
