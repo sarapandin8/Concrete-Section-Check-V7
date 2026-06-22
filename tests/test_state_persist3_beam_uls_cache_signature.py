@@ -94,3 +94,14 @@ def test_beam_uls_store_records_cache_signature_kind() -> None:
     assert '_BEAM_ULS_INPUT_HASH_KIND = "beam_girder_uls_v2"' in source
     assert 'entry["input_hash_kind"] = _BEAM_ULS_INPUT_HASH_KIND' in source
     assert "project_input_hash(st.session_state)" not in source[source.index("def _render_beam_girder_uls_workspace") :]
+
+
+def test_beam_uls_cache_signature_does_not_hash_raw_section_geometry() -> None:
+    source = open("concrete_pmm_pro/ui/analysis_page.py", encoding="utf-8").read()
+    start = source.index("def _beam_uls_cache_input_hash")
+    end = source.index("\n\ndef _beam_uls_manual_cache", start)
+    body = source[start:end]
+
+    assert '"section_geometry"' not in body
+    assert '"section_properties"' in body
+    assert "_depth > 8" in source

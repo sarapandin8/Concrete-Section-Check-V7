@@ -8021,9 +8021,16 @@ _BEAM_ULS_MANUAL_CALC_CACHE_KEY = "_beam_girder_uls_manual_calculation_cache"
 _BEAM_ULS_INPUT_HASH_KIND = "beam_girder_uls_v2"
 
 
-def _beam_uls_stable_value(value: object) -> object:
-    """Return a JSON-stable value for Beam/Girder ULS cache signatures."""
+def _beam_uls_stable_value(value: object, *, _depth: int = 0) -> object:
+    """Return a JSON-stable value for Beam/Girder ULS cache signatures.
 
+    Keep this intentionally shallow and JSON-oriented.  Geometry objects can
+    contain heavyweight or recursive internals, so the Beam/Girder ULS payload
+    uses section parameters/properties rather than raw geometry objects.
+    """
+
+    if _depth > 8:
+        return repr(value)
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, pd.DataFrame):
@@ -8032,27 +8039,29 @@ def _beam_uls_stable_value(value: object) -> object:
             "records": value.to_dict(orient="records"),
         }
     if isinstance(value, Mapping):
-        return {str(key): _beam_uls_stable_value(value[key]) for key in sorted(value, key=lambda item: str(item))}
+        return {
+            str(key): _beam_uls_stable_value(value[key], _depth=_depth + 1)
+            for key in sorted(value, key=lambda item: str(item))
+        }
     if isinstance(value, (list, tuple, set)):
-        return [_beam_uls_stable_value(item) for item in value]
+        return [_beam_uls_stable_value(item, _depth=_depth + 1) for item in value]
     if hasattr(value, "model_dump"):
         try:
-            return _beam_uls_stable_value(value.model_dump(mode="json"))
+            return _beam_uls_stable_value(value.model_dump(mode="json"), _depth=_depth + 1)
         except Exception:
             try:
-                return _beam_uls_stable_value(value.model_dump())
+                return _beam_uls_stable_value(value.model_dump(), _depth=_depth + 1)
             except Exception:
                 pass
     if hasattr(value, "as_metadata"):
         try:
-            return _beam_uls_stable_value(value.as_metadata())
+            return _beam_uls_stable_value(value.as_metadata(), _depth=_depth + 1)
         except Exception:
             pass
-    if hasattr(value, "__dict__"):
+    if hasattr(value, "__dict__") and _depth < 4:
         public = {key: val for key, val in vars(value).items() if not key.startswith("_")}
-        return _beam_uls_stable_value(public)
+        return _beam_uls_stable_value(public, _depth=_depth + 1)
     return repr(value)
-
 
 def _beam_uls_hash_payload(payload: object) -> str:
     encoded = json.dumps(
@@ -8100,7 +8109,7 @@ def _beam_uls_cache_input_hash(
                 "section_category",
                 "girder_section_family",
                 "section_parameters",
-                "section_geometry",
+                "section_properties",
                 "composite_section_settings",
                 "effective_width_settings",
             ],
