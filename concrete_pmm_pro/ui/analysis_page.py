@@ -8018,6 +8018,141 @@ def _render_beam_uls_static_plotly_figure(fig: go.Figure, *, caption: str | None
 
 BEAM_ULS_CHECK_TAB_LABELS = ["Flexure", "Shear", "Torsion", "Shear + Torsion"]
 _BEAM_ULS_MANUAL_CALC_CACHE_KEY = "_beam_girder_uls_manual_calculation_cache"
+_BEAM_ULS_INPUT_HASH_KIND = "beam_girder_uls_v2"
+
+
+def _beam_uls_stable_value(value: object) -> object:
+    """Return a JSON-stable value for Beam/Girder ULS cache signatures."""
+
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, pd.DataFrame):
+        return {
+            "columns": [str(column) for column in value.columns],
+            "records": value.to_dict(orient="records"),
+        }
+    if isinstance(value, Mapping):
+        return {str(key): _beam_uls_stable_value(value[key]) for key in sorted(value, key=lambda item: str(item))}
+    if isinstance(value, (list, tuple, set)):
+        return [_beam_uls_stable_value(item) for item in value]
+    if hasattr(value, "model_dump"):
+        try:
+            return _beam_uls_stable_value(value.model_dump(mode="json"))
+        except Exception:
+            try:
+                return _beam_uls_stable_value(value.model_dump())
+            except Exception:
+                pass
+    if hasattr(value, "as_metadata"):
+        try:
+            return _beam_uls_stable_value(value.as_metadata())
+        except Exception:
+            pass
+    if hasattr(value, "__dict__"):
+        public = {key: val for key, val in vars(value).items() if not key.startswith("_")}
+        return _beam_uls_stable_value(public)
+    return repr(value)
+
+
+def _beam_uls_hash_payload(payload: object) -> str:
+    encoded = json.dumps(
+        _beam_uls_stable_value(payload),
+        sort_keys=True,
+        separators=(",", ":"),
+        default=repr,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _beam_uls_state_values(state: Mapping[str, object], keys: list[str]) -> dict[str, object]:
+    return {key: state.get(key) for key in keys if key in state}
+
+
+def _beam_uls_cache_input_hash(
+    state: Mapping[str, object],
+    active_df: pd.DataFrame,
+    *,
+    strength_route: BeamGirderUlsStrengthRoute,
+) -> str:
+    """Hash only engineering inputs used by the Beam/Girder ULS workspace.
+
+    The previous cache key used the full project dirty-state hash.  Returning
+    to Section Builder can materialize UI/source markers that do not change the
+    engineering model but still change the raw project hash.  This signature is
+    deliberately source-of-truth oriented so navigation does not make already
+    calculated Flexure/Shear/Torsion/V+T results disappear.
+    """
+
+    payload = {
+        "kind": _BEAM_ULS_INPUT_HASH_KIND,
+        "route": {
+            "workflow_key": strength_route.workflow_key,
+            "project_design_code": strength_route.project_design_code,
+            "code_edition": strength_route.code_edition,
+            "flexure_engine_label": strength_route.flexure_engine_label,
+            "shear_engine_label": strength_route.shear_engine_label,
+            "torsion_engine_label": strength_route.torsion_engine_label,
+        },
+        "section": _beam_uls_state_values(
+            state,
+            [
+                "section_preset_key",
+                "section_category",
+                "girder_section_family",
+                "section_parameters",
+                "section_geometry",
+                "composite_section_settings",
+                "effective_width_settings",
+            ],
+        ),
+        "steel_systems": {
+            "ordinary_rebar": ordinary_rebar_enabled(state, default=True),
+            "prestressing_steel": prestressing_steel_enabled(state, default=True),
+        },
+        "materials": _beam_uls_state_values(
+            state,
+            [
+                "concrete_material",
+                "concrete_materials",
+                "rebar_materials",
+                "prestress_materials",
+                "prestress_steel_materials",
+                "active_concrete_material_name",
+                "active_rebar_material_name",
+                "active_prestress_material_name",
+                "deck_topping_material_name",
+                "deck_material",
+                "topping_material",
+            ],
+        ),
+        "reinforcement": _beam_uls_state_values(
+            state,
+            [
+                "rebars",
+                "rebars_valid_for_analysis",
+                "rebar_input_mode",
+                "beam_girder_shear_reinforcement_table",
+                "beam_girder_shear_depth_settings",
+            ],
+        ),
+        "prestress": _beam_uls_state_values(
+            state,
+            [
+                "prestress_table",
+                "prestress_elements",
+                "prestress_valid_for_analysis",
+                "girder_strand_layout_table",
+                "girder_prestress_system_settings",
+                "railway_u_girder_stage_settings",
+                "girder_prestress_force_states_table",
+                "girder_prestress_code_loss_settings",
+                "prestress_loss_settings",
+            ],
+        ),
+        "loads": active_df,
+        "analysis_settings": _beam_uls_state_values(state, ["analysis_settings"]),
+    }
+    return _beam_uls_hash_payload(payload)
 
 
 def _beam_uls_manual_cache(state: Mapping[str, object]) -> dict[str, dict[str, object]]:
@@ -8044,6 +8179,7 @@ def _beam_uls_store_manual_result(
     cache = dict(_beam_uls_manual_cache(state))
     entry = dict(result)
     entry["input_hash"] = str(input_hash)
+    entry["input_hash_kind"] = _BEAM_ULS_INPUT_HASH_KIND
     entry["check"] = str(check_name)
     entry["calculated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cache[str(check_name)] = entry
@@ -9810,7 +9946,11 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
         help="The selected ULS check is not calculated until you press Calculate. This prevents Flexure/Shear/Torsion from running on every rerun.",
     )
     selected_check = str(selected_check_raw) if selected_check_raw in BEAM_ULS_CHECK_TAB_LABELS else BEAM_ULS_CHECK_TAB_LABELS[0]
-    uls_input_hash = project_input_hash(st.session_state)
+    uls_input_hash = _beam_uls_cache_input_hash(
+        st.session_state,
+        active_df,
+        strength_route=strength_route,
+    )
 
     flexure_entry = _beam_uls_current_cached_result(st.session_state, "Flexure", uls_input_hash)
     shear_entry = _beam_uls_current_cached_result(st.session_state, "Shear", uls_input_hash)

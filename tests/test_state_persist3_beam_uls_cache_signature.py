@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import pandas as pd
+
+from concrete_pmm_pro.analysis.uls_strength_routing import beam_girder_uls_strength_route
+from concrete_pmm_pro.core.analysis import AnalysisModeSettings
+from concrete_pmm_pro.ui.analysis_page import _BEAM_ULS_INPUT_HASH_KIND, _beam_uls_cache_input_hash
+
+
+def _bridge_girder_state() -> dict[str, object]:
+    return {
+        "analysis_mode_settings": AnalysisModeSettings(member_type="beam_girder"),
+        "design_code": "AASHTO LRFD",
+        "code_edition": "AASHTO LRFD 9th Edition",
+        "section_preset_key": "railway_u_girder",
+        "section_category": "Precast Composite Girder",
+        "girder_section_family": "precast_composite_girder",
+        "section_parameters": {"B_mm": 5500.0, "H_mm": 1600.0},
+        "beam_girder_shear_reinforcement_table": [
+            {
+                "Active": True,
+                "Zone": "Support",
+                "x_start_m": 0.0,
+                "x_end_m": 10.0,
+                "Bar Size": "DB12",
+                "Diameter_mm": 12.0,
+                "Legs": 2,
+                "Spacing_mm": 200.0,
+                "fy_MPa": 400.0,
+            }
+        ],
+    }
+
+
+def _active_df() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "Active": True,
+                "Station x (m)": 5.0,
+                "Case Name": "Strength I",
+                "Mux": 3805.24,
+                "Vuy": 1075.99,
+                "Tu": 100.0,
+            }
+        ]
+    )
+
+
+def test_beam_uls_cache_signature_ignores_section_builder_navigation_keys() -> None:
+    route = beam_girder_uls_strength_route(is_bridge=True, is_building=False, code_edition="AASHTO LRFD 9th Edition")
+    before = _bridge_girder_state()
+    after = dict(before)
+    after.update(
+        {
+            "section_has_ordinary_rebar": True,
+            "section_has_prestressing_steel": True,
+            "reinforcement_flags_preset_key": "railway_u_girder",
+            "section_builder_ordinary_rebar_enabled": True,
+            "section_builder_prestressing_steel_enabled": True,
+            "section_builder_steel_systems_preset_key": "railway_u_girder",
+            "section_builder_steel_systems_user_overridden": False,
+            "project_metadata": {
+                "section_has_ordinary_rebar": True,
+                "section_has_prestressing_steel": True,
+                "reinforcement_flags_preset_key": "railway_u_girder",
+            },
+        }
+    )
+
+    assert _beam_uls_cache_input_hash(before, _active_df(), strength_route=route) == _beam_uls_cache_input_hash(
+        after,
+        _active_df(),
+        strength_route=route,
+    )
+
+
+def test_beam_uls_cache_signature_changes_when_actual_load_changes() -> None:
+    route = beam_girder_uls_strength_route(is_bridge=True, is_building=False, code_edition="AASHTO LRFD 9th Edition")
+    base_loads = _active_df()
+    changed_loads = _active_df()
+    changed_loads.loc[0, "Mux"] = 4000.0
+
+    assert _beam_uls_cache_input_hash(_bridge_girder_state(), base_loads, strength_route=route) != _beam_uls_cache_input_hash(
+        _bridge_girder_state(),
+        changed_loads,
+        strength_route=route,
+    )
+
+
+def test_beam_uls_store_records_cache_signature_kind() -> None:
+    source = open("concrete_pmm_pro/ui/analysis_page.py", encoding="utf-8").read()
+
+    assert '_BEAM_ULS_INPUT_HASH_KIND = "beam_girder_uls_v2"' in source
+    assert 'entry["input_hash_kind"] = _BEAM_ULS_INPUT_HASH_KIND' in source
+    assert "project_input_hash(st.session_state)" not in source[source.index("def _render_beam_girder_uls_workspace") :]
