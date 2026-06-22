@@ -1972,7 +1972,14 @@ def _results_beam_uls_demand(check_name: str, row: Mapping[str, object]) -> str:
     if check_name == "Shear":
         return _results_scalar(_results_first_existing(row, ["Demand", "Vu kN", "Vuy kN", "Vux kN"]))
     if check_name == "Torsion":
-        return _results_scalar(_results_first_existing(row, ["Demand", "Tu kN-m"]))
+        tu = _results_first_existing(row, ["Tu kN-m", "Demand"])
+        return "-" if tu == "-" else f"Tu = {_results_scalar(tu)} kN-m"
+    if check_name == "Shear + Torsion":
+        vu = _results_first_existing(row, ["Vu kN", "Vuy kN", "Vux kN"])
+        tu = _results_first_existing(row, ["Tu kN-m"])
+        if vu != "-" and tu != "-":
+            return f"Vu = {_results_scalar(vu)} kN; Tu = {_results_scalar(tu)} kN-m"
+        return _results_scalar(_results_first_existing(row, ["Demand", "Vu / Tu"]))
     return _results_scalar(_results_first_existing(row, ["Demand", "Vu / Tu", "Vu kN", "Tu kN-m"]))
 
 
@@ -2165,9 +2172,15 @@ def _results_executive_status(rows: list[dict[str, object]], state: object | Non
             "title": "Stored results need review",
             "detail": "Some checks are calculated but still require engineering review, detailing confirmation, or missing companion checks.",
         }
+    if beam_total > 0 and beam_calculated == beam_total and state is not None and not _results_sls_available(state):
+        return {
+            "status": "warning",
+            "title": "ULS complete / SLS pending",
+            "detail": "All Beam/Girder ULS checks have stored results. SLS serviceability is not calculated yet.",
+        }
     return {
         "status": "ready",
-        "title": "Full stored results available",
+        "title": "Stored ULS/SLS summaries available",
         "detail": "Available stored results are ready for read-only review and downstream Report / QA traceability.",
     }
 
