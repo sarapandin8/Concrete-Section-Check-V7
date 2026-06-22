@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from html import escape
 
+import pandas as pd
 import streamlit as st
 
 from concrete_pmm_pro.core.analysis import AnalysisModeSettings
@@ -1398,40 +1399,435 @@ def render_analysis_workspace() -> None:
     render_analysis_page()
 
 
+
+_RESULTS_DASHBOARD_CSS = """
+<style>
+.cpmm-results-dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.18fr 2.35fr;
+  gap: 0.72rem;
+  align-items: start;
+  margin: 0.45rem 0 0.75rem 0;
+}
+.cpmm-results-executive-card {
+  border: 1px solid #d7e2ee;
+  border-left: 5px solid #1d6fe7;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+  padding: 0.86rem 0.92rem;
+  box-shadow: 0 5px 14px rgba(7, 26, 51, 0.045);
+}
+.cpmm-results-executive-card.ready { border-left-color: #22a447; background: linear-gradient(180deg, #ffffff 0%, #f5fff7 100%); }
+.cpmm-results-executive-card.warning { border-left-color: #f59e0b; background: linear-gradient(180deg, #ffffff 0%, #fffaf0 100%); }
+.cpmm-results-executive-card.danger { border-left-color: #d92d20; background: linear-gradient(180deg, #ffffff 0%, #fff6f5 100%); }
+.cpmm-results-executive-card.neutral { border-left-color: #98a2b3; background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%); }
+.cpmm-results-kicker {
+  color: #526f8d;
+  font-size: 0.66rem;
+  font-weight: 950;
+  letter-spacing: 0.075em;
+  text-transform: uppercase;
+  margin-bottom: 0.16rem;
+}
+.cpmm-results-title {
+  color: #071a33;
+  font-size: 1.04rem;
+  font-weight: 950;
+  line-height: 1.16;
+}
+.cpmm-results-detail {
+  color: #667085;
+  font-size: 0.76rem;
+  line-height: 1.38;
+  margin-top: 0.24rem;
+}
+.cpmm-results-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.18rem 0.54rem;
+  font-size: 0.70rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+.cpmm-results-status-pill.ready { color: #166534; background: #e9f9ef; border-color: rgba(34, 164, 71, 0.18); }
+.cpmm-results-status-pill.warning { color: #92400e; background: #fff4d6; border-color: rgba(245, 158, 11, 0.20); }
+.cpmm-results-status-pill.danger { color: #b42318; background: #fee4e2; border-color: rgba(217, 45, 32, 0.20); }
+.cpmm-results-status-pill.info { color: #1849a9; background: #e8f1ff; border-color: rgba(29, 111, 231, 0.18); }
+.cpmm-results-status-pill.neutral { color: #475467; background: #eef2f6; border-color: rgba(152, 162, 179, 0.18); }
+.cpmm-results-table-shell {
+  border: 1px solid #d7e2ee;
+  border-radius: 14px;
+  background: #ffffff;
+  overflow: hidden;
+  box-shadow: 0 5px 14px rgba(7, 26, 51, 0.040);
+}
+.cpmm-results-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.cpmm-results-table thead th {
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+  color: #526f8d;
+  font-size: 0.70rem;
+  font-weight: 950;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 0.66rem 0.72rem;
+  border-bottom: 1px solid #d7e2ee;
+}
+.cpmm-results-table tbody td {
+  color: #071a33;
+  font-size: 0.78rem;
+  line-height: 1.40;
+  padding: 0.68rem 0.72rem;
+  border-bottom: 1px solid #e9eef5;
+  vertical-align: top;
+}
+.cpmm-results-table tbody tr:last-child td { border-bottom: 0; }
+.cpmm-results-table .module-name { font-weight: 850; color: #0b3a66; }
+.cpmm-results-empty {
+  border: 1px dashed #b8d0f5;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+  padding: 0.80rem 0.95rem;
+  color: #0b3a66;
+  font-size: 0.82rem;
+  line-height: 1.42;
+}
+@media (max-width: 1050px) {
+  .cpmm-results-dashboard-grid { grid-template-columns: 1fr; }
+}
+</style>
+"""
+
+
+def _results_style_for_status(status: object) -> str:
+    label = str(status or "").strip().upper()
+    if any(token in label for token in ["FAIL", "ERROR", "DANGER", "EXCEED"]):
+        return "danger"
+    if any(token in label for token in ["PASS", "READY", "AVAILABLE", "CURRENT", "CALCULATED"]):
+        return "ready"
+    if any(token in label for token in ["REVIEW", "WARNING", "NOT READY", "NOT CALCULATED", "PLANNED", "PLACEHOLDER"]):
+        return "warning"
+    if any(token in label for token in ["N/A", "NOT ACTIVE", "NONE", "NO RESULT"]):
+        return "neutral"
+    return "info"
+
+
+def _results_status_pill(status: object) -> str:
+    label = escape(str(status or "-"))
+    return f'<span class="cpmm-results-status-pill {_results_style_for_status(status)}">{label}</span>'
+
+
+def _results_html_table(rows: list[dict[str, object]], columns: list[str]) -> str:
+    if not rows:
+        return '<div class="cpmm-results-empty">No stored result rows are available yet. Run checks in Analysis, then return here to review the stored outputs.</div>'
+    header = "<thead><tr>" + "".join(f"<th>{escape(column)}</th>" for column in columns) + "</tr></thead>"
+    body_rows: list[str] = []
+    for row in rows:
+        cells: list[str] = []
+        for column in columns:
+            value = row.get(column, "-")
+            if column == "Status":
+                cells.append(f"<td>{_results_status_pill(value)}</td>")
+            elif column in {"Module", "Check"}:
+                cells.append(f'<td><div class="module-name">{escape(str(value))}</div></td>')
+            else:
+                cells.append(f"<td>{escape(str(value))}</td>")
+        body_rows.append("<tr>" + "".join(cells) + "</tr>")
+    return '<div class="cpmm-results-table-shell"><table class="cpmm-results-table">' + header + "<tbody>" + "".join(body_rows) + "</tbody></table></div>"
+
+
+def _results_dataframe(value: object) -> pd.DataFrame | None:
+    return value if isinstance(value, pd.DataFrame) else None
+
+
+def _results_best_row(df: pd.DataFrame | None) -> dict[str, object] | None:
+    if df is None or df.empty:
+        return None
+    work_df = df.copy()
+    for col in ["Utilization value", "D/C value", "Overall D/C value", "Governing D/C value"]:
+        if col in work_df.columns:
+            numeric = pd.to_numeric(work_df[col], errors="coerce")
+            if numeric.notna().any():
+                return dict(work_df.loc[numeric.idxmax()].to_dict())
+    return dict(work_df.iloc[0].to_dict())
+
+
+def _results_availability_cards(state: object) -> list[dict[str, object]]:
+    beam_cache = state.get("_beam_girder_uls_manual_calculation_cache") if isinstance(state.get("_beam_girder_uls_manual_calculation_cache"), dict) else {}
+    serviceability = state.get("serviceability_summary")
+    pmm_available = state.get("rc_demand_capacity_result") is not None or state.get("rc_pmm_result") is not None
+    uls_count = sum(1 for entry in beam_cache.values() if isinstance(entry, dict))
+    sls_available = serviceability is not None or bool(state.get("railway_u_girder_sls_report_package_available"))
+    figure_count = sum(
+        1
+        for key in ["pmm_mux_muy_slice_figure", "pmm_interaction_surface_figure"]
+        if state.get(key) is not None
+    )
+    return [
+        {
+            "title": "ULS stored results",
+            "value": f"{uls_count:,} Beam/Girder check(s)" if uls_count else ("PMM available" if pmm_available else "Not calculated"),
+            "detail": "read from cached Analysis results",
+            "status": "ready" if uls_count or pmm_available else "warning",
+        },
+        {
+            "title": "SLS stored results",
+            "value": "Available" if sls_available else "Not calculated",
+            "detail": "service stress / staged SLS summaries",
+            "status": "ready" if sls_available else "warning",
+        },
+        {
+            "title": "Diagram review",
+            "value": f"{figure_count:,} stored figure(s)",
+            "detail": "stored plotly figures only; no rerun",
+            "status": "ready" if figure_count else "neutral",
+        },
+        {
+            "title": "Report handoff",
+            "value": "Review in Report / QA",
+            "detail": "traceability and limitations stay downstream",
+            "status": "info",
+        },
+    ]
+
+
+def _results_add_pmm_rows(state: object, rows: list[dict[str, object]]) -> None:
+    dc_summary = state.get("rc_demand_capacity_result")
+    if dc_summary is not None:
+        rows.append(
+            {
+                "Module": "ULS PMM",
+                "Check": "Column/Pier PMM",
+                "Status": getattr(dc_summary, "overall_status", "REVIEW"),
+                "Governing Case": getattr(dc_summary, "governing_combo", None) or "-",
+                "Station / Point": "-",
+                "Demand": "Pu, Mux, Muy",
+                "Capacity / Limit": "PMM envelope",
+                "D/C / Util.": "-" if getattr(dc_summary, "max_dcr", None) is None else f"{float(getattr(dc_summary, 'max_dcr')):.3f}",
+                "Source": "Analysis → ULS Strength → Flexural (PMM)",
+            }
+        )
+        return
+    if state.get("rc_pmm_result") is not None:
+        rows.append(
+            {
+                "Module": "ULS PMM",
+                "Check": "PMM surface",
+                "Status": "AVAILABLE",
+                "Governing Case": "-",
+                "Station / Point": "-",
+                "Demand": "-",
+                "Capacity / Limit": "PMM point cloud",
+                "D/C / Util.": "-",
+                "Source": "Analysis → ULS Strength → Flexural (PMM)",
+            }
+        )
+
+
+def _results_add_beam_uls_rows(state: object, rows: list[dict[str, object]]) -> None:
+    cache = state.get("_beam_girder_uls_manual_calculation_cache")
+    if not isinstance(cache, dict):
+        return
+    for check_name in ["Flexure", "Shear", "Torsion", "Shear + Torsion"]:
+        entry = cache.get(check_name)
+        if not isinstance(entry, dict):
+            continue
+        key_map = {
+            "Flexure": "flexure_preview_df",
+            "Shear": "shear_check_df",
+            "Torsion": "torsion_check_df",
+            "Shear + Torsion": "combined_vt_df",
+        }
+        best = _results_best_row(_results_dataframe(entry.get(key_map[check_name]))) or {}
+        rows.append(
+            {
+                "Module": "ULS Beam/Girder",
+                "Check": check_name,
+                "Status": best.get("Status", "CALCULATED"),
+                "Governing Case": best.get("Case", "-"),
+                "Station / Point": best.get("Governing x", best.get("Station type", "-")),
+                "Demand": best.get("Demand", best.get("Vu kN", best.get("Tu kN-m", "-"))),
+                "Capacity / Limit": best.get("Capacity", best.get("φVn kN", best.get("φTn kN-m", "-"))),
+                "D/C / Util.": best.get("Utilization", best.get("D/C value", best.get("Overall D/C value", "-"))),
+                "Source": f"Analysis → ULS Strength → {check_name}",
+            }
+        )
+
+
+def _results_add_sls_rows(state: object, rows: list[dict[str, object]]) -> None:
+    serviceability = state.get("serviceability_summary")
+    if serviceability is None:
+        return
+    rows.append(
+        {
+            "Module": "SLS Stress",
+            "Check": "Elastic stress",
+            "Status": getattr(serviceability, "overall_status", "AVAILABLE"),
+            "Governing Case": getattr(serviceability, "governing_combo", None) or "-",
+            "Station / Point": getattr(serviceability, "governing_point", None) or "-",
+            "Demand": (
+                "N/A"
+                if getattr(serviceability, "max_tension_MPa", None) is None
+                else f"Max tension {float(getattr(serviceability, 'max_tension_MPa')):.3f} MPa"
+            ),
+            "Capacity / Limit": "Project SLS stress limits",
+            "D/C / Util.": (
+                "-"
+                if getattr(serviceability, "max_utilization", None) is None
+                else f"{float(getattr(serviceability, 'max_utilization')):.3f}"
+            ),
+            "Source": "Analysis → SLS / Stress & Cracking",
+        }
+    )
+
+
+def _results_governing_rows(state: object) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    _results_add_pmm_rows(state, rows)
+    _results_add_beam_uls_rows(state, rows)
+    _results_add_sls_rows(state, rows)
+    return rows
+
+
+def _results_executive_status(rows: list[dict[str, object]]) -> dict[str, str]:
+    if not rows:
+        return {
+            "status": "warning",
+            "title": "No stored result set yet",
+            "detail": "Run checks in Analysis first. Results remains read-only and will not run solvers automatically.",
+        }
+    styles = [_results_style_for_status(row.get("Status")) for row in rows]
+    if "danger" in styles:
+        return {
+            "status": "danger",
+            "title": "Design review required",
+            "detail": "At least one stored result indicates FAIL or exceedance. Open the source Analysis check before report issue.",
+        }
+    if "warning" in styles:
+        return {
+            "status": "warning",
+            "title": "Stored results need review",
+            "detail": "Some checks are calculated but still require engineering review, detailing confirmation, or missing companion checks.",
+        }
+    return {
+        "status": "ready",
+        "title": "Stored results available",
+        "detail": "Available stored results are ready for read-only review and downstream Report / QA traceability.",
+    }
+
+
+def _render_results_executive_summary(rows: list[dict[str, object]]) -> None:
+    status = _results_executive_status(rows)
+    status_html = f"""
+<div class="cpmm-results-executive-card {escape(status["status"])}">
+  <div class="cpmm-results-kicker">Executive result state</div>
+  <div class="cpmm-results-title">{escape(status["title"])}</div>
+  <div class="cpmm-results-detail">{escape(status["detail"])}</div>
+</div>
+"""
+    table_html = _results_html_table(
+        rows,
+        ["Module", "Check", "Status", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Source"],
+    )
+    st.markdown(
+        _RESULTS_DASHBOARD_CSS
+        + '<div class="cpmm-results-dashboard-grid">'
+        + status_html
+        + table_html
+        + "</div>",
+        unsafe_allow_html=True,
+    )
+
+
+def _render_results_module_tables(state: object) -> None:
+    cache = state.get("_beam_girder_uls_manual_calculation_cache")
+    if isinstance(cache, dict) and cache:
+        with st.expander("ULS Beam/Girder stored result tables", expanded=False):
+            for check_name, entry in cache.items():
+                if not isinstance(entry, dict):
+                    continue
+                st.markdown(f"**{check_name}**")
+                for key, value in entry.items():
+                    if isinstance(value, pd.DataFrame) and not value.empty:
+                        st.caption(key)
+                        st.dataframe(value, use_container_width=True, hide_index=True)
+    serviceability = state.get("serviceability_summary")
+    if serviceability is not None:
+        with st.expander("SLS stored stress summary", expanded=False):
+            st.write(
+                {
+                    "overall_status": getattr(serviceability, "overall_status", "-"),
+                    "governing_combo": getattr(serviceability, "governing_combo", "-"),
+                    "governing_point": getattr(serviceability, "governing_point", "-"),
+                    "max_utilization": getattr(serviceability, "max_utilization", "-"),
+                    "warning_count": len(getattr(serviceability, "warnings", []) or []),
+                }
+            )
+
+
+def _render_results_diagram_review(state: object) -> None:
+    figures = {
+        "PMM Mux-Muy slice": state.get("pmm_mux_muy_slice_figure"),
+        "PMM 3D interaction": state.get("pmm_interaction_surface_figure"),
+    }
+    available = {name: fig for name, fig in figures.items() if fig is not None}
+    if not available:
+        st.caption("No stored result figures are available yet. Generate figures in Analysis, then return here for read-only review.")
+        return
+    selected = st.selectbox("Stored result diagram", list(available.keys()), key="results_workspace_selected_diagram")
+    st.plotly_chart(available[selected], use_container_width=True)
+
+
+def _render_results_traceability(state: object) -> None:
+    trace_rows = [
+        {"Item": "Workflow", "Value": analysis_mode_label(AnalysisModeSettings.from_session_state(state))},
+        {"Item": "Project input hash", "Value": str(state.get("project_input_hash") or state.get("analysis_input_hash") or "-")},
+        {"Item": "PMM cache hash", "Value": str(state.get("pmm_last_analysis_hash") or "-")},
+        {"Item": "SLS cache hash", "Value": str(state.get("serviceability_summary_hash") or "-")},
+        {"Item": "Runtime status", "Value": str(state.get("analysis_runtime_last_status") or "-")},
+        {"Item": "Runtime last run", "Value": str(state.get("analysis_runtime_last_run_at") or "-")},
+    ]
+    st.dataframe(pd.DataFrame(trace_rows), use_container_width=True, hide_index=True)
+
+
 def render_results_workspace() -> None:
     render_page_header(
         "Results",
-        "Read stored analysis outputs and future result summaries without rerunning the engineering solvers.",
+        "Executive engineering dashboard for stored PMM, ULS, SLS, and diagram outputs; opening Results does not rerun PMM, ULS, or SLS.",
         icon="RS",
         badge="Stored results",
     )
-    render_metric_cards(
-        [
-            {
-                "title": "Result source",
-                "value": "Stored outputs",
-                "detail": "analysis workspaces remain the source of calculations",
-                "status": "info",
-            },
-            {
-                "title": "Solver behavior",
-                "value": "Read-only",
-                "detail": "opening Results does not rerun PMM, ULS, or SLS",
-                "status": "ready",
-            },
-            {
-                "title": "Current scope",
-                "value": "Placeholder",
-                "detail": "summary tables and report preview are planned",
-                "status": "warning",
-            },
-        ]
-    )
+    render_metric_cards(_results_availability_cards(st.session_state))
+    governing_rows = _results_governing_rows(st.session_state)
     render_section_bar(
-        "Results workspace foundation",
-        RESULTS_WORKSPACE_PLACEHOLDER,
-        mark="R",
+        "Governing Results Dashboard",
+        "Single-screen review of calculated checks, controlling cases, utilization, and source workflow.",
+        mark="G",
     )
+    _render_results_executive_summary(governing_rows)
+
+    render_section_bar(
+        "Stored Result Modules",
+        "Drill into cached result tables already produced by Analysis. No calculation is triggered here.",
+        mark="M",
+    )
+    _render_results_module_tables(st.session_state)
+
+    render_section_bar(
+        "Diagram Review",
+        "Review stored figures generated upstream in Analysis. Figure rendering is read-only.",
+        mark="D",
+    )
+    _render_results_diagram_review(st.session_state)
+
+    with st.expander("Result traceability / cache state", expanded=False):
+        _render_results_traceability(st.session_state)
 
 
 def render_report_qa_workspace() -> None:
