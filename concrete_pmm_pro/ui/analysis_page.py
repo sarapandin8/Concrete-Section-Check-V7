@@ -14,6 +14,7 @@ from typing import Any
 import plotly.graph_objects as go
 import pandas as pd
 import streamlit as st
+from concrete_pmm_pro.visualization.plot_readability import apply_global_plot_readability
 from shapely.geometry import LineString
 
 from concrete_pmm_pro.analysis.capacity_check import DemandCapacitySummary, check_uls_demands_against_rc_pmm
@@ -7936,6 +7937,33 @@ def _beam_uls_flexure_audit_dataframe(flexure_preview_df: pd.DataFrame | None) -
 
 
 
+
+def _render_beam_uls_static_plotly_figure(fig: go.Figure, *, caption: str | None = None) -> None:
+    """Render Beam/Girder ULS diagrams as static PNG.
+
+    Streamlit Cloud can occasionally fail to fetch the lazily imported
+    frontend PlotlyChart JavaScript chunk after a deployment/browser-cache
+    mismatch.  Beam/Girder ULS diagrams are result-review graphics, so a static
+    PNG is an acceptable default and avoids the frontend dynamic-import failure.
+    The figure data and calculations are unchanged.
+    """
+
+    try:
+        apply_global_plot_readability(fig)
+        image_bytes = fig.to_image(format="png", scale=2)
+    except Exception as exc:
+        st.warning(
+            "Static chart rendering is not available in this environment. "
+            "The calculated result cards and audit tables above remain valid."
+        )
+        st.caption(f"Chart export detail: {type(exc).__name__}")
+        return
+    try:
+        st.image(image_bytes, use_container_width=True, caption=caption)
+    except TypeError:  # Streamlit compatibility for older image API
+        st.image(image_bytes, use_column_width=True, caption=caption)
+
+
 BEAM_ULS_CHECK_TAB_LABELS = ["Flexure", "Shear", "Torsion", "Shear + Torsion"]
 _BEAM_ULS_MANUAL_CALC_CACHE_KEY = "_beam_girder_uls_manual_calculation_cache"
 
@@ -9851,9 +9879,8 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
                 {"title": "Method", "value": "Strain compatibility", "detail": strength_route.flexure_engine_label, "status": "neutral"},
             ]
         _render_analysis_summary_strip(flex_cards, columns=4)
-        st.plotly_chart(
-            _make_beam_uls_flexure_preview_figure(active_df, flexure_preview_df, code_label=code_label),
-            use_container_width=True,
+        _render_beam_uls_static_plotly_figure(
+            _make_beam_uls_flexure_preview_figure(active_df, flexure_preview_df, code_label=code_label)
         )
         st.caption(
             "Section φMn is plotted using the active workflow flexure route; zero-demand endpoints are plotted as φMn = 0 diagram boundary points. "
@@ -9904,15 +9931,14 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
             _render_analysis_summary_strip(_beam_uls_shear_diagnosis_cards(shear_result), columns=3)
         if shear_result is None:
             _render_beam_uls_shear_layout_readiness_panel(st.session_state)
-        st.plotly_chart(
+        _render_beam_uls_static_plotly_figure(
             _make_beam_uls_shear_capacity_figure(
                 active_df,
                 shear_check_df,
                 code_label=code_label,
                 boundary_capacity_df=shear_boundary_capacity_df,
                 critical_section_df=shear_critical_section_df,
-            ),
-            use_container_width=True,
+            )
         )
         st.caption(
             "Shear capacity is from the active provided stirrup layout by zone. Critical shear sections are inserted near the supports and included in the governing shear D/C; x=0 and x=L remain capacity-boundary graph values only. "
@@ -9972,14 +9998,13 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
                 {"title": "Route", "value": strength_route.torsion_engine_label, "detail": strength_route.torsion_basis_note, "status": "neutral"},
             ]
         _render_analysis_summary_strip(torsion_cards, columns=4)
-        st.plotly_chart(
+        _render_beam_uls_static_plotly_figure(
             _make_beam_uls_torsion_capacity_figure(
                 active_df,
                 torsion_check_df,
                 code_label=code_label,
                 boundary_capacity_df=torsion_boundary_capacity_df,
-            ),
-            use_container_width=True,
+            )
         )
         st.caption(
             "φTn is the code-routed closed-hoop torsion strength line. "
@@ -10024,9 +10049,8 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
             ]
             _render_analysis_summary_strip(vt_cards, columns=5)
             if _beam_uls_combined_vt_has_finite_utilization(combined_vt_df):
-                st.plotly_chart(
-                    _make_beam_uls_combined_vt_utilization_figure(combined_vt_df, code_label=code_label),
-                    use_container_width=True,
+                _render_beam_uls_static_plotly_figure(
+                    _make_beam_uls_combined_vt_utilization_figure(combined_vt_df, code_label=code_label)
                 )
                 st.caption("Combined V+T is plotted as utilization ratio versus station because Vu and Tu have different units. The red dashed line is the D/C = 1.0 check limit.")
             else:
