@@ -5971,93 +5971,17 @@ def _plot_girder_strand_block_detail(
             )
 
     if full_section_detail and side_key == "all":
-        # Main axis: full section context with a highlighted zoom window.
+        # Non-Railway-U sections read better as one enlarged full-section detail
+        # with the strand annotations placed directly on that drawing.  The full
+        # section remains visible for context, but the plot is no longer split
+        # into context/inset views.
         full_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=True)
-        zoom_bounds = _local_strand_zone_geometry(points, geometry, side=side, full_section=False)[1]
-        # Main context is intentionally quiet: no dimensions or row labels here.
-        # The inset below/right is the exclusive strand-reading view.
+        _row_guides("x", "y", current_points=points, bounds=full_bounds, compact=False)
         _add_strand_state_marker_traces(
             fig,
             points,
             row_info,
-            marker_size=4,
-            bonded_fill="rgba(255,255,255,0.0)",
-            debonded_fill="rgba(255,255,255,0.0)",
-            bonded_line="rgba(37,99,235,0.46)",
-            debonded_line="rgba(220,38,38,0.52)",
-            bonded_width=0.9,
-            debonded_width=1.0,
-            showlegend=False,
-        )
-        if zoom_bounds is not None:
-            zx0, zy0, zx1, zy1 = [float(value) for value in zoom_bounds]
-            fig.add_shape(
-                type="rect",
-                x0=zx0,
-                x1=zx1,
-                y0=zy0,
-                y1=zy1,
-                line={"color": "rgba(37, 99, 235, 0.60)", "width": 1.15, "dash": "dash"},
-                fillcolor="rgba(37, 99, 235, 0.03)",
-                xref="x",
-                yref="y",
-                layer="above",
-            )
-            fig.add_annotation(
-                x=zx1,
-                y=zy1,
-                xref="x",
-                yref="y",
-                text="Magnified strand zone",
-                showarrow=False,
-                xanchor="right",
-                yanchor="bottom",
-                yshift=6,
-                font={"size": 8, "color": "rgba(15, 23, 42, 0.70)"},
-                bgcolor="rgba(255,255,255,0.90)",
-                bordercolor="rgba(203,213,225,0.80)",
-                borderwidth=1,
-                borderpad=2,
-            )
-
-        # Inset axis: true zoomed strand zone overlay.
-        fig.update_layout(
-            xaxis={"domain": [0.00, 0.44], "anchor": "y"},
-            yaxis={"domain": [0.08, 0.92], "anchor": "x"},
-            xaxis2={
-                "domain": [0.56, 0.98],
-                "anchor": "y2",
-                "title": {"text": "strand-zone x (mm)", "font": {"size": 9}},
-                "tickfont": {"size": 8},
-                "showgrid": True,
-                "gridcolor": "rgba(15,23,42,0.055)",
-                "zerolinecolor": "rgba(15,23,42,0.12)",
-                "showline": True,
-                "linecolor": "rgba(148,163,184,0.72)",
-                "mirror": True,
-            },
-            yaxis2={
-                "domain": [0.18, 0.86],
-                "anchor": "x2",
-                "title": {"text": ""},
-                "tickfont": {"size": 7},
-                "showgrid": True,
-                "gridcolor": "rgba(15,23,42,0.055)",
-                "zerolinecolor": "rgba(15,23,42,0.12)",
-                "showline": True,
-                "linecolor": "rgba(148,163,184,0.72)",
-                "mirror": True,
-                "scaleanchor": "x2",
-                "scaleratio": 1,
-            },
-        )
-        inset_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=False, xaxis_name="x2", yaxis_name="y2")
-        _row_guides("x2", "y2", current_points=points, bounds=inset_bounds, compact=False)
-        _add_strand_state_marker_traces(
-            fig,
-            points,
-            row_info,
-            marker_size=11,
+            marker_size=12,
             bonded_fill="rgba(37, 99, 235, 0.14)",
             debonded_fill="rgba(220, 38, 38, 0.16)",
             bonded_line="#2563eb",
@@ -6065,85 +5989,48 @@ def _plot_girder_strand_block_detail(
             bonded_width=1.8,
             debonded_width=2.0,
             showlegend=False,
-            xaxis_name="x2",
-            yaxis_name="y2",
         )
-        _add_drawing_debond_symbol_trace(fig, points, marker_size=6, showlegend=False, xaxis_name="x2", yaxis_name="y2")
-        dimension_refs = _add_strand_detail_dimensions(fig, points, geometry, side=side, full_section=False, xref="x2", yref="y2")
+        _add_drawing_debond_symbol_trace(fig, points, marker_size=7, showlegend=False)
+        dimension_refs = _add_strand_detail_dimensions(fig, points, geometry, side=side, full_section=False)
         tick_rows = _tick_rows(points, compact=False)
 
-        # Main full-section ranges.
+        x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
+        y_values_for_range = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
         if full_bounds is not None:
-            x0, y0, x1, y1 = [float(value) for value in full_bounds]
-        else:
-            x0 = float(points["x_mm"].min())
-            x1 = float(points["x_mm"].max())
-            y0 = min(float(points["y_mm_abs"].min()), _section_bottom_y_from_geometry(geometry))
-            y1 = float(points["y_mm_abs"].max())
-        x_span = max(x1 - x0, 220.0)
-        y_span = max(y1 - y0, 220.0)
-        fig.layout.xaxis.range = [x0 - max(90.0, 0.08 * x_span), x1 + max(90.0, 0.08 * x_span)]
-        fig.layout.xaxis.tickfont = {"size": 9}
-        fig.layout.xaxis.title = {"text": "section x (mm)", "font": {"size": 10}}
-        fig.layout.yaxis.range = [y0 - max(70.0, 0.08 * y_span), y1 + max(70.0, 0.08 * y_span)]
-        fig.layout.yaxis.tickfont = {"size": 8}
-        fig.layout.yaxis.title = {"text": "section y (mm)"}
-        fig.layout.yaxis.scaleanchor = "x"
-        fig.layout.yaxis.scaleratio = 1
-
-        inset_x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
-        inset_y_values = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
-        if inset_bounds is not None:
-            inset_x_values.extend([float(inset_bounds[0]), float(inset_bounds[2])])
-            inset_y_values.extend([float(inset_bounds[1]), float(inset_bounds[3])])
-        ix0 = min(float(value) for value in inset_x_values)
-        ix1 = max(float(value) for value in inset_x_values)
-        iy0 = min(float(value) for value in inset_y_values)
-        iy1 = max(float(value) for value in inset_y_values)
-        ix_span = max(ix1 - ix0, 220.0)
-        iy_span = max(iy1 - iy0, 180.0)
+            x_values.extend([float(full_bounds[0]), float(full_bounds[2])])
+            y_values_for_range.extend([float(full_bounds[1]), float(full_bounds[3])])
+        x_min = min(float(value) for value in x_values)
+        x_max = max(float(value) for value in x_values)
+        y_min = min(float(value) for value in y_values_for_range)
+        y_max = max(float(value) for value in y_values_for_range)
+        x_span = max(x_max - x_min, 260.0)
+        y_span = max(y_max - y_min, 260.0)
+        fig.update_xaxes(
+            range=[x_min - max(70.0, 0.08 * x_span), x_max + max(70.0, 0.08 * x_span)],
+            tickfont={"size": 9},
+            title_font={"size": 10},
+            title_text="section x (mm)",
+        )
+        fig.update_yaxes(
+            range=[y_min - max(60.0, 0.08 * y_span), y_max + max(55.0, 0.08 * y_span)],
+            tickmode="array",
+            tickvals=[item[0] for item in tick_rows],
+            ticktext=[item[1] for item in tick_rows],
+            tickfont={"size": 8},
+            title_text="section y (mm)",
+        )
         fig.update_layout(
             title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
-            height=480,
-            margin={"l": 72, "r": 20, "t": 44, "b": 44},
+            height=500,
+            margin={"l": 90, "r": 22, "t": 44, "b": 44},
+            xaxis_title="section x (mm)",
+            yaxis_title="section y (mm)",
             showlegend=False,
             plot_bgcolor="white",
             font={"size": 9},
-            annotations=list(fig.layout.annotations) + [
-                go.layout.Annotation(
-                    x=0.22,
-                    y=0.965,
-                    xref="paper",
-                    yref="paper",
-                    text="Full section context",
-                    showarrow=False,
-                    font={"size": 9, "color": "rgba(15,23,42,0.72)"},
-                    bgcolor="rgba(255,255,255,0.88)",
-                    bordercolor="rgba(203,213,225,0.72)",
-                    borderwidth=1,
-                    borderpad=2,
-                ),
-                go.layout.Annotation(
-                    x=0.77,
-                    y=0.895,
-                    xref="paper",
-                    yref="paper",
-                    text="Magnified strand detail",
-                    showarrow=False,
-                    font={"size": 9, "color": "#0f172a"},
-                    bgcolor="rgba(255,255,255,0.92)",
-                    bordercolor="rgba(203,213,225,0.82)",
-                    borderwidth=1,
-                    borderpad=2,
-                ),
-            ],
         )
-        # Direct nested-axis updates are clearer than overloading update_xaxes.
-        fig.layout.xaxis2.range = [ix0 - max(55.0, 0.08 * ix_span), ix1 + max(55.0, 0.08 * ix_span)]
-        fig.layout.yaxis2.range = [iy0 - max(38.0, 0.08 * iy_span), iy1 + max(38.0, 0.08 * iy_span)]
-        fig.layout.yaxis2.tickmode = "array"
-        fig.layout.yaxis2.tickvals = [item[0] for item in tick_rows]
-        fig.layout.yaxis2.ticktext = [item[1] for item in tick_rows]
+        fig.update_xaxes(gridcolor="rgba(15,23,42,0.055)", zerolinecolor="rgba(15,23,42,0.12)")
+        fig.update_yaxes(scaleanchor="x", scaleratio=1, gridcolor="rgba(15,23,42,0.055)", zerolinecolor="rgba(15,23,42,0.12)")
         return fig
 
     # Existing split-detail rendering path (and generic fallback when geometry is missing).

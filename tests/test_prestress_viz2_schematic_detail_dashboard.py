@@ -263,7 +263,7 @@ def test_railway_u_girder_split_detail_uses_web_scale_not_full_section(monkeypat
 
 
 
-def test_non_split_detail_adds_magnified_inset_axes(monkeypatch) -> None:
+def test_non_split_detail_uses_single_full_section_panel(monkeypatch) -> None:
     st = types.ModuleType("streamlit")
     st.session_state = {}
     st.column_config = types.SimpleNamespace(
@@ -292,13 +292,13 @@ def test_non_split_detail_adds_magnified_inset_axes(monkeypatch) -> None:
     table = _normalize_girder_strand_layout_table(None, span_length_m=20.0, geometry=geometry)
     fig = _plot_girder_strand_block_detail(table, geometry, side="All")
 
-    assert fig.layout.xaxis2.domain[0] < fig.layout.xaxis2.domain[1]
-    assert fig.layout.yaxis2.domain[0] < fig.layout.yaxis2.domain[1]
-    assert any("Magnified strand detail" in str(annotation.text) for annotation in fig.layout.annotations)
+    assert getattr(fig.layout, "xaxis2", None) is None
+    assert getattr(fig.layout, "yaxis2", None) is None
+    assert not any("Magnified strand detail" in str(annotation.text) for annotation in fig.layout.annotations)
 
 
 
-def test_non_split_dimension_annotations_live_only_in_inset(monkeypatch) -> None:
+def test_non_split_dimension_annotations_live_on_main_axes(monkeypatch) -> None:
     st = types.ModuleType("streamlit")
     st.session_state = {}
     st.column_config = types.SimpleNamespace(
@@ -331,4 +331,4 @@ def test_non_split_dimension_annotations_live_only_in_inset(monkeypatch) -> None
         annotation for annotation in fig.layout.annotations if any(label in str(annotation.text) for label in dimension_labels)
     ]
     assert dimension_annotations
-    assert all(annotation.xref == "x2" and annotation.yref == "y2" for annotation in dimension_annotations)
+    assert all(annotation.xref == "x" and annotation.yref == "y" for annotation in dimension_annotations)
