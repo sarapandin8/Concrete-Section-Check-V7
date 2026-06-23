@@ -22,7 +22,7 @@ def test_cross_section_layout_is_overall_schematic_not_single_clutter_plot() -> 
     assert "Strand row summary" not in body
     assert "fig.add_annotation" not in body or "strand block" in body
     assert "_add_strand_state_marker_traces" in body
-    assert "marker_size=7" in body
+    assert "marker_size=5" in body
     assert "type=\"rect\"" in body
 
 
@@ -34,12 +34,14 @@ def test_dashboard_renderer_splits_overall_summary_and_detail_panels() -> None:
     assert "Zoomed strand block detail" in body
     assert "_plot_girder_strand_block_detail" in body
     assert "displayModeBar" in body
+    assert "_should_split_girder_strand_detail" in body
 
 
 def test_detail_panel_uses_large_markers_and_no_row_summary_annotation() -> None:
     body = _function_source("_plot_girder_strand_block_detail")
 
-    assert "marker_size=14" in body
+    assert "marker_size=13" in body
+    assert "_add_strand_detail_dimensions" in body
     assert "ticktext" in body
     assert "Strand row summary" not in body
 
@@ -94,3 +96,25 @@ def test_row_summary_combines_symmetric_railway_rows(monkeypatch) -> None:
     assert summary.loc[0, "Debonded"] == 4
     assert summary.loc[0, "Left debond (m)"] == 2.0
     assert summary.loc[0, "Right debond (m)"] == 2.0
+
+
+def test_non_railway_layout_policy_merges_symmetric_bottom_cluster(monkeypatch) -> None:
+    st = types.ModuleType("streamlit")
+    st.session_state = {}
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.ui.prestress_page import _should_split_girder_strand_detail  # noqa: PLC0415
+
+    points = pd.DataFrame({"x_mm": [-150.0, -75.0, 75.0, 150.0], "y_mm_abs": [-700.0] * 4})
+
+    assert _should_split_girder_strand_detail(points, None) is False
+
+
+def test_detail_panel_source_contains_spacing_and_edge_dimension_helpers() -> None:
+    body = _function_source("_add_strand_detail_dimensions")
+
+    assert "s =" in body
+    assert "eL =" in body
+    assert "eR =" in body
+    assert "eb =" in body
+    assert "v =" in body

@@ -162,7 +162,7 @@ def test_railway_u_girder_cross_section_layout_uses_readable_inspection_viewport
     assert block_annotations == ["Left strand block", "Right strand block"]
 
     left_detail = _plot_girder_strand_block_detail(table, geometry, side="Left")
-    assert left_detail.layout.height == 392
+    assert left_detail.layout.height == 420
     assert list(left_detail.layout.yaxis.ticktext)[0] == "Row 1  ·  B 9 / U 0"
     assert list(left_detail.layout.yaxis.ticktext)[-1] == "Row 5  ·  B 4 / U 0"
 

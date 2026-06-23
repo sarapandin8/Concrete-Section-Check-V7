@@ -1,3 +1,15 @@
+### CLOSEOUT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Closeout
+
+This milestone closes the current Railway U-Girder development slice as a guarded SLS engineering-review package. It adds an explicit closeout status table to the Railway U-Girder report package and Word report section while preserving the non-certification boundary:
+
+```text
+Railway U-Girder SLS Engineering Review Package - Closeout Ready
+```
+
+Closeout-ready means the accepted Railway U-Girder SLS preview workflow is report-ready with regression evidence, not that the workflow is a final design certification. Transfer/development length, anchorage/end-zone bursting, lifting hardware, creep/shrinkage redistribution, ULS Railway U-Girder coupling, and final certification checks remain future work.
+
+See `docs/design/closeout_rail_ugirder1.md`.
+
 ### UI.COMMERCIAL4.7 — ULS Summary Spacing and Decision Table Polish
 
 Polishes the newly upgraded **Analysis → ULS Strength → Summary** dashboard for better readability and commercial presentation.
@@ -103,18 +115,6 @@ This hotfix corrects the Beam/Girder/Railway U-Girder ULS shear governing-row se
 No shear equation, torsion equation, flexure equation, SLS equation, prestress/debonding logic, geometry generator, section properties, load-combination equation, project schema, or UI layout is changed.
 
 See `docs/design/shear_governing1.md`.
-
-### CLOSEOUT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Closeout
-
-This milestone closes the current Railway U-Girder development slice as a guarded SLS engineering-review package. It adds an explicit closeout status table to the Railway U-Girder report package and Word report section while preserving the non-certification boundary:
-
-```text
-Railway U-Girder SLS Engineering Review Package - Closeout Ready
-```
-
-Closeout-ready means the accepted Railway U-Girder SLS preview workflow is report-ready with regression evidence, not that the workflow is a final design certification. Transfer/development length, anchorage/end-zone bursting, lifting hardware, creep/shrinkage redistribution, ULS Railway U-Girder coupling, and final certification checks remain future work.
-
-See `docs/design/closeout_rail_ugirder1.md`.
 
 ### REBAR.RAIL.UGIRDER1 — Railway U-Girder Ordinary Rebar Enable Routing Hotfix
 

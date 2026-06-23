@@ -4317,6 +4317,50 @@ def _section_horizontal_segment_for_points_at_y(geometry: SectionGeometry | None
     return max(segments, key=lambda item: item[1] - item[0])
 
 
+def _section_vertical_segments_at_x(geometry: SectionGeometry | None, x_abs_mm: float) -> list[tuple[float, float]]:
+    """Return all concrete vertical segments at a given absolute x."""
+
+    if geometry is None:
+        return []
+    try:
+        polygon = to_shapely_polygon(geometry)
+        minx, miny, maxx, maxy = polygon.bounds
+        if x_abs_mm < minx - 1e-9 or x_abs_mm > maxx + 1e-9:
+            return []
+        extension = max(maxx - minx, maxy - miny, 1000.0) * 2.0
+        line = LineString([(x_abs_mm, miny - extension), (x_abs_mm, maxy + extension)])
+        intersection = polygon.intersection(line)
+        segments: list[tuple[float, float]] = []
+        geoms = getattr(intersection, "geoms", [intersection])
+        for geom in geoms:
+            if geom.is_empty:
+                continue
+            if geom.geom_type == "LineString":
+                ys = [coord[1] for coord in geom.coords]
+                if ys:
+                    segments.append((float(min(ys)), float(max(ys))))
+            elif geom.geom_type == "Point":
+                segments.append((float(geom.y), float(geom.y)))
+        return sorted(segments, key=lambda item: item[0])
+    except Exception:
+        return []
+
+
+def _section_vertical_segment_for_points_at_x(geometry: SectionGeometry | None, x_abs_mm: float, points_y: list[float]) -> tuple[float, float] | None:
+    """Return the vertical concrete segment containing the strand rows, or the tallest segment."""
+
+    segments = _section_vertical_segments_at_x(geometry, x_abs_mm)
+    if not segments:
+        return None
+    if points_y:
+        y_min = min(points_y)
+        y_max = max(points_y)
+        for bottom, top in segments:
+            if y_min >= bottom - 1e-9 and y_max <= top + 1e-9:
+                return (bottom, top)
+    return max(segments, key=lambda item: item[1] - item[0])
+
+
 def _strand_point_clearance_review_messages(
     *,
     group: str,
@@ -5191,6 +5235,263 @@ def _girder_strand_row_summary_dataframe(table: pd.DataFrame, geometry: SectionG
     return pd.DataFrame(rows)
 
 
+def _should_split_girder_strand_detail(points: pd.DataFrame, geometry: SectionGeometry | None) -> bool:
+    """Return True only for layouts that need separate left/right strand-detail panels.
+
+    The split detail dashboard is intended for physically separated strand
+    pockets such as Railway U-Girder webs.  Symmetric bottom clusters in I-,
+    plank-, and box-style girders stay merged so the user reads one complete
+    strand block rather than two artificial halves.
+    """
+
+    if points.empty or "x_mm" not in points.columns:
+        return False
+    if not _is_railway_u_girder_geometry(geometry):
+        return False
+    left_exists = bool((points["x_mm"].astype(float) < 0.0).any())
+    right_exists = bool((points["x_mm"].astype(float) > 0.0).any())
+    return left_exists and right_exists
+
+
+def _format_dimension_mm(value: float | int | None) -> str:
+    """Return compact millimetre text for detail dimensions."""
+
+    if value is None:
+        return "—"
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if abs(numeric - round(numeric)) < 0.05:
+        return f"{int(round(numeric))}"
+    return f"{numeric:.1f}"
+
+
+def _add_detail_dimension_line(
+    fig: go.Figure,
+    *,
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    label: str,
+    orientation: str,
+    tick_length: float,
+    font_size: int = 9,
+) -> None:
+    """Add a restrained engineering dimension line to a strand detail figure."""
+
+    if not label:
+        return
+    if abs(float(x1) - float(x0)) < 1e-9 and abs(float(y1) - float(y0)) < 1e-9:
+        return
+    color = "rgba(180,83,9,0.90)"
+    fig.add_shape(
+        type="line",
+        x0=float(x0),
+        x1=float(x1),
+        y0=float(y0),
+        y1=float(y1),
+        line={"color": color, "width": 1.0},
+        layer="above",
+    )
+    if orientation == "h":
+        for x_value in (float(x0), float(x1)):
+            fig.add_shape(
+                type="line",
+                x0=x_value,
+                x1=x_value,
+                y0=float(y0) - tick_length / 2.0,
+                y1=float(y0) + tick_length / 2.0,
+                line={"color": color, "width": 1.0},
+                layer="above",
+            )
+    else:
+        for y_value in (float(y0), float(y1)):
+            fig.add_shape(
+                type="line",
+                x0=float(x0) - tick_length / 2.0,
+                x1=float(x0) + tick_length / 2.0,
+                y0=y_value,
+                y1=y_value,
+                line={"color": color, "width": 1.0},
+                layer="above",
+            )
+    fig.add_annotation(
+        x=(float(x0) + float(x1)) / 2.0,
+        y=(float(y0) + float(y1)) / 2.0,
+        text=label,
+        showarrow=False,
+        font={"size": font_size, "color": "rgba(146,64,14,0.98)"},
+        bgcolor="rgba(255,255,255,0.90)",
+        bordercolor="rgba(251,191,36,0.55)",
+        borderwidth=1,
+        borderpad=2,
+    )
+
+
+def _strand_detail_dimension_references(
+    points: pd.DataFrame,
+    geometry: SectionGeometry | None,
+) -> dict[str, Any]:
+    """Return representative x/y spacing and edge references for strand-detail panels."""
+
+    refs: dict[str, Any] = {"x_values": [], "y_values": []}
+    if points.empty:
+        return refs
+    y_values = sorted({round(float(value), 6) for value in points["y_mm_abs"].astype(float).tolist()})
+    refs["row_y_values"] = y_values
+    x_min = float(points["x_mm"].min())
+    x_max = float(points["x_mm"].max())
+    y_min = float(points["y_mm_abs"].min())
+    y_max = float(points["y_mm_abs"].max())
+    refs["x_values"].extend([x_min, x_max])
+    refs["y_values"].extend([y_min, y_max])
+
+    bottom_row_y = y_values[0] if y_values else y_min
+    bottom_row = points.loc[(points["y_mm_abs"].astype(float) - bottom_row_y).abs() < 1e-6].copy()
+    bottom_xs = sorted(float(value) for value in bottom_row["x_mm"].astype(float).tolist())
+    refs["bottom_row_y"] = bottom_row_y
+    refs["bottom_row_xs"] = bottom_xs
+
+    if bottom_xs:
+        segment = _section_horizontal_segment_for_points_at_y(geometry, bottom_row_y, bottom_xs)
+        if segment is not None:
+            refs["bottom_row_segment"] = segment
+            refs["x_values"].extend([float(segment[0]), float(segment[1])])
+
+    block_center_x = (x_min + x_max) / 2.0
+    vertical_segment = _section_vertical_segment_for_points_at_x(geometry, block_center_x, y_values)
+    if vertical_segment is not None:
+        refs["vertical_segment"] = vertical_segment
+        # The detail panel should remain zoomed around the strand block.
+        # Include the nearest bottom edge needed for the eb dimension, but do
+        # not force the full girder depth into the zoomed axis range.
+        refs["y_values"].append(float(vertical_segment[0]))
+    else:
+        bottom_y = _section_bottom_y_from_geometry(geometry)
+        refs["vertical_segment"] = (bottom_y, max(y_max, bottom_y))
+        refs["y_values"].append(float(bottom_y))
+    return refs
+
+
+def _add_strand_detail_dimensions(fig: go.Figure, points: pd.DataFrame, geometry: SectionGeometry | None) -> dict[str, Any]:
+    """Add compact x/y spacing and edge-distance dimensions to a zoomed strand-detail panel."""
+
+    refs = _strand_detail_dimension_references(points, geometry)
+    bottom_xs = list(refs.get("bottom_row_xs") or [])
+    y_values = list(refs.get("row_y_values") or [])
+    if points.empty or not bottom_xs or not y_values:
+        return refs
+
+    x_min = min(float(value) for value in refs.get("x_values", bottom_xs))
+    x_max = max(float(value) for value in refs.get("x_values", bottom_xs))
+    y_min = min(float(value) for value in refs.get("y_values", y_values))
+    y_max = max(float(value) for value in refs.get("y_values", y_values))
+    x_span = max(x_max - x_min, 160.0)
+    y_span = max(y_max - y_min, 160.0)
+    h_tick = max(8.0, 0.030 * y_span)
+    v_tick = max(8.0, 0.025 * x_span)
+    bottom_row_y = float(refs.get("bottom_row_y") or y_values[0])
+
+    # Horizontal strand spacing: annotate one representative row for each
+    # unique spacing so dense rows do not become a text cloud.
+    seen_spacings: set[int] = set()
+    for y_value in y_values:
+        row_points = points.loc[(points["y_mm_abs"].astype(float) - float(y_value)).abs() < 1e-6]
+        xs = sorted(float(value) for value in row_points["x_mm"].astype(float).tolist())
+        if len(xs) < 2:
+            continue
+        spacings = [abs(xs[i + 1] - xs[i]) for i in range(len(xs) - 1)]
+        if not spacings:
+            continue
+        spacing = min(spacings)
+        spacing_key = int(round(spacing * 10.0))
+        if spacing_key in seen_spacings:
+            continue
+        seen_spacings.add(spacing_key)
+        dim_y = float(y_value) + max(18.0, 0.080 * y_span)
+        _add_detail_dimension_line(
+            fig,
+            x0=xs[0],
+            x1=xs[1],
+            y0=dim_y,
+            y1=dim_y,
+            label=f"s = {_format_dimension_mm(spacing)} mm",
+            orientation="h",
+            tick_length=h_tick,
+        )
+
+    # Horizontal edge CL at the bottom/prestress datum row.
+    segment = refs.get("bottom_row_segment")
+    if segment is not None:
+        left_edge, right_edge = float(segment[0]), float(segment[1])
+        left_strand = float(min(bottom_xs))
+        right_strand = float(max(bottom_xs))
+        edge_y = bottom_row_y - max(22.0, 0.095 * y_span)
+        left_edge_distance = max(0.0, left_strand - left_edge)
+        right_edge_distance = max(0.0, right_edge - right_strand)
+        if left_edge_distance > 1e-6:
+            _add_detail_dimension_line(
+                fig,
+                x0=left_edge,
+                x1=left_strand,
+                y0=edge_y,
+                y1=edge_y,
+                label=f"eL = {_format_dimension_mm(left_edge_distance)} mm",
+                orientation="h",
+                tick_length=h_tick,
+                font_size=8,
+            )
+        if right_edge_distance > 1e-6:
+            _add_detail_dimension_line(
+                fig,
+                x0=right_strand,
+                x1=right_edge,
+                y0=edge_y,
+                y1=edge_y,
+                label=f"eR = {_format_dimension_mm(right_edge_distance)} mm",
+                orientation="h",
+                tick_length=h_tick,
+                font_size=8,
+            )
+
+    # Vertical bottom edge and row spacing dimensions.
+    vertical_segment = refs.get("vertical_segment")
+    if vertical_segment is not None:
+        bottom_edge = float(vertical_segment[0])
+        vertical_x = min(bottom_xs) - max(42.0, 0.080 * x_span)
+        bottom_cover = max(0.0, bottom_row_y - bottom_edge)
+        if bottom_cover > 1e-6:
+            _add_detail_dimension_line(
+                fig,
+                x0=vertical_x,
+                x1=vertical_x,
+                y0=bottom_edge,
+                y1=bottom_row_y,
+                label=f"eb = {_format_dimension_mm(bottom_cover)} mm",
+                orientation="v",
+                tick_length=v_tick,
+                font_size=8,
+            )
+        for lower, upper in zip(y_values, y_values[1:]):
+            gap = float(upper) - float(lower)
+            if gap <= 1e-6:
+                continue
+            _add_detail_dimension_line(
+                fig,
+                x0=vertical_x,
+                x1=vertical_x,
+                y0=float(lower),
+                y1=float(upper),
+                label=f"v = {_format_dimension_mm(gap)} mm",
+                orientation="v",
+                tick_length=v_tick,
+                font_size=8,
+            )
+    return refs
+
+
 def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: SectionGeometry | None) -> go.Figure:
     """Return the PRESTRESS.VIZ2 overall section schematic.
 
@@ -5205,52 +5506,59 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
     bounds = _add_concrete_schematic_trace(fig, geometry, showlegend=True)
 
     if not points.empty:
-        for side_name, subset in [
-            ("Left strand block", points.loc[points["x_mm"].astype(float) < 0.0]),
-            ("Right strand block", points.loc[points["x_mm"].astype(float) > 0.0]),
-        ]:
+        split_detail = _should_split_girder_strand_detail(points, geometry)
+        if split_detail:
+            block_specs = [
+                ("Left strand block", points.loc[points["x_mm"].astype(float) < 0.0]),
+                ("Right strand block", points.loc[points["x_mm"].astype(float) > 0.0]),
+            ]
+        else:
+            block_specs = [("Strand zone", points)]
+
+        for side_name, subset in block_specs:
             if subset.empty:
                 continue
             x_min = float(subset["x_mm"].min())
             x_max = float(subset["x_mm"].max())
             y_min = float(subset["y_mm_abs"].min())
             y_max = float(subset["y_mm_abs"].max())
-            x_pad = max(55.0, 0.12 * max(x_max - x_min, 80.0))
-            y_pad = max(45.0, 0.18 * max(y_max - y_min, 80.0))
+            x_pad = max(44.0, 0.10 * max(x_max - x_min, 80.0))
+            y_pad = max(36.0, 0.16 * max(y_max - y_min, 80.0))
             fig.add_shape(
                 type="rect",
                 x0=x_min - x_pad,
                 x1=x_max + x_pad,
                 y0=y_min - y_pad,
                 y1=y_max + y_pad,
-                line={"color": "rgba(37, 99, 235, 0.68)", "width": 1.6, "dash": "dash"},
-                fillcolor="rgba(37, 99, 235, 0.045)",
+                line={"color": "rgba(37, 99, 235, 0.56)", "width": 1.25, "dash": "dash"},
+                fillcolor="rgba(37, 99, 235, 0.035)",
                 layer="below",
             )
-            fig.add_annotation(
-                x=(x_min + x_max) / 2.0,
-                y=y_max + y_pad,
-                text=side_name,
-                showarrow=False,
-                yshift=10,
-                font={"size": 10, "color": "rgba(15, 23, 42, 0.72)"},
-                bgcolor="rgba(255,255,255,0.82)",
-                bordercolor="rgba(203,213,225,0.90)",
-                borderwidth=1,
-                borderpad=3,
-            )
+            if split_detail:
+                fig.add_annotation(
+                    x=(x_min + x_max) / 2.0,
+                    y=y_max + y_pad,
+                    text=side_name,
+                    showarrow=False,
+                    yshift=8,
+                    font={"size": 9, "color": "rgba(15, 23, 42, 0.68)"},
+                    bgcolor="rgba(255,255,255,0.86)",
+                    bordercolor="rgba(203,213,225,0.86)",
+                    borderwidth=1,
+                    borderpad=2,
+                )
 
         _add_strand_state_marker_traces(
             fig,
             points,
             row_info,
-            marker_size=7,
+            marker_size=5,
             bonded_fill="rgba(255,255,255,0.0)",
             debonded_fill="rgba(255,255,255,0.0)",
             bonded_line="#2563eb",
             debonded_line="#dc2626",
-            bonded_width=1.35,
-            debonded_width=1.55,
+            bonded_width=1.05,
+            debonded_width=1.20,
             showlegend=True,
         )
 
@@ -5271,22 +5579,22 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
     fig.update_yaxes(range=[section_y_min - y_pad, section_y_max + y_pad])
 
     fig.update_layout(
-        title={"text": "Overall section schematic", "x": 0.0, "xanchor": "left", "font": {"size": 14, "color": "#101828"}},
+        title={"text": "Overall section schematic", "x": 0.0, "xanchor": "left", "font": {"size": 13, "color": "#101828"}},
         height=365,
-        margin={"l": 45, "r": 20, "t": 62, "b": 42},
+        margin={"l": 45, "r": 20, "t": 78, "b": 42},
         xaxis_title="section x (mm)",
         yaxis_title="section y (mm)",
         showlegend=True,
         legend={
             "orientation": "h",
             "yanchor": "bottom",
-            "y": 1.02,
-            "xanchor": "left",
-            "x": 0.0,
+            "y": 1.15,
+            "xanchor": "right",
+            "x": 1.0,
             "bgcolor": "rgba(255,255,255,0.92)",
             "bordercolor": "rgba(203,213,225,0.80)",
             "borderwidth": 1,
-            "font": {"size": 10},
+            "font": {"size": 9},
         },
         plot_bgcolor="white",
     )
@@ -5319,7 +5627,7 @@ def _plot_girder_strand_block_detail(
 
     if points.empty:
         fig.update_layout(
-            title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 14, "color": "#101828"}},
+            title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 13, "color": "#101828"}},
             height=360,
             margin={"l": 40, "r": 20, "t": 56, "b": 38},
             plot_bgcolor="white",
@@ -5352,16 +5660,17 @@ def _plot_girder_strand_block_detail(
         fig,
         points,
         row_info,
-        marker_size=14,
-        bonded_fill="rgba(37, 99, 235, 0.16)",
-        debonded_fill="rgba(220, 38, 38, 0.18)",
+        marker_size=13,
+        bonded_fill="rgba(37, 99, 235, 0.14)",
+        debonded_fill="rgba(220, 38, 38, 0.16)",
         bonded_line="#2563eb",
         debonded_line="#dc2626",
-        bonded_width=2.0,
-        debonded_width=2.25,
+        bonded_width=1.9,
+        debonded_width=2.1,
         showlegend=False,
     )
-    _add_drawing_debond_symbol_trace(fig, points, marker_size=8, showlegend=False)
+    _add_drawing_debond_symbol_trace(fig, points, marker_size=7, showlegend=False)
+    dimension_refs = _add_strand_detail_dimensions(fig, points, geometry)
 
     tick_rows: list[tuple[float, str]] = []
     for y_value in y_values:
@@ -5377,30 +5686,38 @@ def _plot_girder_strand_block_detail(
         total_count = int(len(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6].index))
         tick_rows.append((y_value, f"{label}  ·  B {total_count - debonded_count} / U {debonded_count}"))
 
-    x_min = float(points["x_mm"].min())
-    x_max = float(points["x_mm"].max())
-    y_min = float(points["y_mm_abs"].min())
-    y_max = float(points["y_mm_abs"].max())
+    x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
+    y_values_for_range = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
+    x_min = min(float(value) for value in x_values)
+    x_max = max(float(value) for value in x_values)
+    y_min = min(float(value) for value in y_values_for_range)
+    y_max = max(float(value) for value in y_values_for_range)
     x_span = max(x_max - x_min, 220.0)
     y_span = max(y_max - y_min, 220.0)
-    fig.update_xaxes(range=[x_min - max(70.0, 0.18 * x_span), x_max + max(70.0, 0.18 * x_span)])
+    fig.update_xaxes(
+        range=[x_min - max(78.0, 0.16 * x_span), x_max + max(78.0, 0.16 * x_span)],
+        tickfont={"size": 10},
+        title_font={"size": 11},
+    )
     fig.update_yaxes(
-        range=[y_min - max(55.0, 0.18 * y_span), y_max + max(55.0, 0.18 * y_span)],
+        range=[y_min - max(65.0, 0.16 * y_span), y_max + max(58.0, 0.14 * y_span)],
         tickmode="array",
         tickvals=[item[0] for item in tick_rows],
         ticktext=[item[1] for item in tick_rows],
+        tickfont={"size": 9},
     )
     fig.update_layout(
-        title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 14, "color": "#101828"}},
-        height=392,
-        margin={"l": 116, "r": 18, "t": 54, "b": 42},
+        title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 13, "color": "#101828"}},
+        height=420,
+        margin={"l": 100, "r": 18, "t": 50, "b": 44},
         xaxis_title="strand x (mm)",
         yaxis_title="",
         showlegend=False,
         plot_bgcolor="white",
+        font={"size": 10},
     )
-    fig.update_xaxes(gridcolor="rgba(15,23,42,0.07)", zerolinecolor="rgba(15,23,42,0.14)")
-    fig.update_yaxes(scaleanchor="x", scaleratio=1, gridcolor="rgba(15,23,42,0.07)", zerolinecolor="rgba(15,23,42,0.14)")
+    fig.update_xaxes(gridcolor="rgba(15,23,42,0.055)", zerolinecolor="rgba(15,23,42,0.12)")
+    fig.update_yaxes(scaleanchor="x", scaleratio=1, gridcolor="rgba(15,23,42,0.055)", zerolinecolor="rgba(15,23,42,0.12)")
     return fig
 
 
@@ -5461,8 +5778,9 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
         return
     left_points = points.loc[points["x_mm"].astype(float) < 0.0]
     right_points = points.loc[points["x_mm"].astype(float) > 0.0]
+    split_detail = _should_split_girder_strand_detail(points, geometry)
     st.markdown("##### Zoomed strand block detail")
-    if not left_points.empty and not right_points.empty:
+    if split_detail and not left_points.empty and not right_points.empty:
         detail_left, detail_right = st.columns(2)
         with detail_left:
             st.plotly_chart(

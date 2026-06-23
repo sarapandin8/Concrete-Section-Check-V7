@@ -41,7 +41,7 @@ def test_prestress_page_contains_strand_layout_debonding_workflow() -> None:
     assert "Split view: the full section is only a location schematic" in PRESTRESS_SOURCE
     assert 'xref="paper"' in PRESTRESS_SOURCE
     assert "height=365" in PRESTRESS_SOURCE
-    assert "height=392" in PRESTRESS_SOURCE
+    assert "height=420" in PRESTRESS_SOURCE
     assert "on_change=_sync_girder_strand_layout_editor_to_table" in PRESTRESS_SOURCE
     assert "Row 1 is the bottom strand row" in PRESTRESS_SOURCE
     assert "_girder_debonding_schedule_dataframe" in PRESTRESS_SOURCE
@@ -1134,8 +1134,8 @@ def test_cross_section_detail_panel_uses_marker_traces_not_per_strand_shapes(mon
     assert strand_circles == []
     bonded = next(trace for trace in fig.data if trace.name == "Bonded")
     debonded = next(trace for trace in fig.data if trace.name == "Debonded")
-    assert bonded.marker.size == 14
-    assert debonded.marker.size == 14
+    assert bonded.marker.size == 13
+    assert debonded.marker.size == 13
     assert bonded.marker.line.color == "#2563eb"
     assert debonded.marker.line.color == "#dc2626"
 
