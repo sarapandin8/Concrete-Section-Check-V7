@@ -180,8 +180,17 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-sec
   border: 2px solid rgba(22, 131, 58, 0.48) !important;
   border-radius: 13px !important;
   min-height: 3.05rem !important;
-  background: linear-gradient(135deg, #ffffff 0%, #f7fff9 100%) !important;
-  box-shadow: 0 5px 15px rgba(22, 131, 58, 0.08) !important;
+  background: linear-gradient(135deg, #f0fff4 0%, #dcfce7 100%) !important;
+  box-shadow: 0 5px 15px rgba(22, 131, 58, 0.10) !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-section) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:hover {
+  border-color: rgba(22, 131, 58, 0.62) !important;
+  background: linear-gradient(135deg, #ecfdf3 0%, #d1fadf 100%) !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-section) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div:focus-within {
+  border-color: rgba(22, 131, 58, 0.78) !important;
+  background: linear-gradient(135deg, #ecfdf3 0%, #d1fadf 100%) !important;
+  box-shadow: 0 0 0 3px rgba(34, 164, 71, 0.14), 0 8px 18px rgba(22, 131, 58, 0.12) !important;
 }
 .cpmm-commercial-control-section {
   display: grid;
