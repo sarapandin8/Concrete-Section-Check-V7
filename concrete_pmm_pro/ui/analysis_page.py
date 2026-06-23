@@ -192,6 +192,7 @@ from concrete_pmm_pro.serviceability.girder_sls_load_components import (
     BEAM_GIRDER_SYSTEM_SETTINGS_KEY,
     BEAM_GIRDER_SLS_AUTO_LOAD_SETTINGS_KEY,
     BUILDING_BEAM_GIRDER_SERVICE_LOAD_SETTINGS_KEY,
+    DEFAULT_LIFTING_POINT_RATIO,
     auto_load_breakdown_for_stage,
     auto_load_settings_from_mapping,
     building_auto_load_breakdown_for_stage,
@@ -12714,13 +12715,38 @@ def _girder_sls_auto_load_breakdown(stage_label: str):
     )
 
 
-def _girder_sls_auto_station_grid(span_length_m: float) -> list[float]:
+def _girder_sls_lifting_station_extras(span_length_m: float) -> list[float]:
+    """Return the current two-point lifting stations from Section Builder state.
+
+    Generic precast lifting reads ``beam_girder_system_settings``. Railway
+    U-Girder has a rail-specific stage-settings dictionary, so it must be read
+    separately; otherwise Analysis can keep displaying a stale lifting point
+    after the Section Builder lifting a/L input changes.
+    """
+
+    span = max(_analysis_float_or_zero(span_length_m), 0.0)
+    if span <= 0.0:
+        return []
+    if _is_railway_u_girder_active_for_sls_material_routing():
+        rail_settings = st.session_state.get("railway_u_girder_stage_settings") or {}
+        ratio = _analysis_float_or_zero(rail_settings.get("lifting_point_ratio")) if isinstance(rail_settings, Mapping) else 0.0
+    else:
+        system = system_settings_from_mapping(st.session_state.get(BEAM_GIRDER_SYSTEM_SETTINGS_KEY))
+        ratio = float(system.lifting_point_ratio)
+    ratio = min(max(ratio or DEFAULT_LIFTING_POINT_RATIO, 0.05), 0.45)
+    a_m = ratio * span
+    return [a_m, span - a_m]
+
+
+def _girder_sls_auto_station_grid(span_length_m: float, stage_label: str | None = None) -> list[float]:
     strand_table = st.session_state.get("girder_strand_layout_table")
     extra: list[float] = []
     try:
         extra = station_candidates_from_debonding(strand_table, span_length_m)
     except Exception:
         extra = []
+    if _beam_sls_stage_label_for_analysis(stage_label) == "Lifting stage":
+        extra.extend(_girder_sls_lifting_station_extras(span_length_m))
     return default_sls_station_grid(span_length_m, extra_stations_m=extra, divisions=20)
 
 
@@ -12752,18 +12778,25 @@ def _girder_sls_stage_rows_with_auto_station_grid(
     """
 
     rows = list(stage_rows or [])
+    stage = _beam_sls_stage_label_for_analysis(stage_label) or stage_label
     case_names = sorted({str(row.get("Case Name") or "Unnamed") for row in rows})
     for case_name in case_names:
         case_rows = [row for row in rows if str(row.get("Case Name") or "Unnamed") == case_name]
         unique_stations = {round(_analysis_float_or_zero(row.get("Station x (m)")), 6) for row in case_rows}
-        if len(unique_stations) >= 2:
+        if len(unique_stations) >= 2 and stage != "Lifting stage":
             return rows
 
     template = dict(rows[0]) if rows else {}
-    stage = _beam_sls_stage_label_for_analysis(stage_label) or stage_label
     case_name = str(template.get("Case Name") or _girder_sls_default_case_name_for_stage(stage)).strip() or _girder_sls_default_case_name_for_stage(stage)
     basis = str(template.get("Section Basis") or ("Composite transformed" if stage == "Service stage" else "Precast gross"))
-    grid = _girder_sls_auto_station_grid(span_length_m)
+    grid = _girder_sls_auto_station_grid(span_length_m, stage_label=stage)
+    if stage == "Lifting stage":
+        span = max(float(span_length_m), 0.0)
+        for row in rows:
+            x_existing = _analysis_float_or_zero(row.get("Station x (m)"))
+            if 0.0 <= x_existing <= span:
+                grid.append(round(x_existing, 6))
+        grid = sorted(set(round(float(x), 6) for x in grid if 0.0 <= float(x) <= span))
     existing_by_station = {
         round(_analysis_float_or_zero(row.get("Station x (m)")), 6): row
         for row in rows

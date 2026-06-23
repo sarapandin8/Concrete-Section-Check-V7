@@ -29,3 +29,12 @@ This preview checks global top/bottom stresses for the precast unit during handl
 ## QA status
 
 `tests/test_girder_lift_qa1_generic_precast_closeout.py` locks the routing, load basis, two-point lifting diagram handoff, transfer prestress force selection, and UI wording boundaries.
+
+## GIRDER.LIFT.QA2 station-sync follow-up
+
+The Analysis SLS Lifting-stage station grid now explicitly injects the current two-point lifting stations from Section Builder (`a` and `L-a`). This fixes the previous stale-station behavior where Analysis could keep using an old station grid after `Lifting a/L` changed in Section Builder, especially when the stage already had multiple generated rows.
+
+Implementation guard:
+- Generic precast lifting reads `beam_girder_system_settings.lifting_point_ratio`.
+- Railway U-Girder lifting reads `railway_u_girder_stage_settings.lifting_point_ratio`.
+- Lifting-stage rows no longer early-return solely because two or more stations already exist; the current lifting points are regenerated/merged into the grid.

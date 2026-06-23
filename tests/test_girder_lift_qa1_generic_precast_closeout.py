@@ -117,3 +117,13 @@ def test_girder_lift_qa1_section_builder_lifting_inputs_are_generic_not_rail_onl
     assert "Lifting impact factor" in SECTION_BUILDER_SOURCE
     assert "Individual precast unit" in SECTION_BUILDER_SOURCE
     assert "not bridge assembly" in SECTION_BUILDER_SOURCE
+
+
+def test_girder_lift_qa1_analysis_station_grid_syncs_to_current_section_builder_lifting_points() -> None:
+    assert "def _girder_sls_lifting_station_extras(span_length_m: float)" in ANALYSIS_SOURCE
+    assert "railway_u_girder_stage_settings" in ANALYSIS_SOURCE
+    assert "system.lifting_point_ratio" in ANALYSIS_SOURCE
+    assert "extra.extend(_girder_sls_lifting_station_extras(span_length_m))" in ANALYSIS_SOURCE
+    assert "grid = _girder_sls_auto_station_grid(span_length_m, stage_label=stage)" in ANALYSIS_SOURCE
+    assert "if len(unique_stations) >= 2 and stage != \"Lifting stage\":" in ANALYSIS_SOURCE
+    assert "span - a_m" in ANALYSIS_SOURCE
