@@ -41,7 +41,7 @@ def test_prestress_page_contains_strand_layout_debonding_workflow() -> None:
     assert "Split view: the full section is only a location schematic" in PRESTRESS_SOURCE
     assert 'xref="paper"' in PRESTRESS_SOURCE
     assert "height=365" in PRESTRESS_SOURCE
-    assert "height=420" in PRESTRESS_SOURCE
+    assert 'detail_height = 520 if split_detail and side_key in {"left", "right"} else 440' in PRESTRESS_SOURCE
     assert "on_change=_sync_girder_strand_layout_editor_to_table" in PRESTRESS_SOURCE
     assert "Row 1 is the bottom strand row" in PRESTRESS_SOURCE
     assert "_girder_debonding_schedule_dataframe" in PRESTRESS_SOURCE

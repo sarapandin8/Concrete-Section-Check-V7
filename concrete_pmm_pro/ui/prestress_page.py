@@ -5386,7 +5386,9 @@ def _local_strand_zone_geometry(
         # not the full girder width.  Use the strand spread itself as the local
         # x-anchor because some sections (notably Railway U-Girder) have a
         # continuous floor slab at the strand y-level that would otherwise pull
-        # the clipping window across the entire section.
+        # the clipping window across the entire section.  Keep the bottom fiber
+        # visible, but crop the upper part of the web so row spacing and
+        # dimension labels remain legible.
         x0 = min(strand_xs)
         x1 = max(strand_xs)
         x_pad = max(90.0, 0.24 * max(x1 - x0, 120.0))
@@ -5396,12 +5398,17 @@ def _local_strand_zone_geometry(
             mid_x = (x0 + x1) / 2.0
             x0 = max(section_minx, mid_x - 100.0)
             x1 = min(section_maxx, mid_x + 100.0)
-        clip = Polygon([(x0, section_miny), (x1, section_miny), (x1, section_maxy), (x0, section_maxy), (x0, section_miny)])
+        section_depth = max(section_maxy - section_miny, 1.0)
+        y0 = section_miny
+        y1 = min(section_maxy, max(strand_ys) + max(260.0, 0.22 * section_depth))
+        if y1 - y0 < 380.0:
+            y1 = min(section_maxy, y0 + 380.0)
+        clip = Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)])
         try:
             clipped = polygon.intersection(clip)
         except Exception:
-            return None, (x0, section_miny, x1, section_maxy)
-        return clipped, (x0, section_miny, x1, section_maxy)
+            return None, (x0, y0, x1, y1)
+        return clipped, (x0, y0, x1, y1)
 
     horizontal_segments: list[tuple[float, float]] = []
     for y_value in y_values:
@@ -5638,13 +5645,17 @@ def _add_strand_detail_dimensions(
             edge_y = bottom_row_y - max(22.0, 0.052 * y_span)
         left_edge_distance = max(0.0, left_strand - left_edge)
         right_edge_distance = max(0.0, right_edge - right_strand)
+        left_edge_y = edge_y
+        right_edge_y = edge_y
+        if left_edge_distance > 1e-6 and right_edge_distance > 1e-6:
+            right_edge_y = edge_y - max(18.0, 0.050 * y_span)
         if left_edge_distance > 1e-6:
             _add_detail_dimension_line(
                 fig,
                 x0=left_edge,
                 x1=left_strand,
-                y0=edge_y,
-                y1=edge_y,
+                y0=left_edge_y,
+                y1=left_edge_y,
                 label=f"eL = {_format_dimension_mm(left_edge_distance)} mm",
                 orientation="h",
                 tick_length=h_tick,
@@ -5655,8 +5666,8 @@ def _add_strand_detail_dimensions(
                 fig,
                 x0=right_strand,
                 x1=right_edge,
-                y0=edge_y,
-                y1=edge_y,
+                y0=right_edge_y,
+                y1=right_edge_y,
                 label=f"eR = {_format_dimension_mm(right_edge_distance)} mm",
                 orientation="h",
                 tick_length=h_tick,
@@ -5928,10 +5939,11 @@ def _plot_girder_strand_block_detail(
         ticktext=[item[1] for item in tick_rows],
         tickfont={"size": 7},
     )
+    detail_height = 520 if split_detail and side_key in {"left", "right"} else 440
     fig.update_layout(
         title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
-        height=420,
-        margin={"l": 74, "r": 18, "t": 46, "b": 42},
+        height=detail_height,
+        margin={"l": 92, "r": 22, "t": 46, "b": 44},
         xaxis_title="strand x (mm)",
         yaxis_title="",
         showlegend=False,
@@ -6012,19 +6024,16 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
     split_detail = _should_split_girder_strand_detail(points, geometry)
     st.markdown('<div class="prestress-viz-section-title">Zoomed strand block detail</div>', unsafe_allow_html=True)
     if split_detail and not left_points.empty and not right_points.empty:
-        detail_left, detail_right = st.columns(2)
-        with detail_left:
-            st.plotly_chart(
-                _plot_girder_strand_block_detail(table, geometry, side="Left"),
-                use_container_width=True,
-                config={"displayModeBar": False, "responsive": True},
-            )
-        with detail_right:
-            st.plotly_chart(
-                _plot_girder_strand_block_detail(table, geometry, side="Right"),
-                use_container_width=True,
-                config={"displayModeBar": False, "responsive": True},
-            )
+        st.plotly_chart(
+            _plot_girder_strand_block_detail(table, geometry, side="Left"),
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True},
+        )
+        st.plotly_chart(
+            _plot_girder_strand_block_detail(table, geometry, side="Right"),
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True},
+        )
     else:
         st.plotly_chart(
             _plot_girder_strand_block_detail(table, geometry, side="All"),
