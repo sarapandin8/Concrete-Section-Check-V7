@@ -5593,9 +5593,9 @@ def _add_non_split_section_context_trace(
         section_depth = max(section_maxy - section_miny, 1.0)
         strand_band_depth = max(strand_top - strand_bottom, 60.0)
         y0 = section_miny
-        y1 = min(section_maxy, strand_top + max(120.0, 0.10 * section_depth, 1.8 * strand_band_depth))
-        if y1 - y0 < 290.0:
-            y1 = min(section_maxy, y0 + 290.0)
+        y1 = min(section_maxy, strand_top + max(92.0, 0.065 * section_depth, 1.35 * strand_band_depth))
+        if y1 - y0 < 225.0:
+            y1 = min(section_maxy, y0 + 225.0)
 
         segment = _section_horizontal_segment_for_points_at_y(
             geometry,
@@ -5607,12 +5607,12 @@ def _add_non_split_section_context_trace(
         else:
             local_left, local_right = section_minx, section_maxx
         local_width = max(local_right - local_left, strand_right - strand_left, 120.0)
-        pad_x = max(60.0, 0.12 * local_width)
+        pad_x = max(36.0, 0.075 * local_width)
         x0 = max(section_minx, local_left - pad_x)
         x1 = min(section_maxx, local_right + pad_x)
-        if x1 - x0 < max(260.0, local_width + 2.0 * pad_x):
+        if x1 - x0 < max(220.0, local_width + 2.0 * pad_x):
             mid_x = 0.5 * (x0 + x1)
-            half = 0.5 * max(260.0, local_width + 2.0 * pad_x)
+            half = 0.5 * max(220.0, local_width + 2.0 * pad_x)
             x0 = max(section_minx, mid_x - half)
             x1 = min(section_maxx, mid_x + half)
 
@@ -6141,14 +6141,22 @@ def _plot_girder_strand_block_detail(
         y_max = max(float(value) for value in y_values_for_range)
         x_span = max(x_max - x_min, 260.0)
         y_span = max(y_max - y_min, 260.0)
+        if deep_web_detail:
+            x_pad = max(28.0, 0.035 * x_span)
+            y_pad_bottom = max(28.0, 0.060 * y_span)
+            y_pad_top = max(26.0, 0.045 * y_span)
+        else:
+            x_pad = max(70.0, 0.08 * x_span)
+            y_pad_bottom = max(55.0, 0.08 * y_span)
+            y_pad_top = max(48.0, 0.08 * y_span)
         fig.update_xaxes(
-            range=[x_min - max(70.0, 0.08 * x_span), x_max + max(70.0, 0.08 * x_span)],
+            range=[x_min - x_pad, x_max + x_pad],
             tickfont={"size": 9},
             title_font={"size": 10},
             title_text="section x (mm)",
         )
         fig.update_yaxes(
-            range=[y_min - max(55.0, 0.08 * y_span), y_max + max(48.0, 0.08 * y_span)],
+            range=[y_min - y_pad_bottom, y_max + y_pad_top],
             tickmode="array",
             tickvals=[item[0] for item in tick_rows],
             ticktext=[item[1] for item in tick_rows],
@@ -6269,7 +6277,7 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
         st.plotly_chart(
             _plot_girder_strand_cross_section_layout(table, geometry),
             use_container_width=True,
-            config={"displayModeBar": False, "responsive": True},
+            config={"displayModeBar": True, "responsive": True},
         )
     with top_right:
         st.markdown('<div class="prestress-viz-section-title">Strand row summary</div>', unsafe_allow_html=True)
@@ -6300,18 +6308,18 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
         st.plotly_chart(
             _plot_girder_strand_block_detail(table, geometry, side="Left"),
             use_container_width=True,
-            config={"displayModeBar": False, "responsive": True},
+            config={"displayModeBar": True, "responsive": True},
         )
         st.plotly_chart(
             _plot_girder_strand_block_detail(table, geometry, side="Right"),
             use_container_width=True,
-            config={"displayModeBar": False, "responsive": True},
+            config={"displayModeBar": True, "responsive": True},
         )
     else:
         st.plotly_chart(
             _plot_girder_strand_block_detail(table, geometry, side="All"),
             use_container_width=True,
-            config={"displayModeBar": False, "responsive": True},
+            config={"displayModeBar": True, "responsive": True},
         )
 
 def _debond_lengths_for_display(row: pd.Series | dict[str, Any], span_length_m: float) -> tuple[float, float]:
