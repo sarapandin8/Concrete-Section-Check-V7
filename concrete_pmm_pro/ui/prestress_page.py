@@ -5544,6 +5544,106 @@ def _add_local_concrete_zone_trace(
         maxy_values.append(maxy)
     return min(minx_values), min(miny_values), max(maxx_values), max(maxy_values)
 
+def _is_deep_web_non_u_detail(points: pd.DataFrame, geometry: SectionGeometry | None) -> bool:
+    """Return True for non-U sections that need a lower-zone focused detail view."""
+
+    if geometry is None or points.empty or _is_railway_u_girder_geometry(geometry):
+        return False
+    try:
+        polygon = to_shapely_polygon(geometry)
+    except Exception:
+        return False
+    if polygon.is_empty:
+        return False
+    _, section_miny, _, section_maxy = [float(value) for value in polygon.bounds]
+    section_depth = max(section_maxy - section_miny, 1.0)
+    strand_top = float(points["y_mm_abs"].astype(float).max())
+    lower_zone_depth = max(strand_top - section_miny, 1.0)
+    top_headroom = max(0.0, section_maxy - strand_top)
+    return (section_depth / lower_zone_depth) >= 1.65 and (top_headroom / section_depth) >= 0.48
+
+
+def _add_non_split_section_context_trace(
+    fig: go.Figure,
+    points: pd.DataFrame,
+    geometry: SectionGeometry | None,
+    *,
+    lower_focused: bool,
+) -> tuple[float, float, float, float] | None:
+    """Add full or lower-focused context geometry for non-split strand details."""
+
+    if geometry is None:
+        return None
+    try:
+        polygon = to_shapely_polygon(geometry)
+    except Exception:
+        return None
+    if polygon.is_empty:
+        return None
+
+    section_minx, section_miny, section_maxx, section_maxy = [float(value) for value in polygon.bounds]
+    rendered = polygon
+    bounds = (section_minx, section_miny, section_maxx, section_maxy)
+
+    if lower_focused and not points.empty:
+        strand_top = float(points["y_mm_abs"].astype(float).max())
+        section_depth = max(section_maxy - section_miny, 1.0)
+        y0 = section_miny
+        y1 = min(section_maxy, strand_top + max(165.0, 0.11 * section_depth))
+        if y1 - y0 < 340.0:
+            y1 = min(section_maxy, y0 + 340.0)
+        clip = Polygon([(section_minx, y0), (section_maxx, y0), (section_maxx, y1), (section_minx, y1), (section_minx, y0)])
+        try:
+            rendered = polygon.intersection(clip)
+            bounds = (section_minx, y0, section_maxx, y1)
+        except Exception:
+            rendered = polygon
+            bounds = (section_minx, section_miny, section_maxx, section_maxy)
+
+    polygons = _iter_polygon_geometries(rendered)
+    if not polygons:
+        return bounds
+    minx_values: list[float] = []
+    miny_values: list[float] = []
+    maxx_values: list[float] = []
+    maxy_values: list[float] = []
+    for index, poly in enumerate(polygons):
+        x, y = poly.exterior.xy
+        fig.add_trace(
+            go.Scatter(
+                x=list(x),
+                y=list(y),
+                mode="lines",
+                fill="toself",
+                fillcolor="rgba(15, 76, 129, 0.035)",
+                line={"color": "rgba(15, 76, 129, 0.42)", "width": 1.15},
+                name="Full section context" if index == 0 else "Full section context part",
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        for interior_index, interior in enumerate(poly.interiors, start=1):
+            hx, hy = interior.xy
+            fig.add_trace(
+                go.Scatter(
+                    x=list(hx),
+                    y=list(hy),
+                    mode="lines",
+                    fill="toself",
+                    fillcolor="rgba(255,255,255,0.98)",
+                    line={"color": "rgba(15, 76, 129, 0.35)", "width": 1.0},
+                    name=f"Section void {interior_index}",
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+        minx, miny, maxx, maxy = [float(value) for value in poly.bounds]
+        minx_values.append(minx)
+        miny_values.append(miny)
+        maxx_values.append(maxx)
+        maxy_values.append(maxy)
+    return min(minx_values), min(miny_values), max(maxx_values), max(maxy_values)
+
 def _strand_detail_dimension_references(
     points: pd.DataFrame,
     geometry: SectionGeometry | None,
@@ -5621,11 +5721,14 @@ def _add_strand_detail_dimensions(
     y_max = max(float(value) for value in refs.get("y_values", y_values))
     x_span = max(x_max - x_min, 160.0)
     y_span = max(y_max - y_min, 160.0)
+    point_x_span = max(max(bottom_xs) - min(bottom_xs), 120.0)
+    point_y_span = max(max(y_values) - min(y_values), 120.0)
     h_tick = max(7.0, 0.022 * y_span)
     v_tick = max(7.0, 0.020 * x_span)
     bottom_row_y = float(refs.get("bottom_row_y") or y_values[0])
     side_key = str(side or "All").strip().lower()
     split_side_detail = side_key in {"left", "right"} and not full_section
+    non_split_full_detail = bool(full_section and not split_side_detail and side_key == "all")
 
     # Horizontal strand spacing: show one typical gap for each unique spacing
     # and choose the pair nearest the row center to keep labels away from edge
@@ -5649,6 +5752,9 @@ def _add_strand_detail_dimensions(
         x0, x1 = min(candidate_pairs, key=lambda pair: abs(((pair[0] + pair[1]) / 2.0) - target_center))
         if split_side_detail:
             dim_y = max(y_values) + max(32.0, 0.070 * y_span)
+        elif non_split_full_detail:
+            row_index = y_values.index(y_value)
+            dim_y = float(y_value) + max(16.0, 0.14 * point_y_span) + row_index * max(14.0, 0.05 * point_y_span)
         else:
             dim_y = float(y_value) + max(18.0, 0.055 * y_span)
         _add_detail_dimension_line(
@@ -5677,6 +5783,8 @@ def _add_strand_detail_dimensions(
         if split_side_detail:
             bottom_edge = float((refs.get("vertical_segment") or (bottom_row_y, bottom_row_y))[0])
             edge_y = bottom_edge + max(10.0, min(20.0, 0.022 * y_span))
+        elif non_split_full_detail:
+            edge_y = bottom_row_y - max(26.0, 0.18 * point_y_span)
         elif bottom_clearance > 35.0:
             edge_y = bottom_row_y - min(bottom_clearance * 0.42, max(30.0, 0.070 * y_span))
         else:
@@ -5686,8 +5794,13 @@ def _add_strand_detail_dimensions(
         left_edge_y = edge_y
         right_edge_y = edge_y
         if left_edge_distance > 1e-6 and right_edge_distance > 1e-6:
-            offset = max(24.0, 0.065 * y_span)
-            right_edge_y = edge_y + offset if split_side_detail else edge_y - offset
+            if non_split_full_detail:
+                offset = max(20.0, 0.12 * point_y_span)
+                right_edge_y = edge_y
+                left_edge_y = edge_y - offset
+            else:
+                offset = max(24.0, 0.065 * y_span)
+                right_edge_y = edge_y + offset if split_side_detail else edge_y - offset
         if left_edge_distance > 1e-6:
             _add_detail_dimension_line(
                 fig,
@@ -5723,6 +5836,8 @@ def _add_strand_detail_dimensions(
         bottom_edge = float(vertical_segment[0])
         if split_side_detail and refs.get("bottom_row_segment") is not None:
             vertical_x = float(refs["bottom_row_segment"][0]) - max(145.0, 0.19 * x_span)
+        elif non_split_full_detail and refs.get("bottom_row_segment") is not None:
+            vertical_x = float(refs["bottom_row_segment"][0]) - max(90.0, 0.14 * x_span)
         else:
             vertical_x = min(bottom_xs) - max(52.0, 0.070 * x_span)
         refs.setdefault("x_values", []).append(float(vertical_x))
@@ -5971,12 +6086,9 @@ def _plot_girder_strand_block_detail(
             )
 
     if full_section_detail and side_key == "all":
-        # Non-Railway-U sections read better as one enlarged full-section detail
-        # with the strand annotations placed directly on that drawing.  The full
-        # section remains visible for context, but the plot is no longer split
-        # into context/inset views.
-        full_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=True)
-        _row_guides("x", "y", current_points=points, bounds=full_bounds, compact=False)
+        deep_web_detail = _is_deep_web_non_u_detail(points, geometry)
+        context_bounds = _add_non_split_section_context_trace(fig, points, geometry, lower_focused=deep_web_detail)
+        _row_guides("x", "y", current_points=points, bounds=context_bounds, compact=False)
         _add_strand_state_marker_traces(
             fig,
             points,
@@ -5991,14 +6103,14 @@ def _plot_girder_strand_block_detail(
             showlegend=False,
         )
         _add_drawing_debond_symbol_trace(fig, points, marker_size=7, showlegend=False)
-        dimension_refs = _add_strand_detail_dimensions(fig, points, geometry, side=side, full_section=False)
+        dimension_refs = _add_strand_detail_dimensions(fig, points, geometry, side=side, full_section=True)
         tick_rows = _tick_rows(points, compact=False)
 
         x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
         y_values_for_range = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
-        if full_bounds is not None:
-            x_values.extend([float(full_bounds[0]), float(full_bounds[2])])
-            y_values_for_range.extend([float(full_bounds[1]), float(full_bounds[3])])
+        if context_bounds is not None:
+            x_values.extend([float(context_bounds[0]), float(context_bounds[2])])
+            y_values_for_range.extend([float(context_bounds[1]), float(context_bounds[3])])
         x_min = min(float(value) for value in x_values)
         x_max = max(float(value) for value in x_values)
         y_min = min(float(value) for value in y_values_for_range)
@@ -6012,7 +6124,7 @@ def _plot_girder_strand_block_detail(
             title_text="section x (mm)",
         )
         fig.update_yaxes(
-            range=[y_min - max(60.0, 0.08 * y_span), y_max + max(55.0, 0.08 * y_span)],
+            range=[y_min - max(55.0, 0.08 * y_span), y_max + max(48.0, 0.08 * y_span)],
             tickmode="array",
             tickvals=[item[0] for item in tick_rows],
             ticktext=[item[1] for item in tick_rows],
@@ -6022,7 +6134,7 @@ def _plot_girder_strand_block_detail(
         fig.update_layout(
             title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
             height=500,
-            margin={"l": 90, "r": 22, "t": 44, "b": 44},
+            margin={"l": 98, "r": 24, "t": 44, "b": 44},
             xaxis_title="section x (mm)",
             yaxis_title="section y (mm)",
             showlegend=False,

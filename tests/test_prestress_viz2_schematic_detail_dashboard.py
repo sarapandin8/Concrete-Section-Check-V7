@@ -150,8 +150,8 @@ def test_detail_panel_draws_local_concrete_envelope_and_keeps_dimensions(monkeyp
     fig = _plot_girder_strand_block_detail(table, geometry, side="All")
 
     trace_names = [trace.name for trace in fig.data]
-    assert "Local concrete envelope" in trace_names
-    assert any(str(name).startswith("Local void") for name in trace_names)
+    assert any(str(name).startswith("Full section context") for name in trace_names)
+    assert any("void" in str(name).lower() for name in trace_names)
     labels = " | ".join(str(annotation.text) for annotation in fig.layout.annotations)
     assert "typ. s =" in labels
     assert "eL =" in labels
