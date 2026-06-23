@@ -260,3 +260,38 @@ def test_railway_u_girder_split_detail_uses_web_scale_not_full_section(monkeypat
 
     assert detail_width < section_width * 0.40
     assert float(fig.layout.xaxis.range[1]) < 0.0
+
+
+
+def test_non_split_detail_adds_magnified_inset_axes(monkeypatch) -> None:
+    st = types.ModuleType("streamlit")
+    st.session_state = {}
+    st.column_config = types.SimpleNamespace(
+        CheckboxColumn=lambda *args, **kwargs: None,
+        TextColumn=lambda *args, **kwargs: None,
+        NumberColumn=lambda *args, **kwargs: None,
+        SelectboxColumn=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.geometry.generators import box_section_fillet  # noqa: PLC0415
+    from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
+        _normalize_girder_strand_layout_table,
+        _plot_girder_strand_block_detail,
+    )
+
+    geometry = box_section_fillet(
+        width_mm=1000.0,
+        height_mm=700.0,
+        t_top_mm=120.0,
+        t_bottom_mm=140.0,
+        t_left_mm=120.0,
+        t_right_mm=120.0,
+        r_inner_mm=0.0,
+    )
+    table = _normalize_girder_strand_layout_table(None, span_length_m=20.0, geometry=geometry)
+    fig = _plot_girder_strand_block_detail(table, geometry, side="All")
+
+    assert fig.layout.xaxis2.domain[0] < fig.layout.xaxis2.domain[1]
+    assert fig.layout.yaxis2.domain[0] < fig.layout.yaxis2.domain[1]
+    assert any("Magnified strand detail" in str(annotation.text) for annotation in fig.layout.annotations)

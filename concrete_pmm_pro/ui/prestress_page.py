@@ -5049,6 +5049,8 @@ def _add_concrete_schematic_trace(
                     name=f"Void {index}",
                     hoverinfo="skip",
                     showlegend=False,
+                    xaxis=xaxis_name,
+                    yaxis=yaxis_name,
                 )
             )
         minx, miny, maxx, maxy = polygon.bounds
@@ -5070,6 +5072,8 @@ def _add_strand_state_marker_traces(
     bonded_width: float = 1.8,
     debonded_width: float = 2.0,
     showlegend: bool = True,
+    xaxis_name: str = "x",
+    yaxis_name: str = "y",
 ) -> None:
     """Add bonded/debonded strand markers as two clean Plotly traces."""
 
@@ -5098,6 +5102,8 @@ def _add_strand_state_marker_traces(
                 text=[_strand_cross_section_hover(point, row_info) for _, point in selected.iterrows()],
                 hovertemplate="%{text}<extra></extra>",
                 showlegend=showlegend,
+                xaxis=xaxis_name,
+                yaxis=yaxis_name,
             )
         )
 
@@ -5108,6 +5114,8 @@ def _add_drawing_debond_symbol_trace(
     *,
     marker_size: int = 8,
     showlegend: bool = False,
+    xaxis_name: str = "x",
+    yaxis_name: str = "y",
 ) -> None:
     """Add lightweight drawing-symbol overlays only when drawing metadata exists."""
 
@@ -5143,6 +5151,8 @@ def _add_drawing_debond_symbol_trace(
                 text=[item[2] for item in trace_points],
                 hovertemplate="%{text}<br>x=%{x:.1f} mm<br>y=%{y:.1f} mm<extra></extra>",
                 showlegend=showlegend,
+                xaxis=xaxis_name,
+                yaxis=yaxis_name,
             )
         )
 
@@ -5278,6 +5288,8 @@ def _add_detail_dimension_line(
     orientation: str,
     tick_length: float,
     font_size: int = 9,
+    xref: str = "x",
+    yref: str = "y",
 ) -> None:
     """Add a restrained engineering dimension line to a strand detail figure."""
 
@@ -5292,6 +5304,8 @@ def _add_detail_dimension_line(
         x1=float(x1),
         y0=float(y0),
         y1=float(y1),
+        xref=xref,
+        yref=yref,
         line={"color": color, "width": 1.0},
         layer="above",
     )
@@ -5303,6 +5317,8 @@ def _add_detail_dimension_line(
                 x1=x_value,
                 y0=float(y0) - tick_length / 2.0,
                 y1=float(y0) + tick_length / 2.0,
+                xref=xref,
+                yref=yref,
                 line={"color": color, "width": 1.0},
                 layer="above",
             )
@@ -5314,12 +5330,16 @@ def _add_detail_dimension_line(
                 x1=float(x0) + tick_length / 2.0,
                 y0=y_value,
                 y1=y_value,
+                xref=xref,
+                yref=yref,
                 line={"color": color, "width": 1.0},
                 layer="above",
             )
     fig.add_annotation(
         x=(float(x0) + float(x1)) / 2.0,
         y=(float(y0) + float(y1)) / 2.0,
+        xref=xref,
+        yref=yref,
         text=label,
         showarrow=False,
         font={"size": font_size, "color": "rgba(146,64,14,0.98)"},
@@ -5471,6 +5491,8 @@ def _add_local_concrete_zone_trace(
     *,
     side: str = "All",
     full_section: bool = False,
+    xaxis_name: str = "x",
+    yaxis_name: str = "y",
 ) -> tuple[float, float, float, float] | None:
     """Add the concrete envelope used by the zoomed strand-detail panel."""
 
@@ -5496,6 +5518,8 @@ def _add_local_concrete_zone_trace(
                 name="Local concrete envelope" if index == 0 else "Local concrete envelope part",
                 hoverinfo="skip",
                 showlegend=False,
+                xaxis=xaxis_name,
+                yaxis=yaxis_name,
             )
         )
         for interior_index, interior in enumerate(polygon.interiors, start=1):
@@ -5580,6 +5604,8 @@ def _add_strand_detail_dimensions(
     *,
     side: str = "All",
     full_section: bool = False,
+    xref: str = "x",
+    yref: str = "y",
 ) -> dict[str, Any]:
     """Add compact x/y spacing and edge-distance dimensions to a zoomed strand-detail panel."""
 
@@ -5671,6 +5697,8 @@ def _add_strand_detail_dimensions(
                 orientation="h",
                 tick_length=h_tick,
                 font_size=7,
+                xref=xref,
+                yref=yref,
             )
         if right_edge_distance > 1e-6:
             _add_detail_dimension_line(
@@ -5683,6 +5711,8 @@ def _add_strand_detail_dimensions(
                 orientation="h",
                 tick_length=h_tick,
                 font_size=7,
+                xref=xref,
+                yref=yref,
             )
 
     # Vertical bottom edge and row spacing dimensions.
@@ -5706,6 +5736,8 @@ def _add_strand_detail_dimensions(
                 orientation="v",
                 tick_length=v_tick,
                 font_size=7,
+                xref=xref,
+                yref=yref,
             )
         # Show all row-to-row vertical gaps for a small number of rows.  For
         # larger layouts, keep only unique representative values to prevent the
@@ -5729,6 +5761,8 @@ def _add_strand_detail_dimensions(
                 orientation="v",
                 tick_length=v_tick,
                 font_size=7,
+                xref=xref,
+                yref=yref,
             )
     return refs
 
@@ -5877,40 +5911,233 @@ def _plot_girder_strand_block_detail(
 
     split_detail = _should_split_girder_strand_detail(all_points, geometry)
     full_section_detail = bool(geometry is not None and not split_detail)
-
-    # For Railway U-Girder left/right panels show the web itself; for all other
-    # girder sections show the full relevant section so the strand group is read
-    # in its actual section context rather than inside an abstract local box.
-    local_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=full_section_detail)
     y_values = sorted({round(float(value), 6) for value in points["y_mm_abs"].astype(float).tolist()})
-    for y_value in y_values:
-        row_points = points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6]
-        segment = _section_horizontal_segment_for_points_at_y(geometry, y_value, row_points["x_mm"].astype(float).tolist())
-        if segment is None:
-            continue
-        left_edge, right_edge = segment
-        if split_detail and side_key in {"left", "right"} and local_bounds is not None:
-            strand_left = float(row_points["x_mm"].astype(float).min())
-            strand_right = float(row_points["x_mm"].astype(float).max())
-            guide_pad = max(85.0, 0.16 * max(strand_right - strand_left, 160.0))
-            left_edge = max(float(local_bounds[0]), strand_left - guide_pad)
-            right_edge = min(float(local_bounds[2]), strand_right + guide_pad)
-            row_line_width = 0.75
-            row_line_color = "rgba(100,116,139,0.070)"
-        else:
-            row_line_width = 2.2
-            row_line_color = "rgba(100,116,139,0.16)"
-        fig.add_trace(
-            go.Scatter(
-                x=[float(left_edge), float(right_edge)],
-                y=[float(y_value), float(y_value)],
-                mode="lines",
-                line={"color": row_line_color, "width": row_line_width},
-                name="Row datum in concrete",
-                hoverinfo="skip",
-                showlegend=False,
+
+    def _tick_rows(current_points: pd.DataFrame, *, compact: bool) -> list[tuple[float, str]]:
+        rows: list[tuple[float, str]] = []
+        local_y_values = sorted({round(float(value), 6) for value in current_points["y_mm_abs"].astype(float).tolist()})
+        for y_value in local_y_values:
+            current = current_points.loc[(current_points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6]
+            groups = sorted(set(str(group) for group in current["Group ID"].tolist()))
+            row_numbers = [_strand_row_number_from_group_id(group) for group in groups]
+            row_numbers = [number for number in row_numbers if number is not None]
+            if row_numbers and len(set(row_numbers)) == 1:
+                label = f"R{int(row_numbers[0])}" if compact else f"Row {int(row_numbers[0])}"
+            else:
+                normalized = [group.replace("L ", "").replace("R ", "") for group in groups]
+                label = normalized[0] if len(set(normalized)) == 1 else " / ".join(normalized)
+            debonded_count = int(current["Debonded selected"].fillna(False).astype(bool).sum())
+            total_count = int(len(current.index))
+            tick_text = f"{label} · {total_count - debonded_count}B/{debonded_count}U" if compact else f"{label}  ·  B {total_count - debonded_count} / U {debonded_count}"
+            rows.append((y_value, tick_text))
+        return rows
+
+    def _row_guides(axis_x: str, axis_y: str, *, current_points: pd.DataFrame, bounds: tuple[float, float, float, float] | None, compact: bool) -> None:
+        local_y_values = sorted({round(float(value), 6) for value in current_points["y_mm_abs"].astype(float).tolist()})
+        for y_value in local_y_values:
+            row_points = current_points.loc[(current_points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6]
+            segment = _section_horizontal_segment_for_points_at_y(geometry, y_value, row_points["x_mm"].astype(float).tolist())
+            if segment is None:
+                continue
+            left_edge, right_edge = float(segment[0]), float(segment[1])
+            if compact and bounds is not None:
+                strand_left = float(row_points["x_mm"].astype(float).min())
+                strand_right = float(row_points["x_mm"].astype(float).max())
+                guide_pad = max(85.0, 0.16 * max(strand_right - strand_left, 160.0))
+                left_edge = max(float(bounds[0]), strand_left - guide_pad)
+                right_edge = min(float(bounds[2]), strand_right + guide_pad)
+                row_line_width = 0.75
+                row_line_color = "rgba(100,116,139,0.070)"
+            elif bounds is not None:
+                row_line_width = 1.0
+                row_line_color = "rgba(100,116,139,0.11)"
+            else:
+                row_line_width = 1.6
+                row_line_color = "rgba(100,116,139,0.14)"
+            fig.add_trace(
+                go.Scatter(
+                    x=[left_edge, right_edge],
+                    y=[float(y_value), float(y_value)],
+                    mode="lines",
+                    line={"color": row_line_color, "width": row_line_width},
+                    name="Row datum in concrete",
+                    hoverinfo="skip",
+                    showlegend=False,
+                    xaxis=axis_x,
+                    yaxis=axis_y,
+                )
             )
+
+    if full_section_detail and side_key == "all":
+        # Main axis: full section context with a highlighted zoom window.
+        full_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=True)
+        zoom_bounds = _local_strand_zone_geometry(points, geometry, side=side, full_section=False)[1]
+        _row_guides("x", "y", current_points=points, bounds=full_bounds, compact=False)
+        _add_strand_state_marker_traces(
+            fig,
+            points,
+            row_info,
+            marker_size=8,
+            bonded_fill="rgba(37, 99, 235, 0.08)",
+            debonded_fill="rgba(220, 38, 38, 0.11)",
+            bonded_line="#2563eb",
+            debonded_line="#dc2626",
+            bonded_width=1.3,
+            debonded_width=1.45,
+            showlegend=False,
         )
+        if zoom_bounds is not None:
+            zx0, zy0, zx1, zy1 = [float(value) for value in zoom_bounds]
+            fig.add_shape(
+                type="rect",
+                x0=zx0,
+                x1=zx1,
+                y0=zy0,
+                y1=zy1,
+                line={"color": "rgba(37, 99, 235, 0.60)", "width": 1.15, "dash": "dash"},
+                fillcolor="rgba(37, 99, 235, 0.03)",
+                xref="x",
+                yref="y",
+                layer="above",
+            )
+            fig.add_annotation(
+                x=zx1,
+                y=zy1,
+                xref="x",
+                yref="y",
+                text="Magnified strand zone",
+                showarrow=False,
+                xanchor="right",
+                yanchor="bottom",
+                yshift=6,
+                font={"size": 8, "color": "rgba(15, 23, 42, 0.70)"},
+                bgcolor="rgba(255,255,255,0.90)",
+                bordercolor="rgba(203,213,225,0.80)",
+                borderwidth=1,
+                borderpad=2,
+            )
+
+        # Inset axis: true zoomed strand zone overlay.
+        fig.update_layout(
+            xaxis2={
+                "domain": [0.50, 0.97],
+                "anchor": "y2",
+                "title": {"text": "strand-zone x (mm)", "font": {"size": 9}},
+                "tickfont": {"size": 8},
+                "showgrid": True,
+                "gridcolor": "rgba(15,23,42,0.055)",
+                "zerolinecolor": "rgba(15,23,42,0.12)",
+                "showline": True,
+                "linecolor": "rgba(148,163,184,0.72)",
+                "mirror": True,
+            },
+            yaxis2={
+                "domain": [0.55, 0.95],
+                "anchor": "x2",
+                "title": {"text": ""},
+                "tickfont": {"size": 7},
+                "showgrid": True,
+                "gridcolor": "rgba(15,23,42,0.055)",
+                "zerolinecolor": "rgba(15,23,42,0.12)",
+                "showline": True,
+                "linecolor": "rgba(148,163,184,0.72)",
+                "mirror": True,
+                "scaleanchor": "x2",
+                "scaleratio": 1,
+            },
+        )
+        inset_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=False, xaxis_name="x2", yaxis_name="y2")
+        _row_guides("x2", "y2", current_points=points, bounds=inset_bounds, compact=False)
+        _add_strand_state_marker_traces(
+            fig,
+            points,
+            row_info,
+            marker_size=11,
+            bonded_fill="rgba(37, 99, 235, 0.14)",
+            debonded_fill="rgba(220, 38, 38, 0.16)",
+            bonded_line="#2563eb",
+            debonded_line="#dc2626",
+            bonded_width=1.8,
+            debonded_width=2.0,
+            showlegend=False,
+            xaxis_name="x2",
+            yaxis_name="y2",
+        )
+        _add_drawing_debond_symbol_trace(fig, points, marker_size=6, showlegend=False, xaxis_name="x2", yaxis_name="y2")
+        dimension_refs = _add_strand_detail_dimensions(fig, points, geometry, side=side, full_section=False, xref="x2", yref="y2")
+        tick_rows = _tick_rows(points, compact=False)
+
+        # Main full-section ranges.
+        if full_bounds is not None:
+            x0, y0, x1, y1 = [float(value) for value in full_bounds]
+        else:
+            x0 = float(points["x_mm"].min())
+            x1 = float(points["x_mm"].max())
+            y0 = min(float(points["y_mm_abs"].min()), _section_bottom_y_from_geometry(geometry))
+            y1 = float(points["y_mm_abs"].max())
+        x_span = max(x1 - x0, 220.0)
+        y_span = max(y1 - y0, 220.0)
+        fig.update_xaxes(
+            range=[x0 - max(90.0, 0.08 * x_span), x1 + max(90.0, 0.08 * x_span)],
+            tickfont={"size": 9},
+            title_font={"size": 10},
+            title_text="section x (mm)",
+        )
+        fig.update_yaxes(
+            range=[y0 - max(70.0, 0.08 * y_span), y1 + max(70.0, 0.08 * y_span)],
+            tickfont={"size": 8},
+            title_text="section y (mm)",
+            scaleanchor="x",
+            scaleratio=1,
+        )
+
+        inset_x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
+        inset_y_values = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
+        if inset_bounds is not None:
+            inset_x_values.extend([float(inset_bounds[0]), float(inset_bounds[2])])
+            inset_y_values.extend([float(inset_bounds[1]), float(inset_bounds[3])])
+        ix0 = min(float(value) for value in inset_x_values)
+        ix1 = max(float(value) for value in inset_x_values)
+        iy0 = min(float(value) for value in inset_y_values)
+        iy1 = max(float(value) for value in inset_y_values)
+        ix_span = max(ix1 - ix0, 220.0)
+        iy_span = max(iy1 - iy0, 180.0)
+        fig.update_layout(
+            title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
+            height=470,
+            margin={"l": 72, "r": 20, "t": 44, "b": 44},
+            xaxis_title="section x (mm)",
+            yaxis_title="section y (mm)",
+            showlegend=False,
+            plot_bgcolor="white",
+            font={"size": 9},
+            annotations=list(fig.layout.annotations) + [
+                go.layout.Annotation(
+                    x=0.735,
+                    y=0.972,
+                    xref="paper",
+                    yref="paper",
+                    text="Magnified strand detail",
+                    showarrow=False,
+                    font={"size": 9, "color": "#0f172a"},
+                    bgcolor="rgba(255,255,255,0.92)",
+                    bordercolor="rgba(203,213,225,0.82)",
+                    borderwidth=1,
+                    borderpad=2,
+                )
+            ],
+        )
+        # Direct nested-axis updates are clearer than overloading update_xaxes.
+        fig.layout.xaxis2.range = [ix0 - max(55.0, 0.08 * ix_span), ix1 + max(55.0, 0.08 * ix_span)]
+        fig.layout.yaxis2.range = [iy0 - max(38.0, 0.08 * iy_span), iy1 + max(38.0, 0.08 * iy_span)]
+        fig.layout.yaxis2.tickmode = "array"
+        fig.layout.yaxis2.tickvals = [item[0] for item in tick_rows]
+        fig.layout.yaxis2.ticktext = [item[1] for item in tick_rows]
+        return fig
+
+    # Existing split-detail rendering path (and generic fallback when geometry is missing).
+    local_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=full_section_detail)
+    _row_guides("x", "y", current_points=points, bounds=local_bounds, compact=bool(split_detail and side_key in {"left", "right"}))
 
     _add_strand_state_marker_traces(
         fig,
@@ -5927,21 +6154,7 @@ def _plot_girder_strand_block_detail(
     )
     _add_drawing_debond_symbol_trace(fig, points, marker_size=7, showlegend=False)
     dimension_refs = _add_strand_detail_dimensions(fig, points, geometry, side=side, full_section=full_section_detail)
-
-    tick_rows: list[tuple[float, str]] = []
-    for y_value in y_values:
-        groups = sorted(set(str(group) for group in points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6, "Group ID"].tolist()))
-        row_numbers = [_strand_row_number_from_group_id(group) for group in groups]
-        row_numbers = [number for number in row_numbers if number is not None]
-        if row_numbers and len(set(row_numbers)) == 1:
-            label = f"R{int(row_numbers[0])}" if split_detail and side_key in {"left", "right"} else f"Row {int(row_numbers[0])}"
-        else:
-            normalized = [group.replace("L ", "").replace("R ", "") for group in groups]
-            label = normalized[0] if len(set(normalized)) == 1 else " / ".join(normalized)
-        debonded_count = int(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6, "Debonded selected"].fillna(False).astype(bool).sum())
-        total_count = int(len(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6].index))
-        tick_text = f"{label} · {total_count - debonded_count}B/{debonded_count}U" if split_detail and side_key in {"left", "right"} else f"{label}  ·  B {total_count - debonded_count} / U {debonded_count}"
-        tick_rows.append((y_value, tick_text))
+    tick_rows = _tick_rows(points, compact=bool(split_detail and side_key in {"left", "right"}))
 
     x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
     y_values_for_range = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
@@ -5980,7 +6193,6 @@ def _plot_girder_strand_block_detail(
     fig.update_xaxes(gridcolor="rgba(15,23,42,0.055)", zerolinecolor="rgba(15,23,42,0.12)")
     fig.update_yaxes(scaleanchor="x", scaleratio=1, gridcolor="rgba(15,23,42,0.055)", zerolinecolor="rgba(15,23,42,0.12)")
     return fig
-
 
 def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry: SectionGeometry | None) -> None:
     """Render PRESTRESS.VIZ2 split schematic + row/detail dashboard."""
