@@ -5587,15 +5587,39 @@ def _add_non_split_section_context_trace(
 
     if lower_focused and not points.empty:
         strand_top = float(points["y_mm_abs"].astype(float).max())
+        strand_bottom = float(points["y_mm_abs"].astype(float).min())
+        strand_left = float(points["x_mm"].astype(float).min())
+        strand_right = float(points["x_mm"].astype(float).max())
         section_depth = max(section_maxy - section_miny, 1.0)
+        strand_band_depth = max(strand_top - strand_bottom, 60.0)
         y0 = section_miny
-        y1 = min(section_maxy, strand_top + max(165.0, 0.11 * section_depth))
-        if y1 - y0 < 340.0:
-            y1 = min(section_maxy, y0 + 340.0)
-        clip = Polygon([(section_minx, y0), (section_maxx, y0), (section_maxx, y1), (section_minx, y1), (section_minx, y0)])
+        y1 = min(section_maxy, strand_top + max(120.0, 0.10 * section_depth, 1.8 * strand_band_depth))
+        if y1 - y0 < 290.0:
+            y1 = min(section_maxy, y0 + 290.0)
+
+        segment = _section_horizontal_segment_for_points_at_y(
+            geometry,
+            float(points["y_mm_abs"].astype(float).min()),
+            points["x_mm"].astype(float).tolist(),
+        )
+        if segment is not None:
+            local_left, local_right = float(segment[0]), float(segment[1])
+        else:
+            local_left, local_right = section_minx, section_maxx
+        local_width = max(local_right - local_left, strand_right - strand_left, 120.0)
+        pad_x = max(60.0, 0.12 * local_width)
+        x0 = max(section_minx, local_left - pad_x)
+        x1 = min(section_maxx, local_right + pad_x)
+        if x1 - x0 < max(260.0, local_width + 2.0 * pad_x):
+            mid_x = 0.5 * (x0 + x1)
+            half = 0.5 * max(260.0, local_width + 2.0 * pad_x)
+            x0 = max(section_minx, mid_x - half)
+            x1 = min(section_maxx, mid_x + half)
+
+        clip = Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)])
         try:
             rendered = polygon.intersection(clip)
-            bounds = (section_minx, y0, section_maxx, y1)
+            bounds = (x0, y0, x1, y1)
         except Exception:
             rendered = polygon
             bounds = (section_minx, section_miny, section_maxx, section_maxy)
