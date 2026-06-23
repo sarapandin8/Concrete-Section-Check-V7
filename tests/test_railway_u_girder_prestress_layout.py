@@ -163,8 +163,8 @@ def test_railway_u_girder_cross_section_layout_uses_readable_inspection_viewport
 
     left_detail = _plot_girder_strand_block_detail(table, geometry, side="Left")
     assert left_detail.layout.height == 520
-    assert list(left_detail.layout.yaxis.ticktext)[0] == "Row 1  ·  B 9 / U 0"
-    assert list(left_detail.layout.yaxis.ticktext)[-1] == "Row 5  ·  B 4 / U 0"
+    assert list(left_detail.layout.yaxis.ticktext)[0] == "R1 · 9B/0U"
+    assert list(left_detail.layout.yaxis.ticktext)[-1] == "R5 · 4B/0U"
 
 
 def test_project_io_preserves_strand_x_positions_and_legacy_debond_pattern_source() -> None:

@@ -5400,9 +5400,9 @@ def _local_strand_zone_geometry(
             x1 = min(section_maxx, mid_x + 100.0)
         section_depth = max(section_maxy - section_miny, 1.0)
         y0 = section_miny
-        y1 = min(section_maxy, max(strand_ys) + max(260.0, 0.22 * section_depth))
-        if y1 - y0 < 380.0:
-            y1 = min(section_maxy, y0 + 380.0)
+        y1 = min(section_maxy, max(strand_ys) + max(180.0, 0.12 * section_depth))
+        if y1 - y0 < 360.0:
+            y1 = min(section_maxy, y0 + 360.0)
         clip = Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)])
         try:
             clipped = polygon.intersection(clip)
@@ -5596,6 +5596,8 @@ def _add_strand_detail_dimensions(
     h_tick = max(7.0, 0.022 * y_span)
     v_tick = max(7.0, 0.020 * x_span)
     bottom_row_y = float(refs.get("bottom_row_y") or y_values[0])
+    side_key = str(side or "All").strip().lower()
+    split_side_detail = side_key in {"left", "right"} and not full_section
 
     # Horizontal strand spacing: show one typical gap for each unique spacing
     # and choose the pair nearest the row center to keep labels away from edge
@@ -5617,7 +5619,10 @@ def _add_strand_detail_dimensions(
         target_center = (xs[0] + xs[-1]) / 2.0
         candidate_pairs = [(xs[i], xs[i + 1]) for i in range(len(xs) - 1) if abs((xs[i + 1] - xs[i]) - spacing) < 1e-6]
         x0, x1 = min(candidate_pairs, key=lambda pair: abs(((pair[0] + pair[1]) / 2.0) - target_center))
-        dim_y = float(y_value) + max(18.0, 0.055 * y_span)
+        if split_side_detail:
+            dim_y = max(y_values) + max(32.0, 0.070 * y_span)
+        else:
+            dim_y = float(y_value) + max(18.0, 0.055 * y_span)
         _add_detail_dimension_line(
             fig,
             x0=x0,
@@ -5639,7 +5644,10 @@ def _add_strand_detail_dimensions(
         left_strand = float(min(bottom_xs))
         right_strand = float(max(bottom_xs))
         bottom_clearance = max(0.0, bottom_row_y - (refs.get("vertical_segment") or (bottom_row_y, bottom_row_y))[0])
-        if bottom_clearance > 35.0:
+        if split_side_detail:
+            bottom_edge = float((refs.get("vertical_segment") or (bottom_row_y, bottom_row_y))[0])
+            edge_y = bottom_edge + max(12.0, min(28.0, 0.030 * y_span))
+        elif bottom_clearance > 35.0:
             edge_y = bottom_row_y - min(bottom_clearance * 0.42, max(30.0, 0.070 * y_span))
         else:
             edge_y = bottom_row_y - max(22.0, 0.052 * y_span)
@@ -5648,7 +5656,8 @@ def _add_strand_detail_dimensions(
         left_edge_y = edge_y
         right_edge_y = edge_y
         if left_edge_distance > 1e-6 and right_edge_distance > 1e-6:
-            right_edge_y = edge_y - max(18.0, 0.050 * y_span)
+            offset = max(18.0, 0.050 * y_span)
+            right_edge_y = edge_y + offset if split_side_detail else edge_y - offset
         if left_edge_distance > 1e-6:
             _add_detail_dimension_line(
                 fig,
@@ -5678,7 +5687,11 @@ def _add_strand_detail_dimensions(
     vertical_segment = refs.get("vertical_segment")
     if vertical_segment is not None:
         bottom_edge = float(vertical_segment[0])
-        vertical_x = min(bottom_xs) - max(52.0, 0.070 * x_span)
+        if split_side_detail and refs.get("bottom_row_segment") is not None:
+            vertical_x = float(refs["bottom_row_segment"][0]) - max(90.0, 0.12 * x_span)
+        else:
+            vertical_x = min(bottom_xs) - max(52.0, 0.070 * x_span)
+        refs.setdefault("x_values", []).append(float(vertical_x))
         bottom_cover = max(0.0, bottom_row_y - bottom_edge)
         if bottom_cover > 1e-6:
             _add_detail_dimension_line(
@@ -5874,12 +5887,19 @@ def _plot_girder_strand_block_detail(
         if segment is None:
             continue
         left_edge, right_edge = segment
+        if split_detail and side_key in {"left", "right"} and local_bounds is not None:
+            left_edge, right_edge = float(local_bounds[0]), float(local_bounds[2])
+            row_line_width = 1.1
+            row_line_color = "rgba(100,116,139,0.10)"
+        else:
+            row_line_width = 2.2
+            row_line_color = "rgba(100,116,139,0.16)"
         fig.add_trace(
             go.Scatter(
                 x=[float(left_edge), float(right_edge)],
                 y=[float(y_value), float(y_value)],
                 mode="lines",
-                line={"color": "rgba(100,116,139,0.16)", "width": 2.2},
+                line={"color": row_line_color, "width": row_line_width},
                 name="Row datum in concrete",
                 hoverinfo="skip",
                 showlegend=False,
@@ -5908,13 +5928,14 @@ def _plot_girder_strand_block_detail(
         row_numbers = [_strand_row_number_from_group_id(group) for group in groups]
         row_numbers = [number for number in row_numbers if number is not None]
         if row_numbers and len(set(row_numbers)) == 1:
-            label = f"Row {int(row_numbers[0])}"
+            label = f"R{int(row_numbers[0])}" if split_detail and side_key in {"left", "right"} else f"Row {int(row_numbers[0])}"
         else:
             normalized = [group.replace("L ", "").replace("R ", "") for group in groups]
             label = normalized[0] if len(set(normalized)) == 1 else " / ".join(normalized)
         debonded_count = int(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6, "Debonded selected"].fillna(False).astype(bool).sum())
         total_count = int(len(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6].index))
-        tick_rows.append((y_value, f"{label}  ·  B {total_count - debonded_count} / U {debonded_count}"))
+        tick_text = f"{label} · {total_count - debonded_count}B/{debonded_count}U" if split_detail and side_key in {"left", "right"} else f"{label}  ·  B {total_count - debonded_count} / U {debonded_count}"
+        tick_rows.append((y_value, tick_text))
 
     x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
     y_values_for_range = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
