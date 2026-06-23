@@ -183,3 +183,80 @@ def test_overall_non_railway_schematic_does_not_show_left_right_block_labels(mon
 
     labels = [str(annotation.text) for annotation in fig.layout.annotations]
     assert not any("Left strand block" in label or "Right strand block" in label for label in labels)
+
+
+def test_non_split_box_detail_uses_full_section_bounds(monkeypatch) -> None:
+    st = types.ModuleType("streamlit")
+    st.session_state = {}
+    st.column_config = types.SimpleNamespace(
+        CheckboxColumn=lambda *args, **kwargs: None,
+        TextColumn=lambda *args, **kwargs: None,
+        NumberColumn=lambda *args, **kwargs: None,
+        SelectboxColumn=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.geometry.generators import box_section_fillet  # noqa: PLC0415
+    from concrete_pmm_pro.geometry.summary import to_shapely_polygon  # noqa: PLC0415
+    from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
+        _normalize_girder_strand_layout_table,
+        _plot_girder_strand_block_detail,
+    )
+
+    geometry = box_section_fillet(
+        width_mm=1000.0,
+        height_mm=700.0,
+        t_top_mm=120.0,
+        t_bottom_mm=140.0,
+        t_left_mm=120.0,
+        t_right_mm=120.0,
+        r_inner_mm=0.0,
+    )
+    table = _normalize_girder_strand_layout_table(None, span_length_m=20.0, geometry=geometry)
+    fig = _plot_girder_strand_block_detail(table, geometry, side="All")
+    minx, miny, maxx, maxy = [float(value) for value in to_shapely_polygon(geometry).bounds]
+
+    assert fig.layout.xaxis.range[0] <= minx
+    assert fig.layout.xaxis.range[1] >= maxx
+    assert fig.layout.yaxis.range[0] <= miny
+    assert fig.layout.yaxis.range[1] >= maxy
+
+
+def test_railway_u_girder_split_detail_uses_web_scale_not_full_section(monkeypatch) -> None:
+    st = types.ModuleType("streamlit")
+    st.session_state = {}
+    st.column_config = types.SimpleNamespace(
+        CheckboxColumn=lambda *args, **kwargs: None,
+        TextColumn=lambda *args, **kwargs: None,
+        NumberColumn=lambda *args, **kwargs: None,
+        SelectboxColumn=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.geometry.generators import railway_u_girder  # noqa: PLC0415
+    from concrete_pmm_pro.geometry.summary import to_shapely_polygon  # noqa: PLC0415
+    from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
+        _normalize_girder_strand_layout_table,
+        _plot_girder_strand_block_detail,
+    )
+
+    geometry = railway_u_girder(
+        width_mm=5500.0,
+        depth_mm=1600.0,
+        top_wall_width_mm=600.0,
+        bottom_side_width_mm=650.0,
+        haunch_x_mm=300.0,
+        haunch_y_mm=300.0,
+        h1_step_height_mm=670.0,
+        h2_bottom_opening_mm=305.0,
+        h3_floor_side_thickness_mm=395.0,
+        h4_floor_center_thickness_mm=450.0,
+    )
+    table = _normalize_girder_strand_layout_table(None, span_length_m=30.0, geometry=geometry)
+    fig = _plot_girder_strand_block_detail(table, geometry, side="Left")
+    section_minx, _, section_maxx, _ = [float(value) for value in to_shapely_polygon(geometry).bounds]
+    detail_width = float(fig.layout.xaxis.range[1]) - float(fig.layout.xaxis.range[0])
+    section_width = float(section_maxx) - float(section_minx)
+
+    assert detail_width < section_width * 0.40
+    assert float(fig.layout.xaxis.range[1]) < 0.0

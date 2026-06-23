@@ -5348,12 +5348,16 @@ def _iter_polygon_geometries(geometry_object: Any) -> list[Any]:
 def _local_strand_zone_geometry(
     points: pd.DataFrame,
     geometry: SectionGeometry | None,
+    *,
+    side: str = "All",
+    full_section: bool = False,
 ) -> tuple[Any | None, tuple[float, float, float, float] | None]:
-    """Return a clipped concrete envelope around the active strand block.
+    """Return the concrete envelope used by the strand-detail panel.
 
-    The zoomed detail should read like a local shop-drawing cutout, not another
-    full-section plot.  The clipping window follows the concrete segment that
-    actually contains the strand rows and the nearest relevant bottom boundary.
+    Non-split girder sections should read against the full section outline so
+    the strand group is understood in its true structural context.  Railway
+    U-Girder split views instead show a clipped left/right web detail rather
+    than a tiny strand cluster floating inside a full-width plot.
     """
 
     if geometry is None or points.empty:
@@ -5366,12 +5370,39 @@ def _local_strand_zone_geometry(
         return None, None
 
     section_minx, section_miny, section_maxx, section_maxy = [float(value) for value in polygon.bounds]
+    if full_section:
+        return polygon, (section_minx, section_miny, section_maxx, section_maxy)
+
     strand_xs = [float(value) for value in points["x_mm"].astype(float).tolist()]
     strand_ys = [float(value) for value in points["y_mm_abs"].astype(float).tolist()]
     if not strand_xs or not strand_ys:
         return None, None
 
     y_values = sorted({round(value, 6) for value in strand_ys})
+    side_key = str(side or "All").strip().lower()
+
+    if side_key in {"left", "right"}:
+        # Split detail panels are intended to show a single web/block region,
+        # not the full girder width.  Use the strand spread itself as the local
+        # x-anchor because some sections (notably Railway U-Girder) have a
+        # continuous floor slab at the strand y-level that would otherwise pull
+        # the clipping window across the entire section.
+        x0 = min(strand_xs)
+        x1 = max(strand_xs)
+        x_pad = max(90.0, 0.24 * max(x1 - x0, 120.0))
+        x0 = max(section_minx, x0 - x_pad)
+        x1 = min(section_maxx, x1 + x_pad)
+        if x1 - x0 < 200.0:
+            mid_x = (x0 + x1) / 2.0
+            x0 = max(section_minx, mid_x - 100.0)
+            x1 = min(section_maxx, mid_x + 100.0)
+        clip = Polygon([(x0, section_miny), (x1, section_miny), (x1, section_maxy), (x0, section_maxy), (x0, section_miny)])
+        try:
+            clipped = polygon.intersection(clip)
+        except Exception:
+            return None, (x0, section_miny, x1, section_maxy)
+        return clipped, (x0, section_miny, x1, section_maxy)
+
     horizontal_segments: list[tuple[float, float]] = []
     for y_value in y_values:
         row_points = points.loc[(points["y_mm_abs"].astype(float) - float(y_value)).abs() < 1e-6]
@@ -5408,8 +5439,6 @@ def _local_strand_zone_geometry(
     strand_height = max(max(strand_ys) - min(strand_ys), 80.0)
     top_pad = max(90.0, 0.18 * strand_height)
     y1 = min(section_maxy, max(strand_ys) + top_pad)
-    # When a row is very near the top of a local slab/box zone, show the real
-    # boundary rather than clipping just above the marker.
     if section_maxy - y1 < max(70.0, 0.08 * max(section_maxy - section_miny, 1.0)):
         y1 = section_maxy
     if y1 - y0 < 120.0:
@@ -5430,10 +5459,13 @@ def _add_local_concrete_zone_trace(
     fig: go.Figure,
     points: pd.DataFrame,
     geometry: SectionGeometry | None,
+    *,
+    side: str = "All",
+    full_section: bool = False,
 ) -> tuple[float, float, float, float] | None:
-    """Add the local concrete envelope used by the zoomed strand-detail panel."""
+    """Add the concrete envelope used by the zoomed strand-detail panel."""
 
-    clipped, fallback_bounds = _local_strand_zone_geometry(points, geometry)
+    clipped, fallback_bounds = _local_strand_zone_geometry(points, geometry, side=side, full_section=full_section)
     polygons = _iter_polygon_geometries(clipped)
     if not polygons:
         return fallback_bounds
@@ -5482,6 +5514,9 @@ def _add_local_concrete_zone_trace(
 def _strand_detail_dimension_references(
     points: pd.DataFrame,
     geometry: SectionGeometry | None,
+    *,
+    side: str = "All",
+    full_section: bool = False,
 ) -> dict[str, Any]:
     """Return representative x/y spacing and edge references for strand-detail panels."""
 
@@ -5496,7 +5531,7 @@ def _strand_detail_dimension_references(
     y_max = float(points["y_mm_abs"].max())
     refs["x_values"].extend([x_min, x_max])
     refs["y_values"].extend([y_min, y_max])
-    _, local_bounds = _local_strand_zone_geometry(points, geometry)
+    _, local_bounds = _local_strand_zone_geometry(points, geometry, side=side, full_section=full_section)
     if local_bounds is not None:
         refs["local_bounds"] = tuple(float(value) for value in local_bounds)
         refs["x_values"].extend([float(local_bounds[0]), float(local_bounds[2])])
@@ -5529,10 +5564,17 @@ def _strand_detail_dimension_references(
     return refs
 
 
-def _add_strand_detail_dimensions(fig: go.Figure, points: pd.DataFrame, geometry: SectionGeometry | None) -> dict[str, Any]:
+def _add_strand_detail_dimensions(
+    fig: go.Figure,
+    points: pd.DataFrame,
+    geometry: SectionGeometry | None,
+    *,
+    side: str = "All",
+    full_section: bool = False,
+) -> dict[str, Any]:
     """Add compact x/y spacing and edge-distance dimensions to a zoomed strand-detail panel."""
 
-    refs = _strand_detail_dimension_references(points, geometry)
+    refs = _strand_detail_dimension_references(points, geometry, side=side, full_section=full_section)
     bottom_xs = list(refs.get("bottom_row_xs") or [])
     y_values = list(refs.get("row_y_values") or [])
     if points.empty or not bottom_xs or not y_values:
@@ -5752,7 +5794,7 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
     fig.update_yaxes(range=[section_y_min - y_pad, section_y_max + y_pad])
 
     fig.update_layout(
-        title={"text": "Overall section schematic", "x": 0.0, "xanchor": "left", "font": {"size": 13, "color": "#101828"}},
+        title={"text": "Overall section schematic", "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
         height=365,
         margin={"l": 45, "r": 16, "t": 54, "b": 40},
         xaxis_title="section x (mm)",
@@ -5807,10 +5849,13 @@ def _plot_girder_strand_block_detail(
         )
         return fig
 
-    # Local concrete envelope: the zoomed view is a detailing cutout around
-    # the active strands, so edge distances are visually anchored to real
-    # concrete boundaries instead of floating in a blank chart.
-    local_bounds = _add_local_concrete_zone_trace(fig, points, geometry)
+    split_detail = _should_split_girder_strand_detail(all_points, geometry)
+    full_section_detail = bool(geometry is not None and not split_detail)
+
+    # For Railway U-Girder left/right panels show the web itself; for all other
+    # girder sections show the full relevant section so the strand group is read
+    # in its actual section context rather than inside an abstract local box.
+    local_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=full_section_detail)
     y_values = sorted({round(float(value), 6) for value in points["y_mm_abs"].astype(float).tolist()})
     for y_value in y_values:
         row_points = points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6]
@@ -5844,7 +5889,7 @@ def _plot_girder_strand_block_detail(
         showlegend=False,
     )
     _add_drawing_debond_symbol_trace(fig, points, marker_size=7, showlegend=False)
-    dimension_refs = _add_strand_detail_dimensions(fig, points, geometry)
+    dimension_refs = _add_strand_detail_dimensions(fig, points, geometry, side=side, full_section=full_section_detail)
 
     tick_rows: list[tuple[float, str]] = []
     for y_value in y_values:
@@ -5881,10 +5926,10 @@ def _plot_girder_strand_block_detail(
         tickmode="array",
         tickvals=[item[0] for item in tick_rows],
         ticktext=[item[1] for item in tick_rows],
-        tickfont={"size": 8},
+        tickfont={"size": 7},
     )
     fig.update_layout(
-        title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 12, "color": "#101828"}},
+        title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
         height=420,
         margin={"l": 74, "r": 18, "t": 46, "b": 42},
         xaxis_title="strand x (mm)",
@@ -5908,7 +5953,16 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
     debonded_count = int(points["Debonded selected"].fillna(False).astype(bool).sum()) if not points.empty else 0
     total_count = bonded_count + debonded_count
     status_tone = "review" if debonded_count else "ready"
-    st.markdown("#### Prestress strand dashboard")
+    st.markdown(
+        """
+        <style>
+        .prestress-viz-card-title {font-size: 1.02rem; font-weight: 600; color: #0f172a; margin: 0.10rem 0 0.15rem 0;}
+        .prestress-viz-section-title {font-size: 0.93rem; font-weight: 600; color: #0f172a; margin: 0.10rem 0 0.22rem 0;}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="prestress-viz-card-title">Prestress strand dashboard</div>', unsafe_allow_html=True)
     st.caption(
         "Split view: the full section is only a location schematic; row data and zoomed block panels carry the strand-reading work. "
         "Blue = bonded/effective at the cross-section preview; red = debonded/sleeved strand selection from the row metadata."
@@ -5933,7 +5987,7 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
             config={"displayModeBar": False, "responsive": True},
         )
     with top_right:
-        st.markdown("##### Strand row summary")
+        st.markdown('<div class="prestress-viz-section-title">Strand row summary</div>', unsafe_allow_html=True)
         if row_summary.empty:
             st.info("No active strand rows are available for the current section.")
         else:
@@ -5956,7 +6010,7 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
     left_points = points.loc[points["x_mm"].astype(float) < 0.0]
     right_points = points.loc[points["x_mm"].astype(float) > 0.0]
     split_detail = _should_split_girder_strand_detail(points, geometry)
-    st.markdown("##### Zoomed strand block detail")
+    st.markdown('<div class="prestress-viz-section-title">Zoomed strand block detail</div>', unsafe_allow_html=True)
     if split_detail and not left_points.empty and not right_points.empty:
         detail_left, detail_right = st.columns(2)
         with detail_left:
