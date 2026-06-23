@@ -229,6 +229,21 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-wor
   background: linear-gradient(135deg, #ffffff 0%, #f7fbff 100%) !important;
   box-shadow: 0 5px 15px rgba(23, 92, 211, 0.08) !important;
 }
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div > div,
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) div[data-testid="stSelectbox"] div[data-baseweb="select"] div[role="combobox"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) div[data-testid="stSelectbox"] div[data-baseweb="select"] div[role="button"] {
+  color: #092454 !important;
+  font-weight: 900 !important;
+  font-size: 1.26rem !important;
+  line-height: 1.22 !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div span,
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-workflow) div[data-testid="stSelectbox"] div[data-baseweb="select"] p {
+  color: #092454 !important;
+  font-weight: 900 !important;
+  font-size: 1.26rem !important;
+  line-height: 1.22 !important;
+}
 .cpmm-commercial-control-workflow {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
@@ -259,8 +274,8 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-wor
   margin-bottom: 0.14rem;
 }
 .cpmm-commercial-control-value {
-  color: #0b2f6b;
-  font-size: 1.26rem;
+  color: #092454;
+  font-size: 1.40rem;
   font-weight: 950;
   line-height: 1.18;
   overflow-wrap: anywhere;
