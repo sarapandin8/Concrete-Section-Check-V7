@@ -5661,6 +5661,8 @@ def _add_strand_detail_dimensions(
             orientation="h",
             tick_length=h_tick,
             font_size=8,
+            xref=xref,
+            yref=yref,
         )
 
     # Horizontal edge CL at the bottom/prestress datum row. These distances are
@@ -5972,18 +5974,19 @@ def _plot_girder_strand_block_detail(
         # Main axis: full section context with a highlighted zoom window.
         full_bounds = _add_local_concrete_zone_trace(fig, points, geometry, side=side, full_section=True)
         zoom_bounds = _local_strand_zone_geometry(points, geometry, side=side, full_section=False)[1]
-        _row_guides("x", "y", current_points=points, bounds=full_bounds, compact=False)
+        # Main context is intentionally quiet: no dimensions or row labels here.
+        # The inset below/right is the exclusive strand-reading view.
         _add_strand_state_marker_traces(
             fig,
             points,
             row_info,
-            marker_size=8,
-            bonded_fill="rgba(37, 99, 235, 0.08)",
-            debonded_fill="rgba(220, 38, 38, 0.11)",
-            bonded_line="#2563eb",
-            debonded_line="#dc2626",
-            bonded_width=1.3,
-            debonded_width=1.45,
+            marker_size=4,
+            bonded_fill="rgba(255,255,255,0.0)",
+            debonded_fill="rgba(255,255,255,0.0)",
+            bonded_line="rgba(37,99,235,0.46)",
+            debonded_line="rgba(220,38,38,0.52)",
+            bonded_width=0.9,
+            debonded_width=1.0,
             showlegend=False,
         )
         if zoom_bounds is not None:
@@ -6019,8 +6022,10 @@ def _plot_girder_strand_block_detail(
 
         # Inset axis: true zoomed strand zone overlay.
         fig.update_layout(
+            xaxis={"domain": [0.00, 0.44], "anchor": "y"},
+            yaxis={"domain": [0.08, 0.92], "anchor": "x"},
             xaxis2={
-                "domain": [0.50, 0.97],
+                "domain": [0.56, 0.98],
                 "anchor": "y2",
                 "title": {"text": "strand-zone x (mm)", "font": {"size": 9}},
                 "tickfont": {"size": 8},
@@ -6032,7 +6037,7 @@ def _plot_girder_strand_block_detail(
                 "mirror": True,
             },
             yaxis2={
-                "domain": [0.55, 0.95],
+                "domain": [0.18, 0.86],
                 "anchor": "x2",
                 "title": {"text": ""},
                 "tickfont": {"size": 7},
@@ -6077,19 +6082,14 @@ def _plot_girder_strand_block_detail(
             y1 = float(points["y_mm_abs"].max())
         x_span = max(x1 - x0, 220.0)
         y_span = max(y1 - y0, 220.0)
-        fig.update_xaxes(
-            range=[x0 - max(90.0, 0.08 * x_span), x1 + max(90.0, 0.08 * x_span)],
-            tickfont={"size": 9},
-            title_font={"size": 10},
-            title_text="section x (mm)",
-        )
-        fig.update_yaxes(
-            range=[y0 - max(70.0, 0.08 * y_span), y1 + max(70.0, 0.08 * y_span)],
-            tickfont={"size": 8},
-            title_text="section y (mm)",
-            scaleanchor="x",
-            scaleratio=1,
-        )
+        fig.layout.xaxis.range = [x0 - max(90.0, 0.08 * x_span), x1 + max(90.0, 0.08 * x_span)]
+        fig.layout.xaxis.tickfont = {"size": 9}
+        fig.layout.xaxis.title = {"text": "section x (mm)", "font": {"size": 10}}
+        fig.layout.yaxis.range = [y0 - max(70.0, 0.08 * y_span), y1 + max(70.0, 0.08 * y_span)]
+        fig.layout.yaxis.tickfont = {"size": 8}
+        fig.layout.yaxis.title = {"text": "section y (mm)"}
+        fig.layout.yaxis.scaleanchor = "x"
+        fig.layout.yaxis.scaleratio = 1
 
         inset_x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
         inset_y_values = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
@@ -6104,17 +6104,28 @@ def _plot_girder_strand_block_detail(
         iy_span = max(iy1 - iy0, 180.0)
         fig.update_layout(
             title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
-            height=470,
+            height=480,
             margin={"l": 72, "r": 20, "t": 44, "b": 44},
-            xaxis_title="section x (mm)",
-            yaxis_title="section y (mm)",
             showlegend=False,
             plot_bgcolor="white",
             font={"size": 9},
             annotations=list(fig.layout.annotations) + [
                 go.layout.Annotation(
-                    x=0.735,
-                    y=0.972,
+                    x=0.22,
+                    y=0.965,
+                    xref="paper",
+                    yref="paper",
+                    text="Full section context",
+                    showarrow=False,
+                    font={"size": 9, "color": "rgba(15,23,42,0.72)"},
+                    bgcolor="rgba(255,255,255,0.88)",
+                    bordercolor="rgba(203,213,225,0.72)",
+                    borderwidth=1,
+                    borderpad=2,
+                ),
+                go.layout.Annotation(
+                    x=0.77,
+                    y=0.895,
                     xref="paper",
                     yref="paper",
                     text="Magnified strand detail",
@@ -6124,7 +6135,7 @@ def _plot_girder_strand_block_detail(
                     bordercolor="rgba(203,213,225,0.82)",
                     borderwidth=1,
                     borderpad=2,
-                )
+                ),
             ],
         )
         # Direct nested-axis updates are clearer than overloading update_xaxes.

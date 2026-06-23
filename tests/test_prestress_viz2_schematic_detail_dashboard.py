@@ -295,3 +295,40 @@ def test_non_split_detail_adds_magnified_inset_axes(monkeypatch) -> None:
     assert fig.layout.xaxis2.domain[0] < fig.layout.xaxis2.domain[1]
     assert fig.layout.yaxis2.domain[0] < fig.layout.yaxis2.domain[1]
     assert any("Magnified strand detail" in str(annotation.text) for annotation in fig.layout.annotations)
+
+
+
+def test_non_split_dimension_annotations_live_only_in_inset(monkeypatch) -> None:
+    st = types.ModuleType("streamlit")
+    st.session_state = {}
+    st.column_config = types.SimpleNamespace(
+        CheckboxColumn=lambda *args, **kwargs: None,
+        TextColumn=lambda *args, **kwargs: None,
+        NumberColumn=lambda *args, **kwargs: None,
+        SelectboxColumn=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.geometry.generators import psc_i_girder  # noqa: PLC0415
+    from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
+        _normalize_girder_strand_layout_table,
+        _plot_girder_strand_block_detail,
+    )
+
+    geometry = psc_i_girder(
+        depth_mm=1500.0,
+        top_flange_width_mm=700.0,
+        top_flange_thickness_mm=200.0,
+        web_width_mm=180.0,
+        bottom_flange_width_mm=550.0,
+        bottom_flange_thickness_mm=250.0,
+    )
+    table = _normalize_girder_strand_layout_table(None, span_length_m=20.0, geometry=geometry)
+    fig = _plot_girder_strand_block_detail(table, geometry, side="All")
+
+    dimension_labels = ("typ. s =", "eL =", "eR =", "eb =", "v =")
+    dimension_annotations = [
+        annotation for annotation in fig.layout.annotations if any(label in str(annotation.text) for label in dimension_labels)
+    ]
+    assert dimension_annotations
+    assert all(annotation.xref == "x2" and annotation.yref == "y2" for annotation in dimension_annotations)
