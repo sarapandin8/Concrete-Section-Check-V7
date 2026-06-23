@@ -5400,9 +5400,11 @@ def _local_strand_zone_geometry(
             x1 = min(section_maxx, mid_x + 100.0)
         section_depth = max(section_maxy - section_miny, 1.0)
         y0 = section_miny
-        y1 = min(section_maxy, max(strand_ys) + max(180.0, 0.12 * section_depth))
-        if y1 - y0 < 360.0:
-            y1 = min(section_maxy, y0 + 360.0)
+        # Final split-detail crop: keep enough web boundary for orientation, but
+        # reduce unused headroom so the strand grid and labels remain dominant.
+        y1 = min(section_maxy, max(strand_ys) + max(165.0, 0.105 * section_depth))
+        if y1 - y0 < 340.0:
+            y1 = min(section_maxy, y0 + 340.0)
         clip = Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)])
         try:
             clipped = polygon.intersection(clip)
@@ -5646,7 +5648,7 @@ def _add_strand_detail_dimensions(
         bottom_clearance = max(0.0, bottom_row_y - (refs.get("vertical_segment") or (bottom_row_y, bottom_row_y))[0])
         if split_side_detail:
             bottom_edge = float((refs.get("vertical_segment") or (bottom_row_y, bottom_row_y))[0])
-            edge_y = bottom_edge + max(12.0, min(28.0, 0.030 * y_span))
+            edge_y = bottom_edge + max(10.0, min(20.0, 0.022 * y_span))
         elif bottom_clearance > 35.0:
             edge_y = bottom_row_y - min(bottom_clearance * 0.42, max(30.0, 0.070 * y_span))
         else:
@@ -5656,7 +5658,7 @@ def _add_strand_detail_dimensions(
         left_edge_y = edge_y
         right_edge_y = edge_y
         if left_edge_distance > 1e-6 and right_edge_distance > 1e-6:
-            offset = max(18.0, 0.050 * y_span)
+            offset = max(24.0, 0.065 * y_span)
             right_edge_y = edge_y + offset if split_side_detail else edge_y - offset
         if left_edge_distance > 1e-6:
             _add_detail_dimension_line(
@@ -5688,7 +5690,7 @@ def _add_strand_detail_dimensions(
     if vertical_segment is not None:
         bottom_edge = float(vertical_segment[0])
         if split_side_detail and refs.get("bottom_row_segment") is not None:
-            vertical_x = float(refs["bottom_row_segment"][0]) - max(90.0, 0.12 * x_span)
+            vertical_x = float(refs["bottom_row_segment"][0]) - max(145.0, 0.19 * x_span)
         else:
             vertical_x = min(bottom_xs) - max(52.0, 0.070 * x_span)
         refs.setdefault("x_values", []).append(float(vertical_x))
@@ -5888,9 +5890,13 @@ def _plot_girder_strand_block_detail(
             continue
         left_edge, right_edge = segment
         if split_detail and side_key in {"left", "right"} and local_bounds is not None:
-            left_edge, right_edge = float(local_bounds[0]), float(local_bounds[2])
-            row_line_width = 1.1
-            row_line_color = "rgba(100,116,139,0.10)"
+            strand_left = float(row_points["x_mm"].astype(float).min())
+            strand_right = float(row_points["x_mm"].astype(float).max())
+            guide_pad = max(85.0, 0.16 * max(strand_right - strand_left, 160.0))
+            left_edge = max(float(local_bounds[0]), strand_left - guide_pad)
+            right_edge = min(float(local_bounds[2]), strand_right + guide_pad)
+            row_line_width = 0.75
+            row_line_color = "rgba(100,116,139,0.070)"
         else:
             row_line_width = 2.2
             row_line_color = "rgba(100,116,139,0.16)"
@@ -5964,7 +5970,7 @@ def _plot_girder_strand_block_detail(
     fig.update_layout(
         title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
         height=detail_height,
-        margin={"l": 92, "r": 22, "t": 46, "b": 44},
+        margin={"l": 108, "r": 24, "t": 44, "b": 44},
         xaxis_title="strand x (mm)",
         yaxis_title="",
         showlegend=False,
