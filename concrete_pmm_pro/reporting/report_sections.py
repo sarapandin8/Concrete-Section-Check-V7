@@ -55,6 +55,21 @@ def default_report_section_plan(
         ReportSection("uls_dc_summary", "ULS Demand / Capacity Summary", status=dc_status, table_keys=["uls_demand_capacity_result", "pmm_slice", "pmm_slice_envelope"], figure_keys=["pmm_slice_envelope"] if "pmm_slice_envelope" in figure_keys else [], limitation_keys=["dc_directional_slice_envelope", "convex_hull_slice_envelope"]),
         ReportSection("sls_stress_check", "SLS Stress Check", status=sls_status, table_keys=["sls_stress_results", "sls_prestress_contribution", "transformed_section_properties"], figure_keys=[key for key in ["sls_section_stress_points", "sls_stress_bar_diagram", "transformed_section_preview"] if key in figure_keys], limitation_keys=["ixy_coupling_sls", "cracked_section_sls", "unbonded_prestress"]),
         ReportSection(
+            "generic_precast_lifting_stage_report",
+            "Generic Precast Lifting Stage Stress Check",
+            status="AVAILABLE" if snapshot.member_type == "beam_girder" else "NOT_APPLICABLE",
+            summary="Generic non-Railway precast girder lifting report section when the active preset is I-girder, box beam, plank girder, or voided plank girder; engineering-review only.",
+            table_keys=[
+                "generic_precast_lifting_scope",
+                "generic_precast_lifting_settings",
+                "generic_precast_lifting_load_basis",
+                "generic_precast_lifting_station_stress_rows",
+                "generic_precast_lifting_governing_rows",
+                "generic_precast_lifting_closeout_guard",
+            ],
+            limitation_keys=["beam_girder_shear_torsion"],
+        ),
+        ReportSection(
             "railway_u_girder_sls_engineering_review",
             "Railway U-Girder SLS Engineering Review",
             status="AVAILABLE" if snapshot.member_type == "beam_girder" else "NOT_APPLICABLE",

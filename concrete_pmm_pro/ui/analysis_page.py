@@ -98,6 +98,9 @@ from concrete_pmm_pro.reporting import (
     build_draft_word_report,
     build_exportable_figure,
     build_railway_u_girder_sls_report_package,
+    build_generic_precast_lifting_report_package,
+    generic_precast_lifting_report_tables_to_dataframe,
+    is_generic_precast_lifting_report_context,
     is_railway_u_girder_uls_context,
     build_railway_u_girder_uls_framework_package,
     is_railway_u_girder_report_context,
@@ -17818,6 +17821,52 @@ def _render_serviceability_expander() -> None:
 
 
 
+
+def _render_generic_precast_lifting_report_preview_panel() -> None:
+    """Render GIRDER.LIFT.REPORT1 report/export tables in Report / QA."""
+
+    if not is_generic_precast_lifting_report_context(st.session_state):
+        return
+    st.markdown("**Generic Precast Lifting Stage Stress Check Report**")
+    st.caption(
+        "GIRDER.LIFT.REPORT1 adds report/export tables for non-Railway precast girder lifting. "
+        "This is an engineering-review report section only; it is not a final code-certified lifting design."
+    )
+    package = build_generic_precast_lifting_report_package(st.session_state)
+    st.session_state["generic_precast_lifting_report_package_available"] = bool(package.available)
+    registry_df = generic_precast_lifting_report_tables_to_dataframe(package)
+    cols = st.columns(4)
+    cols[0].metric("Lifting report", "Available" if package.available else "Review")
+    cols[1].metric("Report tables", f"{len(registry_df):,}")
+    cols[2].metric("Warnings", f"{len(package.warnings):,}")
+    cols[3].metric("Certification", "Not certified")
+    for warning in package.warnings:
+        st.warning(warning)
+    st.dataframe(registry_df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "Download Generic Precast Lifting Report Table Registry CSV",
+        data=registry_df.to_csv(index=False),
+        file_name="generic_precast_lifting_report_table_registry.csv",
+        mime="text/csv",
+        use_container_width=True,
+        key="ui_keys1_analysis_page_download_button_generic_lift_report_registry_1",
+    )
+    if not package.available:
+        st.warning("Generic precast lifting report package is not available. Review active preset, section geometry, and lifting settings before exporting the draft report.")
+        return
+    for key, dataframe in package.tables().items():
+        title = key.replace("generic_precast_lifting_", "").replace("_", " ").title()
+        with st.expander(f"Generic Precast Lifting · {title}", expanded=(key == "generic_precast_lifting_governing_rows")):
+            st.dataframe(dataframe, use_container_width=True, hide_index=True)
+            st.download_button(
+                f"Download {title} CSV",
+                data=dataframe.to_csv(index=False),
+                file_name=f"{key}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key=f"ui_keys1_analysis_page_download_button_{key}",
+            )
+
 def _render_railway_u_girder_report_preview_panel() -> None:
     """Render REPORT.RAIL.UGIRDER1 report-ready SLS tables in Report / QA."""
 
@@ -18002,6 +18051,7 @@ def _render_pre_report_qa_expander() -> None:
 
         st.markdown("**Report Export Foundation**")
         st.info("Report manifest, draft outline, draft Word export, and Word report QA are available. PDF export remains future work.")
+        _render_generic_precast_lifting_report_preview_panel()
         _render_railway_u_girder_report_preview_panel()
         meta_cols = st.columns(2)
         report_title = meta_cols[0].text_input(

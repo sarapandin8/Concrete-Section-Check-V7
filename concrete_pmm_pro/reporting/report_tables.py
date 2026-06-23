@@ -13,6 +13,7 @@ from concrete_pmm_pro.reporting.terminology import terminology_to_dataframe
 from concrete_pmm_pro.reporting.traceability import build_result_traceability_snapshot, result_traceability_snapshot_to_dataframe
 from concrete_pmm_pro.reporting.units import unit_conventions_to_dataframe
 from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
+from concrete_pmm_pro.reporting.generic_precast_lifting_report import build_generic_precast_lifting_report_package
 from concrete_pmm_pro.reporting.railway_u_girder_release import build_railway_u_girder_release_package
 from concrete_pmm_pro.reporting.railway_u_girder_final import build_railway_u_girder_final_design_check_package
 from concrete_pmm_pro.analysis.railway_u_girder_uls import build_railway_u_girder_uls_framework_package
@@ -62,6 +63,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
     limitations = collect_limitations_for_report(session_state, include_all=True)
     pmm_benchmark_inventory = summarize_pmm_published_benchmark_inventory()
     railway_report = build_railway_u_girder_sls_report_package(session_state)
+    generic_lifting_report = build_generic_precast_lifting_report_package(session_state)
     railway_uls_report = build_railway_u_girder_uls_framework_package(session_state)
     railway_release = build_railway_u_girder_release_package(session_state)
     railway_final = build_railway_u_girder_final_design_check_package(session_state)
@@ -187,6 +189,29 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
                     "Railway U-Girder staged SLS engineering-review report table. Guarded preview only; not final code-certified.",
                     row_count=len(dataframe),
                     warning="Railway U-Girder report is engineering-review preview, not final code-certified design.",
+                )
+            )
+
+
+    if generic_lifting_report.available:
+        generic_lifting_titles = {
+            "generic_precast_lifting_scope": "Generic Precast Lifting Report Scope",
+            "generic_precast_lifting_settings": "Generic Precast Lifting Settings",
+            "generic_precast_lifting_load_basis": "Generic Precast Lifting Load Basis",
+            "generic_precast_lifting_station_stress_rows": "Generic Precast Lifting Station Stress Rows",
+            "generic_precast_lifting_governing_rows": "Generic Precast Lifting Governing Rows",
+            "generic_precast_lifting_closeout_guard": "Generic Precast Lifting Closeout Guard",
+        }
+        for table_key, dataframe in generic_lifting_report.tables().items():
+            standard_tables.append(
+                ReportTableInfo(
+                    table_key,
+                    generic_lifting_titles.get(table_key, table_key.replace("_", " ").title()),
+                    not dataframe.empty,
+                    "reporting.generic_precast_lifting_report",
+                    "Generic precast lifting-stage engineering-review report table. Individual precast unit only; not final code-certified.",
+                    row_count=len(dataframe),
+                    warning="Generic precast lifting report excludes lifting insert/local hardware, transfer/development certification, and final code-certified design approval.",
                 )
             )
 

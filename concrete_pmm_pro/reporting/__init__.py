@@ -140,6 +140,16 @@ from concrete_pmm_pro.reporting.railway_u_girder_final import (
     railway_u_girder_final_prerequisite_matrix_dataframe,
 )
 
+from concrete_pmm_pro.reporting.generic_precast_lifting_report import (
+    GENERIC_PRECAST_LIFTING_REPORT_CAPABILITY,
+    GENERIC_PRECAST_LIFTING_REPORT_STATUS,
+    GENERIC_PRECAST_LIFTING_TABLE_KEYS,
+    GenericPrecastLiftingReportPackage,
+    build_generic_precast_lifting_report_package,
+    generic_precast_lifting_report_tables_to_dataframe,
+    is_generic_precast_lifting_report_context,
+)
+
 from concrete_pmm_pro.reporting.railway_u_girder_report import (
     RAILWAY_UGIRDER_CLOSEOUT_SCOPE,
     RAILWAY_UGIRDER_CLOSEOUT_STATUS,
@@ -190,6 +200,13 @@ __all__ = [
     "railway_u_girder_final_claim_guard_dataframe",
     "railway_u_girder_release_manifest_dataframe",
     "railway_u_girder_release_readiness_dataframe",
+    "GENERIC_PRECAST_LIFTING_REPORT_CAPABILITY",
+    "GENERIC_PRECAST_LIFTING_REPORT_STATUS",
+    "GENERIC_PRECAST_LIFTING_TABLE_KEYS",
+    "GenericPrecastLiftingReportPackage",
+    "build_generic_precast_lifting_report_package",
+    "generic_precast_lifting_report_tables_to_dataframe",
+    "is_generic_precast_lifting_report_context",
     "railway_u_girder_report_tables_to_dataframe",
     "is_railway_u_girder_report_context",
     "build_railway_u_girder_sls_report_package",
