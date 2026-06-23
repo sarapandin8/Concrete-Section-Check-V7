@@ -192,6 +192,16 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-sec
   background: linear-gradient(135deg, #ecfdf3 0%, #d1fadf 100%) !important;
   box-shadow: 0 0 0 3px rgba(34, 164, 71, 0.14), 0 8px 18px rgba(22, 131, 58, 0.12) !important;
 }
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-section) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div > div {
+  color: #15803d !important;
+  font-weight: 800 !important;
+  font-size: 1.08rem !important;
+}
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.cpmm-commercial-control-section) div[data-testid="stSelectbox"] div[data-baseweb="select"] > div span {
+  color: #15803d !important;
+  font-weight: 800 !important;
+  font-size: 1.08rem !important;
+}
 .cpmm-commercial-control-section {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
