@@ -152,9 +152,9 @@ def test_railway_u_girder_cross_section_layout_uses_readable_inspection_viewport
     table = _normalize_girder_strand_layout_table(None, span_length_m=30.0, geometry=geometry)
     fig = _plot_girder_strand_cross_section_layout(table, geometry)
 
-    assert fig.layout.height == 365
+    assert fig.layout.height == 390
     assert tuple(fig.layout.xaxis.range) == (-3080.0, 3080.0)
-    assert tuple(fig.layout.yaxis.range) == (-960.0, 960.0)
+    assert tuple(fig.layout.yaxis.range) == (-930.0, 1184.0)
     assert fig.layout.yaxis.scaleanchor == "x"
     assert fig.layout.legend.orientation == "h"
 

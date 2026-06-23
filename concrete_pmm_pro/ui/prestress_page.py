@@ -5990,21 +5990,26 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
     section_width = max(section_x_max - section_x_min, 200.0)
     section_depth = max(section_y_max - section_y_min, 200.0)
     x_pad = max(240.0, 0.06 * section_width)
-    y_pad = max(160.0, 0.10 * section_depth)
+    # Keep the overall section schematic clear of the title/legend strip.
+    # The top clearance is intentionally larger than the bottom clearance so
+    # every preset opens slightly lower in the plotting area without changing
+    # the section geometry or aspect ratio.
+    y_bottom_pad = max(130.0, 0.08 * section_depth)
+    y_top_pad = max(260.0, 0.24 * section_depth)
     fig.update_xaxes(range=[section_x_min - x_pad, section_x_max + x_pad])
-    fig.update_yaxes(range=[section_y_min - y_pad, section_y_max + y_pad])
+    fig.update_yaxes(range=[section_y_min - y_bottom_pad, section_y_max + y_top_pad])
 
     fig.update_layout(
         title={"text": "Overall section schematic", "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
-        height=365,
-        margin={"l": 45, "r": 16, "t": 54, "b": 40},
+        height=390,
+        margin={"l": 45, "r": 16, "t": 84, "b": 40},
         xaxis_title="section x (mm)",
         yaxis_title="section y (mm)",
         showlegend=True,
         legend={
             "orientation": "h",
-            "yanchor": "top",
-            "y": 0.99,
+            "yanchor": "bottom",
+            "y": 1.08,
             "xanchor": "right",
             "x": 0.99,
             "bgcolor": "rgba(255,255,255,0.90)",
