@@ -6000,9 +6000,16 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
     fig.update_yaxes(range=[section_y_min - y_bottom_pad, section_y_max + y_top_pad])
 
     fig.update_layout(
-        title={"text": "Overall section schematic", "x": 0.0, "xanchor": "left", "font": {"size": 11, "color": "#101828"}},
+        title={
+            "text": "Overall section schematic",
+            "x": 0.0,
+            "xanchor": "left",
+            "y": 0.985,
+            "yanchor": "top",
+            "font": {"size": 11, "color": "#101828"},
+        },
         height=390,
-        margin={"l": 45, "r": 16, "t": 84, "b": 40},
+        margin={"l": 45, "r": 16, "t": 96, "b": 40},
         xaxis_title="section x (mm)",
         yaxis_title="section y (mm)",
         showlegend=True,
