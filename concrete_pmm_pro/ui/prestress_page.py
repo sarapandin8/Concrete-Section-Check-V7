@@ -5330,6 +5330,155 @@ def _add_detail_dimension_line(
     )
 
 
+
+def _iter_polygon_geometries(geometry_object: Any) -> list[Any]:
+    """Return polygon members from a shapely geometry object."""
+
+    if geometry_object is None or getattr(geometry_object, "is_empty", True):
+        return []
+    geom_type = getattr(geometry_object, "geom_type", "")
+    if geom_type == "Polygon":
+        return [geometry_object]
+    polygons: list[Any] = []
+    for member in getattr(geometry_object, "geoms", []) or []:
+        polygons.extend(_iter_polygon_geometries(member))
+    return polygons
+
+
+def _local_strand_zone_geometry(
+    points: pd.DataFrame,
+    geometry: SectionGeometry | None,
+) -> tuple[Any | None, tuple[float, float, float, float] | None]:
+    """Return a clipped concrete envelope around the active strand block.
+
+    The zoomed detail should read like a local shop-drawing cutout, not another
+    full-section plot.  The clipping window follows the concrete segment that
+    actually contains the strand rows and the nearest relevant bottom boundary.
+    """
+
+    if geometry is None or points.empty:
+        return None, None
+    try:
+        polygon = to_shapely_polygon(geometry)
+    except Exception:
+        return None, None
+    if polygon.is_empty:
+        return None, None
+
+    section_minx, section_miny, section_maxx, section_maxy = [float(value) for value in polygon.bounds]
+    strand_xs = [float(value) for value in points["x_mm"].astype(float).tolist()]
+    strand_ys = [float(value) for value in points["y_mm_abs"].astype(float).tolist()]
+    if not strand_xs or not strand_ys:
+        return None, None
+
+    y_values = sorted({round(value, 6) for value in strand_ys})
+    horizontal_segments: list[tuple[float, float]] = []
+    for y_value in y_values:
+        row_points = points.loc[(points["y_mm_abs"].astype(float) - float(y_value)).abs() < 1e-6]
+        segment = _section_horizontal_segment_for_points_at_y(
+            geometry,
+            float(y_value),
+            [float(value) for value in row_points["x_mm"].astype(float).tolist()],
+        )
+        if segment is not None:
+            horizontal_segments.append((float(segment[0]), float(segment[1])))
+
+    if horizontal_segments:
+        x0 = min(left for left, _ in horizontal_segments)
+        x1 = max(right for _, right in horizontal_segments)
+    else:
+        strand_span = max(max(strand_xs) - min(strand_xs), 120.0)
+        x_pad = max(80.0, 0.22 * strand_span)
+        x0 = min(strand_xs) - x_pad
+        x1 = max(strand_xs) + x_pad
+    x0 = max(section_minx, float(x0))
+    x1 = min(section_maxx, float(x1))
+    if x1 - x0 < 80.0:
+        mid_x = (x0 + x1) / 2.0
+        x0 = max(section_minx, mid_x - 40.0)
+        x1 = min(section_maxx, mid_x + 40.0)
+
+    block_center_x = (min(strand_xs) + max(strand_xs)) / 2.0
+    vertical_segment = _section_vertical_segment_for_points_at_x(geometry, block_center_x, y_values)
+    if vertical_segment is not None:
+        y0 = float(vertical_segment[0])
+    else:
+        y0 = section_miny
+
+    strand_height = max(max(strand_ys) - min(strand_ys), 80.0)
+    top_pad = max(90.0, 0.18 * strand_height)
+    y1 = min(section_maxy, max(strand_ys) + top_pad)
+    # When a row is very near the top of a local slab/box zone, show the real
+    # boundary rather than clipping just above the marker.
+    if section_maxy - y1 < max(70.0, 0.08 * max(section_maxy - section_miny, 1.0)):
+        y1 = section_maxy
+    if y1 - y0 < 120.0:
+        y1 = min(section_maxy, y0 + 120.0)
+    if y1 <= y0:
+        y0 = min(strand_ys) - 60.0
+        y1 = max(strand_ys) + 90.0
+
+    clip = Polygon([(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)])
+    try:
+        clipped = polygon.intersection(clip)
+    except Exception:
+        return None, (x0, y0, x1, y1)
+    return clipped, (x0, y0, x1, y1)
+
+
+def _add_local_concrete_zone_trace(
+    fig: go.Figure,
+    points: pd.DataFrame,
+    geometry: SectionGeometry | None,
+) -> tuple[float, float, float, float] | None:
+    """Add the local concrete envelope used by the zoomed strand-detail panel."""
+
+    clipped, fallback_bounds = _local_strand_zone_geometry(points, geometry)
+    polygons = _iter_polygon_geometries(clipped)
+    if not polygons:
+        return fallback_bounds
+
+    minx_values: list[float] = []
+    miny_values: list[float] = []
+    maxx_values: list[float] = []
+    maxy_values: list[float] = []
+    for index, polygon in enumerate(polygons):
+        x, y = polygon.exterior.xy
+        fig.add_trace(
+            go.Scatter(
+                x=list(x),
+                y=list(y),
+                mode="lines",
+                fill="toself",
+                fillcolor="rgba(15, 76, 129, 0.035)",
+                line={"color": "rgba(15, 76, 129, 0.42)", "width": 1.15},
+                name="Local concrete envelope" if index == 0 else "Local concrete envelope part",
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
+        for interior_index, interior in enumerate(polygon.interiors, start=1):
+            hx, hy = interior.xy
+            fig.add_trace(
+                go.Scatter(
+                    x=list(hx),
+                    y=list(hy),
+                    mode="lines",
+                    fill="toself",
+                    fillcolor="rgba(255,255,255,0.98)",
+                    line={"color": "rgba(15, 76, 129, 0.35)", "width": 1.0},
+                    name=f"Local void {interior_index}",
+                    hoverinfo="skip",
+                    showlegend=False,
+                )
+            )
+        minx, miny, maxx, maxy = [float(value) for value in polygon.bounds]
+        minx_values.append(minx)
+        miny_values.append(miny)
+        maxx_values.append(maxx)
+        maxy_values.append(maxy)
+    return min(minx_values), min(miny_values), max(maxx_values), max(maxy_values)
+
 def _strand_detail_dimension_references(
     points: pd.DataFrame,
     geometry: SectionGeometry | None,
@@ -5347,6 +5496,11 @@ def _strand_detail_dimension_references(
     y_max = float(points["y_mm_abs"].max())
     refs["x_values"].extend([x_min, x_max])
     refs["y_values"].extend([y_min, y_max])
+    _, local_bounds = _local_strand_zone_geometry(points, geometry)
+    if local_bounds is not None:
+        refs["local_bounds"] = tuple(float(value) for value in local_bounds)
+        refs["x_values"].extend([float(local_bounds[0]), float(local_bounds[2])])
+        refs["y_values"].extend([float(local_bounds[1]), float(local_bounds[3])])
 
     bottom_row_y = y_values[0] if y_values else y_min
     bottom_row = points.loc[(points["y_mm_abs"].astype(float) - bottom_row_y).abs() < 1e-6].copy()
@@ -5390,12 +5544,13 @@ def _add_strand_detail_dimensions(fig: go.Figure, points: pd.DataFrame, geometry
     y_max = max(float(value) for value in refs.get("y_values", y_values))
     x_span = max(x_max - x_min, 160.0)
     y_span = max(y_max - y_min, 160.0)
-    h_tick = max(8.0, 0.030 * y_span)
-    v_tick = max(8.0, 0.025 * x_span)
+    h_tick = max(7.0, 0.022 * y_span)
+    v_tick = max(7.0, 0.020 * x_span)
     bottom_row_y = float(refs.get("bottom_row_y") or y_values[0])
 
-    # Horizontal strand spacing: annotate one representative row for each
-    # unique spacing so dense rows do not become a text cloud.
+    # Horizontal strand spacing: show one typical gap for each unique spacing
+    # and choose the pair nearest the row center to keep labels away from edge
+    # distance and cover annotations.
     seen_spacings: set[int] = set()
     for y_value in y_values:
         row_points = points.loc[(points["y_mm_abs"].astype(float) - float(y_value)).abs() < 1e-6]
@@ -5410,25 +5565,35 @@ def _add_strand_detail_dimensions(fig: go.Figure, points: pd.DataFrame, geometry
         if spacing_key in seen_spacings:
             continue
         seen_spacings.add(spacing_key)
-        dim_y = float(y_value) + max(18.0, 0.080 * y_span)
+        target_center = (xs[0] + xs[-1]) / 2.0
+        candidate_pairs = [(xs[i], xs[i + 1]) for i in range(len(xs) - 1) if abs((xs[i + 1] - xs[i]) - spacing) < 1e-6]
+        x0, x1 = min(candidate_pairs, key=lambda pair: abs(((pair[0] + pair[1]) / 2.0) - target_center))
+        dim_y = float(y_value) + max(18.0, 0.055 * y_span)
         _add_detail_dimension_line(
             fig,
-            x0=xs[0],
-            x1=xs[1],
+            x0=x0,
+            x1=x1,
             y0=dim_y,
             y1=dim_y,
-            label=f"s = {_format_dimension_mm(spacing)} mm",
+            label=f"typ. s = {_format_dimension_mm(spacing)} mm",
             orientation="h",
             tick_length=h_tick,
+            font_size=8,
         )
 
-    # Horizontal edge CL at the bottom/prestress datum row.
+    # Horizontal edge CL at the bottom/prestress datum row. These distances are
+    # measured to the actual local concrete segment instead of floating in the
+    # chart background.
     segment = refs.get("bottom_row_segment")
     if segment is not None:
         left_edge, right_edge = float(segment[0]), float(segment[1])
         left_strand = float(min(bottom_xs))
         right_strand = float(max(bottom_xs))
-        edge_y = bottom_row_y - max(22.0, 0.095 * y_span)
+        bottom_clearance = max(0.0, bottom_row_y - (refs.get("vertical_segment") or (bottom_row_y, bottom_row_y))[0])
+        if bottom_clearance > 35.0:
+            edge_y = bottom_row_y - min(bottom_clearance * 0.42, max(30.0, 0.070 * y_span))
+        else:
+            edge_y = bottom_row_y - max(22.0, 0.052 * y_span)
         left_edge_distance = max(0.0, left_strand - left_edge)
         right_edge_distance = max(0.0, right_edge - right_strand)
         if left_edge_distance > 1e-6:
@@ -5441,7 +5606,7 @@ def _add_strand_detail_dimensions(fig: go.Figure, points: pd.DataFrame, geometry
                 label=f"eL = {_format_dimension_mm(left_edge_distance)} mm",
                 orientation="h",
                 tick_length=h_tick,
-                font_size=8,
+                font_size=7,
             )
         if right_edge_distance > 1e-6:
             _add_detail_dimension_line(
@@ -5453,14 +5618,14 @@ def _add_strand_detail_dimensions(fig: go.Figure, points: pd.DataFrame, geometry
                 label=f"eR = {_format_dimension_mm(right_edge_distance)} mm",
                 orientation="h",
                 tick_length=h_tick,
-                font_size=8,
+                font_size=7,
             )
 
     # Vertical bottom edge and row spacing dimensions.
     vertical_segment = refs.get("vertical_segment")
     if vertical_segment is not None:
         bottom_edge = float(vertical_segment[0])
-        vertical_x = min(bottom_xs) - max(42.0, 0.080 * x_span)
+        vertical_x = min(bottom_xs) - max(52.0, 0.070 * x_span)
         bottom_cover = max(0.0, bottom_row_y - bottom_edge)
         if bottom_cover > 1e-6:
             _add_detail_dimension_line(
@@ -5472,12 +5637,20 @@ def _add_strand_detail_dimensions(fig: go.Figure, points: pd.DataFrame, geometry
                 label=f"eb = {_format_dimension_mm(bottom_cover)} mm",
                 orientation="v",
                 tick_length=v_tick,
-                font_size=8,
+                font_size=7,
             )
+        # Show all row-to-row vertical gaps for a small number of rows.  For
+        # larger layouts, keep only unique representative values to prevent the
+        # detail from turning into an annotation cloud.
+        seen_vertical_gaps: set[int] = set()
         for lower, upper in zip(y_values, y_values[1:]):
             gap = float(upper) - float(lower)
             if gap <= 1e-6:
                 continue
+            gap_key = int(round(gap * 10.0))
+            if len(y_values) > 4 and gap_key in seen_vertical_gaps:
+                continue
+            seen_vertical_gaps.add(gap_key)
             _add_detail_dimension_line(
                 fig,
                 x0=vertical_x,
@@ -5487,7 +5660,7 @@ def _add_strand_detail_dimensions(fig: go.Figure, points: pd.DataFrame, geometry
                 label=f"v = {_format_dimension_mm(gap)} mm",
                 orientation="v",
                 tick_length=v_tick,
-                font_size=8,
+                font_size=7,
             )
     return refs
 
@@ -5581,20 +5754,20 @@ def _plot_girder_strand_cross_section_layout(table: pd.DataFrame, geometry: Sect
     fig.update_layout(
         title={"text": "Overall section schematic", "x": 0.0, "xanchor": "left", "font": {"size": 13, "color": "#101828"}},
         height=365,
-        margin={"l": 45, "r": 20, "t": 78, "b": 42},
+        margin={"l": 45, "r": 16, "t": 54, "b": 40},
         xaxis_title="section x (mm)",
         yaxis_title="section y (mm)",
         showlegend=True,
         legend={
             "orientation": "h",
-            "yanchor": "bottom",
-            "y": 1.15,
+            "yanchor": "top",
+            "y": 0.99,
             "xanchor": "right",
-            "x": 1.0,
-            "bgcolor": "rgba(255,255,255,0.92)",
-            "bordercolor": "rgba(203,213,225,0.80)",
+            "x": 0.99,
+            "bgcolor": "rgba(255,255,255,0.90)",
+            "bordercolor": "rgba(203,213,225,0.72)",
             "borderwidth": 1,
-            "font": {"size": 9},
+            "font": {"size": 8},
         },
         plot_bgcolor="white",
     )
@@ -5634,9 +5807,10 @@ def _plot_girder_strand_block_detail(
         )
         return fig
 
-    # Thin local concrete-width guides help engineers see that the strand rows
-    # are still placed in the concrete body without letting the full section
-    # dominate the zoomed detail view.
+    # Local concrete envelope: the zoomed view is a detailing cutout around
+    # the active strands, so edge distances are visually anchored to real
+    # concrete boundaries instead of floating in a blank chart.
+    local_bounds = _add_local_concrete_zone_trace(fig, points, geometry)
     y_values = sorted({round(float(value), 6) for value in points["y_mm_abs"].astype(float).tolist()})
     for y_value in y_values:
         row_points = points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6]
@@ -5649,8 +5823,8 @@ def _plot_girder_strand_block_detail(
                 x=[float(left_edge), float(right_edge)],
                 y=[float(y_value), float(y_value)],
                 mode="lines",
-                line={"color": "rgba(100,116,139,0.18)", "width": 5},
-                name="Local concrete width",
+                line={"color": "rgba(100,116,139,0.16)", "width": 2.2},
+                name="Row datum in concrete",
                 hoverinfo="skip",
                 showlegend=False,
             )
@@ -5681,13 +5855,16 @@ def _plot_girder_strand_block_detail(
             label = f"Row {int(row_numbers[0])}"
         else:
             normalized = [group.replace("L ", "").replace("R ", "") for group in groups]
-            label = normalized[0] if len(set(normalized)) == 1 else " / ".join(groups)
+            label = normalized[0] if len(set(normalized)) == 1 else " / ".join(normalized)
         debonded_count = int(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6, "Debonded selected"].fillna(False).astype(bool).sum())
         total_count = int(len(points.loc[(points["y_mm_abs"].astype(float) - y_value).abs() < 1e-6].index))
         tick_rows.append((y_value, f"{label}  ·  B {total_count - debonded_count} / U {debonded_count}"))
 
     x_values = list(dimension_refs.get("x_values") or []) + points["x_mm"].astype(float).tolist()
     y_values_for_range = list(dimension_refs.get("y_values") or []) + points["y_mm_abs"].astype(float).tolist()
+    if local_bounds is not None:
+        x_values.extend([float(local_bounds[0]), float(local_bounds[2])])
+        y_values_for_range.extend([float(local_bounds[1]), float(local_bounds[3])])
     x_min = min(float(value) for value in x_values)
     x_max = max(float(value) for value in x_values)
     y_min = min(float(value) for value in y_values_for_range)
@@ -5695,26 +5872,26 @@ def _plot_girder_strand_block_detail(
     x_span = max(x_max - x_min, 220.0)
     y_span = max(y_max - y_min, 220.0)
     fig.update_xaxes(
-        range=[x_min - max(78.0, 0.16 * x_span), x_max + max(78.0, 0.16 * x_span)],
-        tickfont={"size": 10},
-        title_font={"size": 11},
+        range=[x_min - max(66.0, 0.105 * x_span), x_max + max(66.0, 0.105 * x_span)],
+        tickfont={"size": 9},
+        title_font={"size": 10},
     )
     fig.update_yaxes(
-        range=[y_min - max(65.0, 0.16 * y_span), y_max + max(58.0, 0.14 * y_span)],
+        range=[y_min - max(52.0, 0.090 * y_span), y_max + max(50.0, 0.090 * y_span)],
         tickmode="array",
         tickvals=[item[0] for item in tick_rows],
         ticktext=[item[1] for item in tick_rows],
-        tickfont={"size": 9},
+        tickfont={"size": 8},
     )
     fig.update_layout(
-        title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 13, "color": "#101828"}},
+        title={"text": title, "x": 0.0, "xanchor": "left", "font": {"size": 12, "color": "#101828"}},
         height=420,
-        margin={"l": 100, "r": 18, "t": 50, "b": 44},
+        margin={"l": 74, "r": 18, "t": 46, "b": 42},
         xaxis_title="strand x (mm)",
         yaxis_title="",
         showlegend=False,
         plot_bgcolor="white",
-        font={"size": 10},
+        font={"size": 9},
     )
     fig.update_xaxes(gridcolor="rgba(15,23,42,0.055)", zerolinecolor="rgba(15,23,42,0.12)")
     fig.update_yaxes(scaleanchor="x", scaleratio=1, gridcolor="rgba(15,23,42,0.055)", zerolinecolor="rgba(15,23,42,0.12)")

@@ -1,15 +1,3 @@
-### CLOSEOUT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Closeout
-
-This milestone closes the current Railway U-Girder development slice as a guarded SLS engineering-review package. It adds an explicit closeout status table to the Railway U-Girder report package and Word report section while preserving the non-certification boundary:
-
-```text
-Railway U-Girder SLS Engineering Review Package - Closeout Ready
-```
-
-Closeout-ready means the accepted Railway U-Girder SLS preview workflow is report-ready with regression evidence, not that the workflow is a final design certification. Transfer/development length, anchorage/end-zone bursting, lifting hardware, creep/shrinkage redistribution, ULS Railway U-Girder coupling, and final certification checks remain future work.
-
-See `docs/design/closeout_rail_ugirder1.md`.
-
 ### UI.COMMERCIAL4.7 — ULS Summary Spacing and Decision Table Polish
 
 Polishes the newly upgraded **Analysis → ULS Strength → Summary** dashboard for better readability and commercial presentation.
@@ -115,6 +103,18 @@ This hotfix corrects the Beam/Girder/Railway U-Girder ULS shear governing-row se
 No shear equation, torsion equation, flexure equation, SLS equation, prestress/debonding logic, geometry generator, section properties, load-combination equation, project schema, or UI layout is changed.
 
 See `docs/design/shear_governing1.md`.
+
+### CLOSEOUT.RAIL.UGIRDER1 — Railway U-Girder SLS Engineering Review Closeout
+
+This milestone closes the current Railway U-Girder development slice as a guarded SLS engineering-review package. It adds an explicit closeout status table to the Railway U-Girder report package and Word report section while preserving the non-certification boundary:
+
+```text
+Railway U-Girder SLS Engineering Review Package - Closeout Ready
+```
+
+Closeout-ready means the accepted Railway U-Girder SLS preview workflow is report-ready with regression evidence, not that the workflow is a final design certification. Transfer/development length, anchorage/end-zone bursting, lifting hardware, creep/shrinkage redistribution, ULS Railway U-Girder coupling, and final certification checks remain future work.
+
+See `docs/design/closeout_rail_ugirder1.md`.
 
 ### REBAR.RAIL.UGIRDER1 — Railway U-Girder Ordinary Rebar Enable Routing Hotfix
 
@@ -1164,3 +1164,9 @@ This is presentation-only polish. It does not change trace coordinates, result d
 Replaced the previous solid dark-navy Streamlit expander bars with a lighter blue accordion style so secondary audit/detail sections no longer dominate the commercial dashboard visual hierarchy. Collapsed and expanded expander headers now use light-blue surfaces, blue borders, and dark readable text; navy is retained for structural/brand emphasis rather than default accordion fills.
 
 This is presentation-only UI polish. It does not change solver equations, SLS/ULS/PMM/prestress/rebar logic, project schema, widget keys, save/load behavior, or navigation state.
+
+## PRESTRESS.VIZ2-2 — Local Strand-Zone Envelope Polish
+
+Polished the PRESTRESS.VIZ2 strand dashboard so zoomed strand-detail panels read like local detailing cutouts instead of strands floating in empty plot space. The detail plot now clips the concrete section to a local strand-zone envelope, includes local void outlines where applicable, keeps dimensions anchored to concrete boundaries, and reduces annotation clutter through typical spacing and compact labels.
+
+This is visualization-only polish for the girder prestress dashboard. It does not change strand layout data, debonding calculations, prestress force states, SLS/ULS solver equations, section geometry generation, project schema, or result persistence behavior.

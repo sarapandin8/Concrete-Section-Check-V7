@@ -118,3 +118,68 @@ def test_detail_panel_source_contains_spacing_and_edge_dimension_helpers() -> No
     assert "eR =" in body
     assert "eb =" in body
     assert "v =" in body
+
+
+def test_detail_panel_draws_local_concrete_envelope_and_keeps_dimensions(monkeypatch) -> None:
+    st = types.ModuleType("streamlit")
+    st.session_state = {}
+    st.column_config = types.SimpleNamespace(
+        CheckboxColumn=lambda *args, **kwargs: None,
+        TextColumn=lambda *args, **kwargs: None,
+        NumberColumn=lambda *args, **kwargs: None,
+        SelectboxColumn=lambda *args, **kwargs: None,
+    )
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.geometry.generators import box_section_fillet  # noqa: PLC0415
+    from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
+        _normalize_girder_strand_layout_table,
+        _plot_girder_strand_block_detail,
+    )
+
+    geometry = box_section_fillet(
+        width_mm=1000.0,
+        height_mm=700.0,
+        t_top_mm=120.0,
+        t_bottom_mm=140.0,
+        t_left_mm=120.0,
+        t_right_mm=120.0,
+        r_inner_mm=0.0,
+    )
+    table = _normalize_girder_strand_layout_table(None, span_length_m=20.0, geometry=geometry)
+    fig = _plot_girder_strand_block_detail(table, geometry, side="All")
+
+    trace_names = [trace.name for trace in fig.data]
+    assert "Local concrete envelope" in trace_names
+    assert any(str(name).startswith("Local void") for name in trace_names)
+    labels = " | ".join(str(annotation.text) for annotation in fig.layout.annotations)
+    assert "typ. s =" in labels
+    assert "eL =" in labels
+    assert "eR =" in labels
+    assert "eb =" in labels
+
+
+def test_overall_non_railway_schematic_does_not_show_left_right_block_labels(monkeypatch) -> None:
+    st = types.ModuleType("streamlit")
+    st.session_state = {}
+    monkeypatch.setitem(sys.modules, "streamlit", st)
+
+    from concrete_pmm_pro.geometry.generators import psc_i_girder  # noqa: PLC0415
+    from concrete_pmm_pro.ui.prestress_page import (  # noqa: PLC0415
+        _normalize_girder_strand_layout_table,
+        _plot_girder_strand_cross_section_layout,
+    )
+
+    geometry = psc_i_girder(
+        depth_mm=1500.0,
+        top_flange_width_mm=700.0,
+        top_flange_thickness_mm=200.0,
+        web_width_mm=180.0,
+        bottom_flange_width_mm=550.0,
+        bottom_flange_thickness_mm=250.0,
+    )
+    table = _normalize_girder_strand_layout_table(None, span_length_m=20.0, geometry=geometry)
+    fig = _plot_girder_strand_cross_section_layout(table, geometry)
+
+    labels = [str(annotation.text) for annotation in fig.layout.annotations]
+    assert not any("Left strand block" in label or "Right strand block" in label for label in labels)
