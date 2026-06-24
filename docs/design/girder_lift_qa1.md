@@ -38,3 +38,13 @@ Implementation guard:
 - Generic precast lifting reads `beam_girder_system_settings.lifting_point_ratio`.
 - Railway U-Girder lifting reads `railway_u_girder_stage_settings.lifting_point_ratio`.
 - Lifting-stage rows no longer early-return solely because two or more stations already exist; the current lifting points are regenerated/merged into the grid.
+
+## GIRDER.LIFT.QA3 live-widget and visual-marker follow-up
+
+The prior QA2 station-grid sync still allowed a Streamlit rerun edge case where the visible Section Builder number-input value could be newer than the persisted settings dictionary read by Analysis. Analysis now merges the live Section Builder widget keys before computing lifting stations, moments, and Railway U-Girder staged-stress previews.
+
+Implementation guard:
+- Railway U-Girder Analysis reads live keys such as `rail_ugirder_assembly_lifting_ratio_input`, `rail_ugirder_assembly_lifting_impact_input`, and `rail_ugirder_assembly_span_length_m_input` before falling back to `railway_u_girder_stage_settings`.
+- Generic bridge/building precast girder Analysis similarly merges live section-assembly widget keys before using `beam_girder_system_settings`.
+- Lifting-stage stress graphs now draw vertical markers at the current lifting points `a` and `L-a`, so the user can visually separate true lifting locations from governing stress locations caused by debonding or code-limit effects.
+- The SLS stage-context card now displays the current Section Builder lifting points for Lifting stage.

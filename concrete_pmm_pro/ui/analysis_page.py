@@ -12658,10 +12658,93 @@ def _girder_sls_stage_pe_value_from_station(station_result: object, stage_label:
     return float(getattr(station_result, "pe_eff_final_eff_kN", 0.0) or 0.0)
 
 
+def _railway_u_girder_stage_settings_for_analysis() -> dict[str, Any]:
+    """Return Railway U-Girder stage settings including live Section Builder widgets.
+
+    Streamlit keeps number-input widget values under their widget keys.  If the
+    user edits Section Builder and immediately switches back to Analysis, the
+    persisted ``railway_u_girder_stage_settings`` dictionary can lag behind the
+    widget state in some rerun paths.  Analysis must therefore merge the live
+    rail assembly widget keys before computing lifting stations, moments, and
+    the staged-stress preview.
+    """
+
+    settings = st.session_state.get("railway_u_girder_stage_settings") or {}
+    if not isinstance(settings, Mapping):
+        settings = {}
+    merged: dict[str, Any] = dict(settings)
+    widget_key_map = {
+        "rail_ugirder_assembly_span_length_m_input": "span_length_m",
+        "rail_ugirder_assembly_concrete_unit_weight_input": "concrete_unit_weight_kN_m3",
+        "rail_ugirder_assembly_formwork_load_input": "formwork_construction_load_kN_m2",
+        "rail_ugirder_assembly_lifting_ratio_input": "lifting_point_ratio",
+        "rail_ugirder_assembly_lifting_impact_input": "lifting_impact_factor",
+    }
+    for widget_key, setting_key in widget_key_map.items():
+        if widget_key in st.session_state:
+            value = st.session_state.get(widget_key)
+            if value is not None:
+                merged[setting_key] = value
+    if merged != settings:
+        st.session_state["railway_u_girder_stage_settings"] = dict(merged)
+    return merged
+
+
+def _beam_girder_system_settings_for_analysis():
+    """Return Beam/Girder system settings including live Section Builder widgets.
+
+    This mirrors the Railway U-Girder live-widget merge for generic precast
+    girders.  It prevents Analysis from using stale lifting a/L, span, or impact
+    values when the user edits the section-specific assembly panel and returns
+    directly to the SLS Lifting tab.
+    """
+
+    settings = st.session_state.get(BEAM_GIRDER_SYSTEM_SETTINGS_KEY) or {}
+    if not isinstance(settings, Mapping):
+        settings = {}
+    merged: dict[str, Any] = dict(settings)
+    mode_settings = _analysis_mode_from_session()
+    if is_building_beam_girder_workflow(mode_settings):
+        widget_key_map = {
+            "building_member_assembly_span_length_m_input": "span_length_m",
+            "building_member_assembly_spacing_m_input": "girder_spacing_m",
+            "building_member_assembly_unit_weight_input": "concrete_unit_weight_kN_m3",
+            "building_member_assembly_tributary_width_m_input": "tributary_width_m",
+            "building_member_assembly_lifting_ratio_input": "lifting_point_ratio",
+            "building_member_assembly_lifting_impact_input": "lifting_impact_factor",
+        }
+        if "building_member_assembly_use_spacing_as_tributary_width" in st.session_state:
+            merged["use_girder_spacing_as_tributary_width"] = bool(st.session_state.get("building_member_assembly_use_spacing_as_tributary_width"))
+    else:
+        widget_key_map = {
+            "section_assembly_span_length_m_input": "span_length_m",
+            "section_assembly_number_of_girders_input": "number_of_girders",
+            "section_assembly_girder_spacing_m_input": "girder_spacing_m",
+            "section_assembly_concrete_unit_weight_input": "concrete_unit_weight_kN_m3",
+            "section_assembly_tributary_width_m_input": "tributary_width_m",
+            "section_assembly_lifting_ratio_input": "lifting_point_ratio",
+            "section_assembly_lifting_impact_input": "lifting_impact_factor",
+        }
+    for widget_key, setting_key in widget_key_map.items():
+        if widget_key in st.session_state:
+            value = st.session_state.get(widget_key)
+            if value is not None:
+                merged[setting_key] = value
+    normalized = system_settings_from_mapping(merged).as_metadata()
+    if normalized != settings:
+        st.session_state[BEAM_GIRDER_SYSTEM_SETTINGS_KEY] = dict(normalized)
+    return system_settings_from_mapping(normalized)
+
+
 def _girder_sls_span_length_from_session(rows: list[Mapping[str, object]] | None = None) -> float:
     """Return the Setup single-source girder span length for SLS previews."""
 
-    system = system_settings_from_mapping(st.session_state.get(BEAM_GIRDER_SYSTEM_SETTINGS_KEY))
+    if _is_railway_u_girder_active_for_sls_material_routing():
+        rail_stage_settings = _railway_u_girder_stage_settings_for_analysis()
+        rail_span = _analysis_float_or_zero(rail_stage_settings.get("span_length_m"))
+        if rail_span > 0.0:
+            return rail_span
+    system = _beam_girder_system_settings_for_analysis()
     if system.span_length_m > 0.0:
         return system.span_length_m
     settings = st.session_state.get("girder_prestress_system_settings") or {}
@@ -12695,7 +12778,7 @@ def _girder_sls_auto_load_breakdown(stage_label: str):
     """Return workflow-appropriate SLS auto-load component breakdown."""
 
     mode_settings = _analysis_mode_from_session()
-    system = system_settings_from_mapping(st.session_state.get(BEAM_GIRDER_SYSTEM_SETTINGS_KEY))
+    system = _beam_girder_system_settings_for_analysis()
     if is_building_beam_girder_workflow(mode_settings):
         return building_auto_load_breakdown_for_stage(
             stage_label=stage_label,
@@ -12728,14 +12811,31 @@ def _girder_sls_lifting_station_extras(span_length_m: float) -> list[float]:
     if span <= 0.0:
         return []
     if _is_railway_u_girder_active_for_sls_material_routing():
-        rail_settings = st.session_state.get("railway_u_girder_stage_settings") or {}
-        ratio = _analysis_float_or_zero(rail_settings.get("lifting_point_ratio")) if isinstance(rail_settings, Mapping) else 0.0
+        rail_settings = _railway_u_girder_stage_settings_for_analysis()
+        ratio = _analysis_float_or_zero(rail_settings.get("lifting_point_ratio"))
     else:
-        system = system_settings_from_mapping(st.session_state.get(BEAM_GIRDER_SYSTEM_SETTINGS_KEY))
+        system = _beam_girder_system_settings_for_analysis()
         ratio = float(system.lifting_point_ratio)
     ratio = min(max(ratio or DEFAULT_LIFTING_POINT_RATIO, 0.05), 0.45)
     a_m = ratio * span
     return [a_m, span - a_m]
+
+
+def _girder_sls_lifting_point_summary(stage_label: str, span_length_m: float) -> tuple[float, float, str] | None:
+    """Return display values for the current two-point lifting locations."""
+
+    if _beam_sls_stage_label_for_analysis(stage_label) != "Lifting stage":
+        return None
+    span = max(_analysis_float_or_zero(span_length_m), 0.0)
+    if span <= 0.0:
+        return None
+    points = sorted(_girder_sls_lifting_station_extras(span))
+    if len(points) < 2:
+        return None
+    a_m = min(points[0], span - points[-1])
+    b_m = span - a_m
+    ratio = a_m / span if span > 0.0 else 0.0
+    return float(a_m), float(b_m), f"a={a_m:.3f} m / L-a={b_m:.3f} m (a/L={ratio:.3f})"
 
 
 def _girder_sls_auto_station_grid(span_length_m: float, stage_label: str | None = None) -> list[float]:
@@ -12843,9 +12943,7 @@ def _railway_u_girder_lifting_full_length_sls_dataframe(
     if geometry is None:
         return pd.DataFrame()
     strand_table = st.session_state.get("girder_strand_layout_table")
-    settings = st.session_state.get("railway_u_girder_stage_settings") or {}
-    if not isinstance(settings, Mapping):
-        settings = {}
+    settings = _railway_u_girder_stage_settings_for_analysis()
     stations = sorted({_analysis_float_or_zero(row.get("Station x (m)")) for row in load_rows})
     stations = [x for x in stations if 0.0 <= x <= max(float(span_length_m), 0.0)]
     if not stations:
@@ -12958,7 +13056,7 @@ def _girder_full_length_sls_stage_rows(
         basis = basis_options.bases[basis_name]
         user_n_kN = _analysis_float_or_zero(raw_row.get("N"))
         user_mx_kNm = _analysis_float_or_zero(raw_row.get("Mx"))
-        system_settings = system_settings_from_mapping(st.session_state.get(BEAM_GIRDER_SYSTEM_SETTINGS_KEY))
+        system_settings = _beam_girder_system_settings_for_analysis()
         if _beam_sls_stage_label_for_analysis(stage_label) == "Lifting stage":
             auto_mx_kNm = two_point_lifting_moment_kNm(
                 auto_breakdown.total_kN_m,
@@ -13599,6 +13697,11 @@ def _girder_sls4c_stage_basis_cards(
         pe_min = float(pd.to_numeric(df["Pe stage (kN)"], errors="coerce").fillna(0.0).min())
         pe_max = float(pd.to_numeric(df["Pe stage (kN)"], errors="coerce").fillna(0.0).max())
         active_pe = f"Pe(x) {pe_min:,.1f}–{pe_max:,.1f} kN"
+    stage_context_detail = "Limit stage is auto-selected from the active tab"
+    span_for_lifting = float(pd.to_numeric(df.get("Station x (m)", pd.Series([0.0])), errors="coerce").max(skipna=True) or 0.0)
+    lifting_summary = _girder_sls_lifting_point_summary(stage_label, span_for_lifting)
+    if lifting_summary is not None:
+        stage_context_detail = f"Current Section Builder lifting points: {lifting_summary[2]}"
     return [
         {
             "title": "Design code / limit basis",
@@ -13610,7 +13713,7 @@ def _girder_sls4c_stage_basis_cards(
         {
             "title": "Stage context",
             "value": stage_label,
-            "detail": "Limit stage is auto-selected from the active tab",
+            "detail": stage_context_detail,
             "status": "ready",
         },
         {
@@ -14249,6 +14352,33 @@ def _make_girder_full_length_sls_figure(df: pd.DataFrame, *, stage_label: str) -
     if abs(x_max - x_min) <= 1e-9:
         x_min -= 0.5
         x_max += 0.5
+    lifting_summary = _girder_sls_lifting_point_summary(stage_label, x_max)
+    if lifting_summary is not None:
+        for lift_x, lift_label in ((lifting_summary[0], "Lifting point a"), (lifting_summary[1], "Lifting point L-a")):
+            fig.add_shape(
+                type="line",
+                x0=lift_x,
+                x1=lift_x,
+                y0=0.0,
+                y1=1.0,
+                xref="x",
+                yref="paper",
+                line={"color": "rgba(37, 99, 235, 0.42)", "width": 1.7, "dash": "dot"},
+                layer="below",
+            )
+            fig.add_annotation(
+                x=lift_x,
+                y=1.04,
+                xref="x",
+                yref="paper",
+                text=f"{lift_label}<br>x={lift_x:.3f} m",
+                showarrow=False,
+                font={"size": 10, "color": "#1d4ed8"},
+                bgcolor="rgba(239,246,255,0.86)",
+                bordercolor="rgba(37,99,235,0.34)",
+                borderwidth=1,
+                borderpad=2,
+            )
     fig.add_trace(
         go.Scatter(
             x=[x_min, x_max],
