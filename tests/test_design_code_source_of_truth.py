@@ -12,12 +12,16 @@ from concrete_pmm_pro.core.design_code import (
     normalize_project_code_edition,
     normalize_project_design_code,
     project_code_capability_cards,
+    workflow_project_code_edition_from_session,
+    workflow_project_code_label_from_session,
+    workflow_project_design_code_from_session,
 )
 from concrete_pmm_pro.core.project import ProjectModel
 from concrete_pmm_pro.io.project_io import apply_project_to_session_state, project_from_session_state, project_to_json
 from concrete_pmm_pro.ui.project_page import _project_design_code_cards
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+APP_SOURCE = (REPO_ROOT / "app.py").read_text(encoding="utf-8")
 ANALYSIS_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "analysis_page.py").read_text(encoding="utf-8")
 PRESTRESS_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "prestress_page.py").read_text(encoding="utf-8")
 PROJECT_SOURCE = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "project_page.py").read_text(encoding="utf-8")
@@ -117,3 +121,31 @@ def test_project_page_source_has_workflow_aware_design_code_routing() -> None:
     assert "Building Beam/Girder is ACI 318 only" in PROJECT_SOURCE
     assert 'if analysis_mode.member_type == "beam_girder"' in PROJECT_SOURCE
     assert 'elif analysis_mode.member_type == "building_beam_girder"' in PROJECT_SOURCE
+
+
+def test_design_code_route1_chrome_and_analysis_use_workflow_compatible_code_when_session_is_stale() -> None:
+    stale_bridge_session = {
+        "design_code": "ACI 318",
+        "code_edition": "ACI 318-19",
+        "analysis_mode_settings": AnalysisModeSettings(member_type="beam_girder"),
+    }
+    assert workflow_project_design_code_from_session(stale_bridge_session) == PROJECT_CODE_AASHTO_LRFD
+    assert workflow_project_code_edition_from_session(stale_bridge_session) == "AASHTO LRFD 9th Edition"
+    assert workflow_project_code_label_from_session(stale_bridge_session) == "AASHTO LRFD 9th Edition"
+
+    stale_building_session = {
+        "design_code": "AASHTO LRFD",
+        "code_edition": "AASHTO LRFD 9th Edition",
+        "analysis_mode_settings": {"member_type": "building_beam_girder"},
+    }
+    assert workflow_project_design_code_from_session(stale_building_session) == PROJECT_CODE_ACI318
+    assert workflow_project_code_edition_from_session(stale_building_session) == "ACI 318-19"
+
+
+def test_design_code_route1_source_uses_workflow_compatible_code_in_global_chrome_and_analysis_cards() -> None:
+    assert "workflow_project_code_label_from_session" in APP_SOURCE
+    assert "workflow_project_design_code_from_session" in ANALYSIS_SOURCE
+    assert "workflow_project_design_code_from_session" in PRESTRESS_SOURCE
+    assert 'return workflow_project_code_label_from_session(st.session_state)' in APP_SOURCE
+    assert 'code = workflow_project_design_code_from_session(st.session_state)' in ANALYSIS_SOURCE
+    assert 'return workflow_project_design_code_from_session(st.session_state)' in PRESTRESS_SOURCE

@@ -21,6 +21,7 @@ from concrete_pmm_pro.core.design_code import (
     PROJECT_CODE_ACI318,
     normalize_project_design_code,
     project_design_code_from_session,
+    workflow_project_design_code_from_session,
 )
 from concrete_pmm_pro.core.reinforcement_system import ordinary_rebar_enabled, prestressing_steel_enabled
 from concrete_pmm_pro.core.units import kN_to_N
@@ -1934,7 +1935,7 @@ def _effective_girder_loss_code_basis(settings: dict[str, Any]) -> str:
 
     selected = str(settings.get("loss_code_basis", GIRDER_LOSS_BASIS_USE_PROJECT) or GIRDER_LOSS_BASIS_USE_PROJECT)
     if selected == GIRDER_LOSS_BASIS_USE_PROJECT:
-        return project_design_code_from_session(st.session_state)
+        return workflow_project_design_code_from_session(st.session_state)
     if selected == GIRDER_LOSS_BASIS_ACI_PCI:
         return PROJECT_CODE_ACI318
     if selected == GIRDER_LOSS_BASIS_AASHTO:
@@ -1952,7 +1953,7 @@ def _render_girder_loss_code_basis_selector(settings: dict[str, Any], *, method:
     implementation.
     """
 
-    project_code = project_design_code_from_session(st.session_state)
+    project_code = workflow_project_design_code_from_session(st.session_state)
     current = str(settings.get("loss_code_basis", GIRDER_LOSS_BASIS_USE_PROJECT) or GIRDER_LOSS_BASIS_USE_PROJECT)
     if current not in GIRDER_LOSS_CODE_BASIS_OPTIONS:
         current = GIRDER_LOSS_BASIS_USE_PROJECT
@@ -3129,7 +3130,7 @@ def _render_girder_force_states_losses_workspace(strand_table: pd.DataFrame, geo
         effective_loss_basis = _effective_girder_loss_code_basis(loss_settings)
         metrics = [
             PrestressMetric("Loss mode", "Refined AASHTO" if mode == "Refined AASHTO time-dependent loss" else "Code estimate", "LOSS3A refined workflow" if mode == "Refined AASHTO time-dependent loss" else "approximate LOSS2A workflow", "info", strong=True),
-            PrestressMetric("Loss basis", effective_loss_basis, "inherits from Setup unless overridden", "warning" if effective_loss_basis != project_design_code_from_session(st.session_state) else "info"),
+            PrestressMetric("Loss basis", effective_loss_basis, "inherits from workflow-compatible project code unless overridden", "warning" if effective_loss_basis != workflow_project_design_code_from_session(st.session_state) else "info"),
             PrestressMetric("Apply status", st.session_state.get("girder_prestress_code_loss_apply_status", "Pending apply"), "calculated loss result"),
         ]
         metrics.extend(_stage_pe_mapping_metrics_from_table(synced_force_table, sls_feed_ready=sls_feed_ready))

@@ -11,6 +11,7 @@ import streamlit as st
 
 from concrete_pmm_pro.core.analysis import AnalysisModeSettings
 from concrete_pmm_pro.core.analysis_modes import analysis_mode_label
+from concrete_pmm_pro.core.design_code import workflow_project_code_label_from_session
 from concrete_pmm_pro.state.dirty_state import current_project_dirty_status, update_dirty_state_from_session
 from concrete_pmm_pro.io.project_io import (
     ProjectIOError,
@@ -1181,9 +1182,9 @@ def _current_section_label_for_chrome() -> str:
 
 
 def _project_code_label_for_chrome() -> str:
-    code = str(st.session_state.get("design_code") or st.session_state.get("project_design_code") or "ACI 318")
-    edition = str(st.session_state.get("code_edition") or st.session_state.get("project_code_edition") or "")
-    return f"{code} {edition}".strip()
+    """Return workflow-compatible Design Code for the always-visible app chrome."""
+
+    return workflow_project_code_label_from_session(st.session_state)
 
 
 def _render_sidebar_active_context() -> None:

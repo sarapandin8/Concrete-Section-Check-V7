@@ -72,6 +72,7 @@ from concrete_pmm_pro.core.design_code import (
     normalize_project_code_edition,
     project_code_edition_from_session,
     project_design_code_from_session,
+    workflow_project_design_code_from_session,
 )
 from concrete_pmm_pro.core.reinforcement_system import (
     effective_prestress_for_analysis,
@@ -18618,7 +18619,7 @@ def _commercial_report_qa_dashboard_cards(settings: AnalysisModeSettings) -> lis
     """Return visual-only dashboard cards for the promoted Report / QA workspace."""
 
     workflow_label = analysis_mode_label(settings)
-    code = project_design_code_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
     readiness = st.session_state.get("analysis_status", "Ready to review")
     return [
         {"title": "Active review", "value": "Report / QA", "detail": "Reads stored results only", "status": "info"},
@@ -18649,7 +18650,7 @@ def _commercial_analysis_dashboard_cards(settings: AnalysisModeSettings, active_
     """Return visual-only dashboard cards for the Analysis workspace."""
 
     workflow_label = analysis_mode_label(settings)
-    code = project_design_code_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
     route = "PMM / ULS" if is_pmm_primary_workflow(settings) else ("Bridge girder" if is_beam_girder_future_workflow(settings) else "Building girder")
     readiness = st.session_state.get("analysis_status", "Ready to review")
     return [

@@ -124,6 +124,57 @@ def project_code_edition_from_session(session_state: Mapping[str, Any] | Any) ->
     return normalize_project_code_edition(code, getter("code_edition", None))
 
 
+def workflow_member_type_from_session(session_state: Mapping[str, Any] | Any) -> str:
+    """Return the active workflow member type from session state.
+
+    Chrome/header widgets are rendered on every page and may execute before the
+    Project page has normalized ``design_code`` for the current workflow.  Read
+    the active AnalysisModeSettings directly so display and routing guards can
+    still show the workflow-compatible design code.
+    """
+
+    getter = session_state.get if hasattr(session_state, "get") else lambda key, default=None: getattr(session_state, key, default)
+    settings = getter("analysis_mode_settings", None)
+    if isinstance(settings, Mapping):
+        member = str(settings.get("member_type") or "").strip()
+        if member:
+            return member
+    member = str(getattr(settings, "member_type", "") or "").strip()
+    if member:
+        return member
+    return str(getter("member_type", "column_pier_pmm") or "column_pier_pmm")
+
+
+def workflow_project_design_code_from_session(session_state: Mapping[str, Any] | Any) -> str:
+    """Return the workflow-compatible project design code from session state.
+
+    This read-side guard prevents stale project/session labels such as ACI 318
+    from being displayed while the active workflow is Bridge Beam/Girder, where
+    AASHTO LRFD is mandatory.
+    """
+
+    member = workflow_member_type_from_session(session_state)
+    return default_project_design_code_for_workflow(member, project_design_code_from_session(session_state))
+
+
+def workflow_project_code_edition_from_session(session_state: Mapping[str, Any] | Any) -> str:
+    """Return a valid edition label for the workflow-compatible design code."""
+
+    getter = session_state.get if hasattr(session_state, "get") else lambda key, default=None: getattr(session_state, key, default)
+    code = workflow_project_design_code_from_session(session_state)
+    return normalize_project_code_edition(code, getter("code_edition", getter("project_code_edition", None)))
+
+
+def workflow_project_code_label_from_session(session_state: Mapping[str, Any] | Any) -> str:
+    """Return a display label that cannot contradict the active workflow."""
+
+    code = workflow_project_design_code_from_session(session_state)
+    edition = workflow_project_code_edition_from_session(session_state)
+    if edition and code.casefold() in edition.casefold():
+        return edition
+    return f"{code} {edition}".strip()
+
+
 def girder_sls_code_for_project_code(code: object | None) -> GirderSLSProfileCode:
     """Map project code to the existing girder SLS preview profile namespace."""
 
