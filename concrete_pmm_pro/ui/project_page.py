@@ -47,6 +47,10 @@ class DashboardCard:
     strong: bool = False
 
 
+_PROJECT_DESIGN_CODE_WIDGET_SYNC_KEY = "_project_design_code_widget_sync"
+_PROJECT_CODE_EDITION_WIDGET_SYNC_KEY = "_project_code_edition_widget_sync"
+
+
 _DASHBOARD_CSS = """
 <style>
 
@@ -816,6 +820,69 @@ def _analysis_configuration_cards(analysis_mode: AnalysisModeSettings) -> list[D
     ]
 
 
+def _sync_setup_design_code_widget_state_before_render(
+    session_state: Any,
+    *,
+    member_type: object | None,
+) -> tuple[str, str]:
+    """Synchronize Setup design-code widgets without swallowing user changes.
+
+    CODE.SYNC3 fixes a Streamlit ordering edge case: after the user changes the
+    Setup ``design_code`` selectbox, the new value exists in the widget-owned
+    key before the page body is rendered again.  If we blindly copy the durable
+    ``project_design_code`` value back into that widget key at the top of the
+    page, the selectbox snaps back to the old code and AASHTO cannot be chosen.
+
+    A small sync marker records the durable value last copied into the widget.
+    When the widget key differs from that marker and the marker still matches
+    the durable value, the difference is treated as a real user selection and is
+    promoted to the durable project key before the selectbox is created.
+    """
+
+    allowed_codes = set(allowed_project_design_codes_for_workflow(member_type))
+    durable_code = default_project_design_code_for_workflow(
+        member_type,
+        session_state.get(PROJECT_DESIGN_CODE_STATE_KEY, session_state.get("design_code")),
+    )
+    widget_code_raw = session_state.get("design_code")
+    widget_code = default_project_design_code_for_workflow(member_type, widget_code_raw)
+    widget_sync_code = session_state.get(_PROJECT_DESIGN_CODE_WIDGET_SYNC_KEY)
+
+    code_from_user_widget = (
+        widget_code_raw is not None
+        and widget_sync_code == durable_code
+        and widget_code != durable_code
+        and widget_code in allowed_codes
+    )
+    selected_code = widget_code if code_from_user_widget else durable_code
+
+    durable_edition = normalize_project_code_edition(
+        selected_code,
+        session_state.get(PROJECT_CODE_EDITION_STATE_KEY, session_state.get("code_edition")),
+    )
+    widget_edition_raw = session_state.get("code_edition")
+    widget_edition = normalize_project_code_edition(selected_code, widget_edition_raw)
+    widget_sync_edition = session_state.get(_PROJECT_CODE_EDITION_WIDGET_SYNC_KEY)
+    edition_from_user_widget = (
+        widget_edition_raw is not None
+        and widget_sync_edition == durable_edition
+        and widget_edition != durable_edition
+        and widget_edition in code_edition_options_for(selected_code)
+    )
+    selected_edition = widget_edition if edition_from_user_widget else durable_edition
+
+    code, edition = sync_project_design_code_to_session(
+        session_state,
+        member_type=member_type,
+        selected_code=selected_code,
+        selected_edition=selected_edition,
+        sync_legacy_widget_keys=True,
+    )
+    session_state[_PROJECT_DESIGN_CODE_WIDGET_SYNC_KEY] = code
+    session_state[_PROJECT_CODE_EDITION_WIDGET_SYNC_KEY] = edition
+    return code, edition
+
+
 def _project_design_code_cards(project: ProjectModel, analysis_mode: AnalysisModeSettings) -> list[DashboardCard]:
     """Return CODE.SETUP1 source-of-truth and capability guard cards."""
 
@@ -838,7 +905,7 @@ def _render_workflow_aware_design_code_selector(analysis_mode: AnalysisModeSetti
     """
 
     allowed_codes = list(allowed_project_design_codes_for_workflow(analysis_mode.member_type))
-    current_code, current_edition = sync_project_design_code_to_session(
+    current_code, current_edition = _sync_setup_design_code_widget_state_before_render(
         st.session_state,
         member_type=analysis_mode.member_type,
     )
@@ -881,13 +948,15 @@ def _render_workflow_aware_design_code_selector(analysis_mode: AnalysisModeSetti
                 key="code_edition",
                 help="Saved with the project JSON. Solver-specific edition calibration is added only by named future milestones.",
             )
-        sync_project_design_code_to_session(
+        selected_code, selected_edition = sync_project_design_code_to_session(
             st.session_state,
             member_type=analysis_mode.member_type,
             selected_code=selected_code,
             selected_edition=selected_edition,
             sync_legacy_widget_keys=False,
         )
+        st.session_state[_PROJECT_DESIGN_CODE_WIDGET_SYNC_KEY] = selected_code
+        st.session_state[_PROJECT_CODE_EDITION_WIDGET_SYNC_KEY] = selected_edition
         if len(allowed_codes) == 1:
             st.info(f"Design Code is locked by workflow: {selected_code}.")
 
@@ -1083,18 +1152,27 @@ def _apply_pending_project_load() -> None:
     )
 
 
+def _ensure_project_default_state(session_state: Any) -> None:
+    session_state.setdefault("project_name", "Untitled Project")
+    session_state.setdefault("designer", "")
+    session_state.setdefault("description", "")
+    # DESIGN.CODE.STATE2/3: durable keys are the analysis/report source of truth,
+    # but Setup widget keys must not be overwritten at the top of the rerun.
+    # A fresh selectbox change is delivered through the widget-owned key before
+    # the selector is rendered; overwriting it here makes the dropdown snap back
+    # to the old code.  Initialize missing keys only, then let the selector sync
+    # any real widget change into the durable project keys before creating the
+    # widgets.
+    code = project_design_code_from_session(session_state)
+    edition = project_code_edition_from_session(session_state)
+    session_state.setdefault(PROJECT_DESIGN_CODE_STATE_KEY, code)
+    session_state.setdefault(PROJECT_CODE_EDITION_STATE_KEY, normalize_project_code_edition(code, edition))
+    session_state.setdefault("design_code", session_state[PROJECT_DESIGN_CODE_STATE_KEY])
+    session_state.setdefault("code_edition", session_state[PROJECT_CODE_EDITION_STATE_KEY])
+
+
 def _ensure_project_defaults() -> None:
-    st.session_state.setdefault("project_name", "Untitled Project")
-    st.session_state.setdefault("designer", "")
-    st.session_state.setdefault("description", "")
-    # DESIGN.CODE.STATE1: keep Project Design Code in durable non-widget keys.
-    # Streamlit may drop the Setup selectbox-owned keys when Analysis is opened.
-    code = project_design_code_from_session(st.session_state)
-    edition = project_code_edition_from_session(st.session_state)
-    st.session_state[PROJECT_DESIGN_CODE_STATE_KEY] = code
-    st.session_state[PROJECT_CODE_EDITION_STATE_KEY] = normalize_project_code_edition(code, edition)
-    st.session_state["design_code"] = st.session_state[PROJECT_DESIGN_CODE_STATE_KEY]
-    st.session_state["code_edition"] = st.session_state[PROJECT_CODE_EDITION_STATE_KEY]
+    _ensure_project_default_state(st.session_state)
 
 
 
