@@ -259,3 +259,39 @@ def test_rebar_page_contains_column_pier_transverse_workflow_source() -> None:
     assert "column_pier_transverse_reinforcement_table" in source
     assert "future checks must not count prestress as longitudinal torsion Al" in source
     assert "Prestress strands, tendons, and PT bars are not counted as Al" in source
+
+
+def test_perimeter_rebar_layout_filters_close_step_corner_bars_for_voided_plank() -> None:
+    from math import dist
+
+    from concrete_pmm_pro.geometry.generators import parametric_plank_girder_voided_interior
+    from concrete_pmm_pro.geometry.rebar_layout import generate_perimeter_rebar_layout
+
+    geometry = parametric_plank_girder_voided_interior(
+        B_mm=990.0,
+        b1_mm=45.0,
+        b2_mm=70.0,
+        b3_mm=850.0,
+        H_mm=450.0,
+        h1_mm=80.0,
+        h2_mm=140.0,
+    )
+
+    result = generate_perimeter_rebar_layout(
+        geometry,
+        bar_size="DB20",
+        diameter_mm=20.0,
+        material="SD40",
+        edge_offset_mm=75.0,
+        target_spacing_mm=150.0,
+        min_bars=4,
+        label_prefix="B",
+    )
+
+    assert result.ok
+    points = [(float(row.x_mm), float(row.y_mm)) for row in result.table.itertuples()]
+    nearest_spacing = min(dist(a, b) for i, a in enumerate(points) for b in points[i + 1 :])
+    assert nearest_spacing >= 75.0
+    assert len(result.table) == 15
+    assert any("Removed 2 closely spaced" in warning for warning in result.warnings)
+    assert any("Minimum generated bar center spacing guard" in info for info in result.info)

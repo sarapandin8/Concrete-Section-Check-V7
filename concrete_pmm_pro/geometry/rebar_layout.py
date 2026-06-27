@@ -140,6 +140,70 @@ def _dedup_distances(distances: Iterable[float], perimeter_length_mm: float, tol
     return unique
 
 
+def _circular_distance(a: float, b: float, perimeter_length_mm: float) -> float:
+    delta = abs((float(a) - float(b)) % perimeter_length_mm)
+    return min(delta, perimeter_length_mm - delta)
+
+
+def _max_circular_spacing(distances: Iterable[float], perimeter_length_mm: float) -> float:
+    values = _dedup_distances(distances, perimeter_length_mm)
+    if len(values) <= 1:
+        return perimeter_length_mm if values else 0.0
+    spacings: list[float] = []
+    for index, start in enumerate(values):
+        end = values[(index + 1) % len(values)]
+        if end <= start:
+            end += perimeter_length_mm
+        spacings.append(end - start)
+    return max(spacings) if spacings else 0.0
+
+
+def _minimum_center_spacing_for_layout(diameter_mm: float, target_spacing_mm: float) -> float:
+    """Return the auto-layout anti-overlap center spacing guard in mm.
+
+    The perimeter generator is a preview/detailing aid.  At re-entrant notches
+    and short chamfer/step transitions, a strict corner-control algorithm can
+    place one mandatory bar at each adjacent offset vertex even when the two
+    vertices are visually and practically too close.  Use a conservative
+    minimum center-spacing guard to collapse those short-segment duplicates
+    while keeping normal target-spacing layouts unchanged.
+    """
+
+    return max(50.0, 2.5 * float(diameter_mm), 0.50 * float(target_spacing_mm))
+
+
+def _enforce_minimum_center_spacing(
+    distances: Iterable[float],
+    perimeter_length_mm: float,
+    minimum_center_spacing_mm: float,
+) -> tuple[list[float], int]:
+    """Remove generated perimeter distances that are too close to neighbours.
+
+    Distances are sorted along the closed offset perimeter.  The first point in
+    a close pair is retained and the next point is removed; this preserves a
+    stable deterministic layout and prevents apparent double bars at short
+    polygon steps.  The final wrap-around pair is checked as well.
+    """
+
+    values = _dedup_distances(distances, perimeter_length_mm)
+    if len(values) <= 1 or minimum_center_spacing_mm <= 0.0:
+        return values, 0
+
+    kept: list[float] = []
+    removed = 0
+    for value in values:
+        if kept and _circular_distance(value, kept[-1], perimeter_length_mm) < minimum_center_spacing_mm:
+            removed += 1
+            continue
+        kept.append(value)
+
+    while len(kept) > 1 and _circular_distance(kept[0], kept[-1], perimeter_length_mm) < minimum_center_spacing_mm:
+        kept.pop()
+        removed += 1
+
+    return kept, removed
+
+
 def _uniform_distances(perimeter_length_mm: float, target_spacing_mm: float, min_bars: int) -> tuple[list[float], float]:
     generated_count = max(int(min_bars), int(math.ceil(perimeter_length_mm / target_spacing_mm)))
     actual_spacing_mm = perimeter_length_mm / generated_count
@@ -277,7 +341,19 @@ def generate_perimeter_rebar_layout(
         target_spacing_mm=float(target_spacing_mm),
         min_bars=int(min_bars),
     )
+    minimum_center_spacing_mm = _minimum_center_spacing_for_layout(float(diameter_mm), float(target_spacing_mm))
+    distances, removed_close_points = _enforce_minimum_center_spacing(
+        distances,
+        perimeter_length_mm,
+        minimum_center_spacing_mm,
+    )
+    actual_spacing_mm = _max_circular_spacing(distances, perimeter_length_mm)
     generated_count = len(distances)
+    if removed_close_points:
+        warnings.append(
+            f"Removed {removed_close_points} closely spaced generated bar point(s) to avoid overlapping perimeter bars; "
+            f"minimum center spacing guard = {minimum_center_spacing_mm:.1f} mm."
+        )
     if control_count:
         info.append(
             f"Corner-controlled layout: {control_count} section corner/control bar(s) placed before filling intermediate bars."
@@ -330,6 +406,7 @@ def generate_perimeter_rebar_layout(
         f"Generated {generated_count} bar(s) along an inward offset perimeter; maximum segment spacing ≈ {actual_spacing_mm:.1f} mm."
     )
     info.append(f"Bar center offset from concrete edge = {edge_offset_mm:.1f} mm.")
+    info.append(f"Minimum generated bar center spacing guard = {minimum_center_spacing_mm:.1f} mm.")
 
     return PerimeterRebarLayoutResult(
         table=pd.DataFrame(rows, columns=columns),
