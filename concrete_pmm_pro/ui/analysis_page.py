@@ -72,6 +72,7 @@ from concrete_pmm_pro.core.design_code import (
     normalize_project_code_edition,
     project_code_edition_from_session,
     project_design_code_from_session,
+    workflow_project_code_edition_from_session,
     workflow_project_design_code_from_session,
 )
 from concrete_pmm_pro.core.reinforcement_system import (
@@ -889,7 +890,7 @@ def _girder_sls_project_design_code_from_session() -> str:
     """Return workflow-enforced project code for Beam/Girder SLS previews."""
 
     mode = _analysis_mode_from_session()
-    return default_project_design_code_for_workflow(mode.member_type, project_design_code_from_session(st.session_state))
+    return default_project_design_code_for_workflow(mode.member_type, workflow_project_design_code_from_session(st.session_state))
 
 
 def _girder_sls_project_code_edition_from_session() -> str:
@@ -3770,7 +3771,7 @@ def _column_pier_shear_result_for_case_direction(
 ) -> dict[str, object]:
     case = str(demand_row.get("Case Name") or "-")
     vu_kN = _beam_uls_float(demand_row.get(direction))
-    code = project_design_code_from_session(state)
+    code = workflow_project_design_code_from_session(state)
     if code != PROJECT_CODE_ACI318:
         return {
             "Check": "Shear",
@@ -4112,7 +4113,7 @@ def _column_pier_torsion_result_for_case(
 ) -> dict[str, object]:
     case = str(demand_row.get("Case Name") or "-")
     tu_kNm = _beam_uls_float(demand_row.get("Tu"))
-    code = project_design_code_from_session(state)
+    code = workflow_project_design_code_from_session(state)
     if code != PROJECT_CODE_ACI318:
         return {
             "Check": "Torsion",
@@ -4408,7 +4409,7 @@ def _column_pier_combined_vt_result_for_case_direction(
     case = str(demand_row.get("Case Name") or "-")
     vu_kN = _beam_uls_float(demand_row.get(direction))
     tu_kNm = _beam_uls_float(demand_row.get("Tu"))
-    code = project_design_code_from_session(state)
+    code = workflow_project_design_code_from_session(state)
     if code != PROJECT_CODE_ACI318:
         return {
             "Check": "Shear + Torsion",
@@ -4778,8 +4779,8 @@ def _beam_uls_strength_route_from_state(state: Mapping[str, object], *, is_bridg
     return beam_girder_uls_strength_route(
         is_bridge=is_bridge,
         is_building=is_building,
-        project_design_code=project_design_code_from_session(state),
-        code_edition=project_code_edition_from_session(state),
+        project_design_code=workflow_project_design_code_from_session(state),
+        code_edition=workflow_project_code_edition_from_session(state),
     )
 
 
@@ -10504,8 +10505,8 @@ def _analysis_card_html(title: str, value: str, detail: str = "", status: str = 
 def _project_design_code_status_cards(*, workflow: str) -> list[dict[str, object]]:
     """Return CODE.SETUP1 read-only design-code status cards for Analysis."""
 
-    code = project_design_code_from_session(st.session_state)
-    edition = project_code_edition_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
+    edition = workflow_project_code_edition_from_session(st.session_state)
     code_detail = "Source of truth from Setup"
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
         capability = "REVIEW / planned"
@@ -10539,7 +10540,7 @@ def _project_design_code_status_cards(*, workflow: str) -> list[dict[str, object
 
 def _render_project_design_code_guard(*, workflow: str) -> None:
     _render_analysis_summary_strip(_project_design_code_status_cards(workflow=workflow), columns=3)
-    code = project_design_code_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
         st.warning(
             "Project Design Code is AASHTO LRFD, but the current Column/Pier/Wall/Pylon PMM solver is still ACI-oriented. "
@@ -10548,8 +10549,8 @@ def _render_project_design_code_guard(*, workflow: str) -> None:
 
 
 def _column_pier_analysis_scope_cards() -> list[dict[str, object]]:
-    code = project_design_code_from_session(st.session_state)
-    edition = project_code_edition_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
+    edition = workflow_project_code_edition_from_session(st.session_state)
     pmm_status = "Preview available" if code != PROJECT_CODE_AASHTO_LRFD else "REVIEW / planned"
     pmm_detail = (
         "ACI-oriented PMM interaction engine with Pu, Mux, and Muy demand/capacity review"
@@ -10647,7 +10648,7 @@ def _column_pier_check_decision_rows(
     state: Mapping[str, object],
     analysis_input: AnalysisInput | None,
 ) -> list[dict[str, object]]:
-    code = project_design_code_from_session(state)
+    code = workflow_project_design_code_from_session(state)
     dc_summary = state.get("rc_demand_capacity_result")
     if dc_summary is None:
         dc_summary = state.get("demand_capacity_summary")
@@ -10752,7 +10753,7 @@ def _column_pier_uls_decision_summary_cards(
         detail = "Some checks are informational or not active."
         status = "info"
 
-    code = project_design_code_from_session(state or st.session_state)
+    code = workflow_project_design_code_from_session(state or st.session_state)
     prestress_active = _column_pier_has_active_prestress(analysis_input)
     vt_row = next((row for row in rows if row.get("Check") == "Shear + Torsion"), None)
     vt_status = str(vt_row.get("Status") if vt_row else "NOT READY")
@@ -10913,8 +10914,8 @@ def _render_column_pier_uls_summary_workspace() -> None:
 
 
 def _column_pier_guarded_strength_check_cards(check_name: str) -> list[dict[str, object]]:
-    code = project_design_code_from_session(st.session_state)
-    edition = project_code_edition_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
+    edition = workflow_project_code_edition_from_session(st.session_state)
     return [
         {
             "title": "Check status",
@@ -10967,8 +10968,8 @@ def _column_pier_shear_summary_cards(
     active_demands: pd.DataFrame,
     analysis_input: AnalysisInput | None,
 ) -> list[dict[str, object]]:
-    code = project_design_code_from_session(st.session_state)
-    edition = project_code_edition_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
+    edition = workflow_project_code_edition_from_session(st.session_state)
     governing = _column_pier_governing_shear_row(shear_df)
     zone = _column_pier_active_transverse_zone_for_shear(st.session_state)
     active_demand_count = 0
@@ -11065,7 +11066,7 @@ def _render_column_pier_shear_guarded_workspace() -> None:
         ),
         columns=3,
     )
-    code = project_design_code_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
     if code != PROJECT_CODE_ACI318:
         st.warning("Column/Pier AASHTO LRFD shear is not implemented. This tab does not issue Vn or PASS/FAIL for AASHTO projects.")
     elif shear_df.empty:
@@ -11122,8 +11123,8 @@ def _column_pier_torsion_summary_cards(
     active_demands: pd.DataFrame,
     analysis_input: AnalysisInput | None,
 ) -> list[dict[str, object]]:
-    code = project_design_code_from_session(st.session_state)
-    edition = project_code_edition_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
+    edition = workflow_project_code_edition_from_session(st.session_state)
     governing = _column_pier_governing_torsion_row(torsion_df)
     zone = _column_pier_active_transverse_zone_for_torsion(st.session_state)
     settings = _column_pier_transverse_settings_from_state(st.session_state)
@@ -11198,7 +11199,7 @@ def _render_column_pier_torsion_guarded_workspace() -> None:
         ),
         columns=4,
     )
-    code = project_design_code_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
     if code != PROJECT_CODE_ACI318:
         st.warning("Column/Pier AASHTO LRFD torsion is not implemented. This tab does not issue Tn or PASS/FAIL for AASHTO projects.")
     elif torsion_df.empty:
@@ -11247,8 +11248,8 @@ def _column_pier_combined_vt_summary_cards(
     active_demands: pd.DataFrame,
     analysis_input: AnalysisInput | None,
 ) -> list[dict[str, object]]:
-    code = project_design_code_from_session(st.session_state)
-    edition = project_code_edition_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
+    edition = workflow_project_code_edition_from_session(st.session_state)
     governing = _column_pier_governing_combined_vt_row(vt_df)
     active_tu_count = 0
     if not active_demands.empty and "Tu" in active_demands.columns:
@@ -11317,7 +11318,7 @@ def _render_column_pier_combined_vt_workspace() -> None:
         ),
         columns=3,
     )
-    code = project_design_code_from_session(st.session_state)
+    code = workflow_project_design_code_from_session(st.session_state)
     if code != PROJECT_CODE_ACI318:
         st.warning("Column/Pier AASHTO LRFD V+T interaction is not implemented. This tab does not issue final V+T PASS/FAIL for AASHTO projects.")
     elif vt_df.empty:
@@ -13907,7 +13908,7 @@ def _girder_sls_graph_subtitle(stage_label: str) -> str:
     """
 
     profile = _girder_stage_limit_profile_for_diagram(stage_label)
-    edition = project_code_edition_from_session(st.session_state)
+    edition = workflow_project_code_edition_from_session(st.session_state)
     return f"{edition} · {profile.limit_profile_label} · compression negative / tension positive"
 
 
@@ -15306,7 +15307,7 @@ def _make_girder_deflection_figure(curve_df: pd.DataFrame, *, stage_label: str) 
                 hovertemplate="x=%{x:.3f} m<br>deflection=%{y:.3f} mm<extra></extra>",
             )
         )
-    code_edition = project_code_edition_from_session(st.session_state)
+    code_edition = workflow_project_code_edition_from_session(st.session_state)
     fig.add_hline(y=0.0, line_dash="dot", annotation_text="0 mm", annotation_position="top left")
     title_stage = stage_label.replace(" stage", "")
     fig.update_layout(
@@ -18476,7 +18477,7 @@ def _render_analysis_settings_panel() -> None:
     with st.expander("Analysis Settings", expanded=True):
         cols = st.columns(3)
         with cols[0]:
-            code = project_design_code_from_session(st.session_state)
+            code = workflow_project_design_code_from_session(st.session_state)
             st.markdown("**Code**")
             st.caption(f"{code} — from Setup / Project Design Code")
             analysis_type = st.selectbox("Analysis type", ["PMM Surface"], index=0)

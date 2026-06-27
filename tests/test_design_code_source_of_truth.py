@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from concrete_pmm_pro.core.analysis import AnalysisModeSettings
@@ -149,3 +150,30 @@ def test_design_code_route1_source_uses_workflow_compatible_code_in_global_chrom
     assert 'return workflow_project_code_label_from_session(st.session_state)' in APP_SOURCE
     assert 'code = workflow_project_design_code_from_session(st.session_state)' in ANALYSIS_SOURCE
     assert 'return workflow_project_design_code_from_session(st.session_state)' in PRESTRESS_SOURCE
+
+
+def test_design_code_route2_column_pier_preserves_selected_aashto_in_analysis_guards() -> None:
+    column_aashto_session = {
+        "design_code": "AASHTO LRFD",
+        "code_edition": "AASHTO LRFD 9th Edition",
+        "analysis_mode_settings": AnalysisModeSettings(member_type="column_pier_pmm"),
+    }
+    assert workflow_project_design_code_from_session(column_aashto_session) == PROJECT_CODE_AASHTO_LRFD
+    assert workflow_project_code_edition_from_session(column_aashto_session) == "AASHTO LRFD 9th Edition"
+
+    assert "workflow_project_code_edition_from_session" in ANALYSIS_SOURCE
+    assert "code = workflow_project_design_code_from_session(st.session_state)" in ANALYSIS_SOURCE
+    assert "Column/Pier AASHTO LRFD shear is not implemented" in ANALYSIS_SOURCE
+    assert "Column/Pier AASHTO LRFD torsion is not implemented" in ANALYSIS_SOURCE
+    assert "Column/Pier AASHTO LRFD V+T interaction is not implemented" in ANALYSIS_SOURCE
+
+
+def test_design_code_route2_analysis_page_no_longer_reads_raw_project_code_for_column_pier_cards() -> None:
+    guarded_region = ANALYSIS_SOURCE[
+        ANALYSIS_SOURCE.index("def _project_design_code_status_cards"):
+        ANALYSIS_SOURCE.index("def _render_analysis_summary_strip", ANALYSIS_SOURCE.index("def _project_design_code_status_cards"))
+    ]
+    assert not re.search(r"(?<!workflow_)project_design_code_from_session\\(st\\.session_state\\)", guarded_region)
+    assert not re.search(r"(?<!workflow_)project_code_edition_from_session\\(st\\.session_state\\)", guarded_region)
+    assert "workflow_project_design_code_from_session(st.session_state)" in guarded_region
+    assert "workflow_project_code_edition_from_session(st.session_state)" in guarded_region
