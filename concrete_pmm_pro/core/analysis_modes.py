@@ -27,7 +27,7 @@ def analysis_mode_description(settings: AnalysisModeSettings) -> str:
     if settings.member_type == COLUMN_PIER_WORKFLOW:
         return (
             "Workflow for column-type members primarily reviewed with Pu, Mux, and Muy. "
-            "ACI 318 is available in the current PMM engine; AASHTO LRFD PMM is a planned capability guard."
+            "ACI 318 and AASHTO LRFD 9th PMM routes are available for B-region axial-flexure; shear/torsion and second-order/seismic checks remain capability-guarded."
         )
     if settings.member_type == BRIDGE_BEAM_GIRDER_WORKFLOW:
         return (

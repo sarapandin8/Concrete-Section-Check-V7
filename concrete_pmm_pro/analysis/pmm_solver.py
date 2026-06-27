@@ -54,8 +54,20 @@ from concrete_pmm_pro.analysis.warnings import (
     UNBONDED_PRESTRESS_IGNORED_WARNING,
     deduplicate_warnings,
 )
-from concrete_pmm_pro.code_checks import aci_beta1, aci_max_phiPn, aci_phi_and_strain_condition, nominal_po_rc_prestressed
+from concrete_pmm_pro.code_checks import (
+    AASHTO_ECU_STRENGTH,
+    aashto_alpha1,
+    aashto_beta1,
+    aashto_max_phiPn,
+    aashto_nominal_po_rc_prestressed,
+    aashto_phi_and_strain_condition,
+    aci_beta1,
+    aci_max_phiPn,
+    aci_phi_and_strain_condition,
+    nominal_po_rc_prestressed,
+)
 from concrete_pmm_pro.core.analysis import AnalysisInput
+from concrete_pmm_pro.core.design_code import PROJECT_CODE_AASHTO_LRFD, normalize_project_design_code
 from concrete_pmm_pro.core.models import PrestressElement, Rebar, RebarMaterial
 from concrete_pmm_pro.geometry.summary import to_shapely_polygon
 
@@ -183,13 +195,33 @@ def prestress_tensile_stress_mpa(
 
 
 def run_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
-    """Run the current PMM prototype implementation."""
+    """Run the PMM solver route selected by ``analysis_input.settings.code``."""
 
+    if normalize_project_design_code(analysis_input.settings.code) == PROJECT_CODE_AASHTO_LRFD:
+        return run_aashto_lrfd_column_pmm_solver(analysis_input)
     return run_rc_pmm_solver(analysis_input)
 
 
 def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
-    """Run a prototype RC PMM sweep using `AnalysisInput`.
+    """Run the legacy ACI-oriented RC/PSC PMM sweep using `AnalysisInput`."""
+
+    return _run_pmm_solver_engine(analysis_input, code_basis="ACI")
+
+
+def run_aashto_lrfd_column_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
+    """Run AASHTO LRFD 9th Edition Column/Pier/Wall/Pylon PMM sweep.
+
+    PMM1 scope is B-region axial-flexure using the shared strain-compatible
+    section engine with AASHTO Section 5 stress-block and φ rules.  Shear,
+    torsion, slenderness/second-order effects, seismic special provisions, and
+    hollow-wall local buckling adjustments remain separate guarded milestones.
+    """
+
+    return _run_pmm_solver_engine(analysis_input, code_basis="AASHTO")
+
+
+def _run_pmm_solver_engine(analysis_input: AnalysisInput, *, code_basis: str) -> PMMSolverResult:
+    """Run a PMM sweep using `AnalysisInput` and an explicit code basis.
 
     The function deliberately avoids any Streamlit dependency. Future solver
     milestones should continue to use typed analysis input models.
@@ -197,6 +229,7 @@ def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
 
     warnings: list[str] = []
     info: list[str] = []
+    use_aashto = code_basis.upper() == "AASHTO"
     settings = analysis_input.settings
     prestress_stress_model = settings.prestress_stress_model
     concrete = analysis_input.concrete_material
@@ -219,13 +252,25 @@ def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
         active_prestress_elements = [element for element in bonded_prestress_elements if _has_active_prestress(element)]
         passive_prestress_elements = [element for element in bonded_prestress_elements if not _has_active_prestress(element)]
         if active_prestress_elements:
-            warnings.append(BONDED_PRESTRESS_PROTOTYPE_WARNING)
-            warnings.append(
-                f"Active prestress stress model: {prestress_stress_model}. Stress uses initial tensile strain minus "
-                "section strain, is clamped from 0, capped at fpu, and converted to a tension-negative section force."
-            )
-            if prestress_stress_model == "bilinear":
-                warnings.append("Bilinear active-prestress model uses fpy/proof stress when available with a prototype post-yield slope.")
+            if use_aashto:
+                info.append(
+                    "AASHTO LRFD PMM includes bonded active prestress through strain-compatible steel stress, "
+                    "using effective/initial prestress strain plus section strain state in SI units."
+                )
+                info.append(
+                    f"Active prestress stress model: {prestress_stress_model}. Stress uses initial tensile strain minus "
+                    "section strain, is clamped from 0, capped at fpu, and converted to a tension-negative section force."
+                )
+                if prestress_stress_model == "bilinear":
+                    info.append("Bilinear active-prestress model uses fpy/proof stress when available with a post-yield branch.")
+            else:
+                warnings.append(BONDED_PRESTRESS_PROTOTYPE_WARNING)
+                warnings.append(
+                    f"Active prestress stress model: {prestress_stress_model}. Stress uses initial tensile strain minus "
+                    "section strain, is clamped from 0, capped at fpu, and converted to a tension-negative section force."
+                )
+                if prestress_stress_model == "bilinear":
+                    warnings.append("Bilinear active-prestress model uses fpy/proof stress when available with a prototype post-yield slope.")
         if passive_prestress_elements:
             info.append(
                 "Passive bonded prestressing steel is included as high-strength steel using strain compatibility; "
@@ -243,7 +288,13 @@ def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
                         f"Passive prestressing steel {_element_label(element)} is missing fpy/fpu; "
                         "using a default high-strength stress cap for PMM review."
                     )
-            warnings.append(RC_AXIAL_CAP_LIMITATION_WARNING)
+            if use_aashto:
+                warnings.append(
+                    "AASHTO LRFD PMM1 scope excludes slenderness/second-order magnification, seismic special provisions, "
+                    "hollow rectangular wall local-buckling strain/phi_w adjustments, and development/detailing checks."
+                )
+            else:
+                warnings.append(RC_AXIAL_CAP_LIMITATION_WARNING)
         if unbonded_prestress_elements:
             warnings.append(UNBONDED_PRESTRESS_IGNORED_WARNING)
         for element in bonded_prestress_elements:
@@ -252,38 +303,64 @@ def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
         warnings.append("Prestress elements are present but excluded by analysis settings.")
 
     fc_MPa = concrete.fc_MPa
-    ecu = concrete.ecu
-    beta1 = concrete.beta1 if concrete.beta1 is not None else aci_beta1(fc_MPa)
-    concrete_stress_MPa = 0.85 * fc_MPa
+    if use_aashto:
+        ecu = AASHTO_ECU_STRENGTH
+        alpha1 = aashto_alpha1(fc_MPa)
+        beta1 = aashto_beta1(fc_MPa)
+        concrete_stress_MPa = alpha1 * fc_MPa
+        info.append(
+            "AASHTO LRFD 9th Column/Pier PMM route: Section 5 B-region strain compatibility with "
+            "0.003 ultimate concrete strain, alpha1/beta1 evaluated from fc in ksi then applied in SI."
+        )
+    else:
+        ecu = concrete.ecu
+        alpha1 = 0.85
+        beta1 = concrete.beta1 if concrete.beta1 is not None else aci_beta1(fc_MPa)
+        concrete_stress_MPa = 0.85 * fc_MPa
     transverse_reinforcement = settings.transverse_reinforcement
     default_rebar_material = analysis_input.rebar_materials[0] if analysis_input.rebar_materials else RebarMaterial(name="Default", fy_MPa=390.0)
     phi_compression = 1.0
     if settings.use_phi_factor:
-        phi_compression = 0.75 if transverse_reinforcement == "spiral" else 0.65
+        phi_compression = 0.75 if use_aashto else (0.75 if transverse_reinforcement == "spiral" else 0.65)
     phiPn_max: float | None = None
     try:
-        Po_N = nominal_po_rc_prestressed(
-            fc_MPa,
-            float(section_polygon.area),
-            rebars,
-            default_rebar_material,
-            bonded_prestress_elements,
-        )
-        phiPn_max = aci_max_phiPn(Po_N, phi_compression, transverse_reinforcement)
-        info.append(
-            "ACI maximum axial strength cap is applied to axial compression display/checks. "
-            "Moment capacity interpolation remains prototype."
-        )
-        info.append(f"QA.PO1-validated nominal Po including bonded prestress steel = {Po_N:,.1f} N; capped max phiPn = {phiPn_max:,.1f} N.")
+        if use_aashto:
+            Po_N = aashto_nominal_po_rc_prestressed(
+                fc_MPa,
+                float(section_polygon.area),
+                rebars,
+                default_rebar_material,
+                bonded_prestress_elements,
+            )
+            phiPn_max = aashto_max_phiPn(Po_N, transverse_reinforcement=transverse_reinforcement, phi_compression=phi_compression)
+            info.append(
+                "AASHTO LRFD 5.6.4.4-style maximum axial resistance cap is applied to axial compression display/checks. "
+                "Slenderness, second-order effects, seismic special provisions, and hollow-wall local buckling adjustments are guarded separately."
+            )
+            info.append(f"AASHTO nominal Po including bonded prestress steel = {Po_N:,.1f} N; capped max phiPn = {phiPn_max:,.1f} N.")
+        else:
+            Po_N = nominal_po_rc_prestressed(
+                fc_MPa,
+                float(section_polygon.area),
+                rebars,
+                default_rebar_material,
+                bonded_prestress_elements,
+            )
+            phiPn_max = aci_max_phiPn(Po_N, phi_compression, transverse_reinforcement)
+            info.append(
+                "ACI maximum axial strength cap is applied to axial compression display/checks. "
+                "Moment capacity interpolation remains prototype."
+            )
+            info.append(f"QA.PO1-validated nominal Po including bonded prestress steel = {Po_N:,.1f} N; capped max phiPn = {phiPn_max:,.1f} N.")
     except ValueError as exc:
-        warnings.append(f"ACI axial cap could not be calculated: {exc}")
+        warnings.append(f"{'AASHTO' if use_aashto else 'ACI'} axial cap could not be calculated: {exc}")
 
     strength_load_count = sum(
         1
         for load_case in analysis_input.load_cases
         if load_case.active and load_case.load_type == settings.strength_load_type
     )
-    info.append(f"RC PMM prototype using {len(rebars)} ordinary rebar object(s).")
+    info.append(f"{'AASHTO LRFD Column/Pier PMM' if use_aashto else 'RC PMM prototype'} using {len(rebars)} ordinary rebar object(s).")
     bonded_prestress_count = sum(element.count for element in bonded_prestress_elements)
     unbonded_prestress_ignored_count = sum(element.count for element in unbonded_prestress_elements)
     active_bonded_prestress_count = sum(element.count for element in bonded_prestress_elements if _has_active_prestress(element))
@@ -296,7 +373,10 @@ def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
     info.append(f"Included prestress Aps = {total_prestress_area:,.1f} mm^2; Pe_eff = {total_prestress_pe_eff:,.1f} N.")
     info.append(f"Strength load cases stored for future checks: {strength_load_count}.")
     if settings.subtract_rebar_displaced_concrete:
-        info.append("Ordinary rebar inside the compression block uses net force As(fs - 0.85f'c).")
+        if use_aashto:
+            info.append("Ordinary rebar inside the compression block uses net force As(fs - alpha1*f'c) with AASHTO alpha1.")
+        else:
+            info.append("Ordinary rebar inside the compression block uses net force As(fs - 0.85f'c).")
     else:
         warnings.append("Displaced concrete at ordinary rebar locations is not subtracted. Compression capacity may be overestimated.")
     info.append("Neutral-axis c_min uses relative lower bound for numerical robustness.")
@@ -335,6 +415,7 @@ def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
                     fc_MPa,
                     inside_compression,
                     settings.subtract_rebar_displaced_concrete,
+                    concrete_stress_MPa=concrete_stress_MPa,
                 )
                 if inside_compression:
                     rebar_inside_compression_count += 1
@@ -419,7 +500,17 @@ def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
                         eps_t_es = element.ep_mpa
 
             if settings.use_phi_factor:
-                phi, strain_condition = aci_phi_and_strain_condition(eps_t, eps_t_fy, eps_t_es, transverse_reinforcement)
+                if use_aashto:
+                    phi_result = aashto_phi_and_strain_condition(
+                        eps_t,
+                        fy_MPa=eps_t_fy,
+                        Es_MPa=eps_t_es,
+                        prestressed_member=bool(bonded_prestress_elements),
+                    )
+                    phi = phi_result.phi
+                    strain_condition = phi_result.strain_condition
+                else:
+                    phi, strain_condition = aci_phi_and_strain_condition(eps_t, eps_t_fy, eps_t_es, transverse_reinforcement)
             else:
                 phi = 1.0
                 strain_condition = "phi-not-applied"
@@ -458,7 +549,7 @@ def run_rc_pmm_solver(analysis_input: AnalysisInput) -> PMMSolverResult:
                 )
             )
 
-    info.append(f"Generated {len(points)} PMM point(s).")
+    info.append(f"Generated {len(points)} PMM point(s) using {'AASHTO LRFD 9th' if use_aashto else 'ACI-oriented'} PMM route.")
     if any(PRESTRESS_LINEAR_CAP_FALLBACK_WARNING in warning for warning in warnings):
         info.append("Prestress linear_cap fallback occurred for at least one PMM point.")
     if any(point.prestress_compression_reversal_count > 0 for point in points):

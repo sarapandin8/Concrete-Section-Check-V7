@@ -57,7 +57,7 @@ def test_project_model_and_io_preserve_code_and_edition() -> None:
     assert restored["code_edition"] == "AASHTO LRFD 9th Edition"
 
 
-def test_project_design_code_cards_flag_aashto_pmm_as_planned() -> None:
+def test_project_design_code_cards_flag_aashto_pmm_as_available_review() -> None:
     cards = _project_design_code_cards(
         ProjectModel(code="AASHTO LRFD", code_edition="AASHTO LRFD 9th Edition"),
         AnalysisModeSettings(member_type="column_pier_pmm"),
@@ -65,16 +65,17 @@ def test_project_design_code_cards_flag_aashto_pmm_as_planned() -> None:
     by_title = {card.title: card for card in cards}
 
     assert by_title["Design Code"].value == PROJECT_CODE_AASHTO_LRFD
-    assert by_title["Column/Pier PMM"].value == "PLANNED / REVIEW"
-    assert by_title["Column/Pier PMM"].status == "warning"
+    assert by_title["Column/Pier PMM"].value == "AVAILABLE / REVIEW"
+    assert by_title["Column/Pier PMM"].status == "ready"
 
 
-def test_code_capability_helper_does_not_overclaim_aashto_pmm() -> None:
+def test_code_capability_helper_exposes_aashto_pmm_with_remaining_guards() -> None:
     cards = project_code_capability_cards("AASHTO LRFD", "column_pier_pmm")
     by_title = {card["title"]: card for card in cards}
 
-    assert by_title["Column/Pier PMM"]["value"] == "PLANNED / REVIEW"
-    assert "future solver milestone" in by_title["Column/Pier PMM"]["detail"]
+    assert by_title["Column/Pier PMM"]["value"] == "AVAILABLE / REVIEW"
+    assert "B-region axial-flexure" in by_title["Column/Pier PMM"]["detail"]
+    assert "shear" in by_title["Column/Pier PMM"]["detail"]
 
 
 def test_code_setup1_source_files_have_project_code_guardrails() -> None:
@@ -85,7 +86,7 @@ def test_code_setup1_source_files_have_project_code_guardrails() -> None:
     assert "Workflow-enforced from active Analysis Mode" in ANALYSIS_SOURCE
     assert "_girder_sls_project_design_code_from_session" in ANALYSIS_SOURCE
     assert "Project Design Code is AASHTO LRFD" in ANALYSIS_SOURCE
-    assert "AASHTO LRFD PMM is planned" in ANALYSIS_SOURCE
+    assert "AASHTO LRFD 9th PMM route is active" in ANALYSIS_SOURCE
     assert "Prestress loss code basis" in PRESTRESS_SOURCE
     assert "Prestress loss basis differs from Project Design Code" in PRESTRESS_SOURCE
     assert "ACI 318 / PCI-style approximate loss basis selected" in PRESTRESS_SOURCE

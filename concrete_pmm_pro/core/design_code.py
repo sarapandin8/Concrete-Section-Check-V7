@@ -207,8 +207,8 @@ def project_code_capability_cards(code: object | None, member_type: str | None =
         girder_note = "Building Beam/Girder uses ACI 318. Current flexure, SHEAR.CODE2, TORSION.CODE2, staged SLS, deflection/camber, and prestress tools remain guarded preview / engineering-review workflows; bridge-specific tools are intentionally hidden."
     elif canonical == PROJECT_CODE_AASHTO_LRFD:
         workflow_note = "Active Column/Pier/Wall/Pylon workflow"
-        pmm_status = "PLANNED / REVIEW"
-        pmm_note = "AASHTO LRFD PMM for Column/Pier/Wall/Pylon is a future solver milestone. Current PMM remains ACI-oriented."
+        pmm_status = "AVAILABLE / REVIEW"
+        pmm_note = "AASHTO LRFD 9th Column/Pier/Wall/Pylon PMM route is implemented for B-region axial-flexure; shear, torsion, slenderness, seismic, and hollow-wall local-buckling checks remain guarded."
         girder_status = "NOT ACTIVE"
         girder_note = "Bridge/Building beam-girder checks are hidden because the active workflow is Column/Pier/Wall/Pylon."
     else:
@@ -220,6 +220,6 @@ def project_code_capability_cards(code: object | None, member_type: str | None =
     return [
         {"title": "Project Design Code", "value": canonical, "detail": workflow_code_policy_message(member), "status": "info"},
         {"title": "Active Workflow", "value": workflow_note, "detail": "Tabs read this project basis; unsupported engines show REVIEW", "status": "info"},
-        {"title": "Column/Pier PMM", "value": pmm_status, "detail": pmm_note, "status": "ready" if pmm_status == "AVAILABLE" else ("neutral" if pmm_status in {"NOT APPLICABLE", "NOT ACTIVE"} else "warning")},
+        {"title": "Column/Pier PMM", "value": pmm_status, "detail": pmm_note, "status": "ready" if pmm_status in {"AVAILABLE", "AVAILABLE / REVIEW"} else ("neutral" if pmm_status in {"NOT APPLICABLE", "NOT ACTIVE"} else "warning")},
         {"title": "Beam/Girder Checks", "value": girder_status, "detail": girder_note, "status": "neutral" if girder_status in {"NOT APPLICABLE", "NOT ACTIVE"} else "warning"},
     ]

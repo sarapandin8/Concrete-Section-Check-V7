@@ -19,7 +19,7 @@ from shapely.geometry import LineString
 
 from concrete_pmm_pro.analysis.capacity_check import DemandCapacitySummary, check_uls_demands_against_rc_pmm
 from concrete_pmm_pro.analysis.preflight import build_analysis_input_from_session_state, check_analysis_readiness
-from concrete_pmm_pro.analysis.pmm_solver import run_rc_pmm_solver
+from concrete_pmm_pro.analysis.pmm_solver import run_pmm_solver, run_rc_pmm_solver
 from concrete_pmm_pro.analysis.prestress_checks import (
     PrestressCheckSummary,
     check_prestress_elements_for_analysis,
@@ -2192,7 +2192,7 @@ def _run_pmm_analysis_with_runtime_control(
         st.session_state["analysis_runtime_last_status"] = "Cached result used"
         return
 
-    result, pmm_timing = timed_call("PMM interaction generation", run_rc_pmm_solver, analysis_input)
+    result, pmm_timing = timed_call("PMM interaction generation", run_pmm_solver, analysis_input)
     _record_runtime_timing(pmm_timing)
     timings = [pmm_timing]
     st.session_state["rc_pmm_result"] = result
@@ -2202,7 +2202,7 @@ def _run_pmm_analysis_with_runtime_control(
     if settings.include_prestress and bonded_prestress_elements:
         rc_only_input = analysis_input.model_copy(deep=True)
         rc_only_input.settings = analysis_input.settings.model_copy(update={"include_prestress": False})
-        rc_only_result, comparison_timing = timed_call("RC-only comparison PMM generation", run_rc_pmm_solver, rc_only_input)
+        rc_only_result, comparison_timing = timed_call("RC-only comparison PMM generation", run_pmm_solver, rc_only_input)
         _record_runtime_timing(comparison_timing)
         timings.append(comparison_timing)
         st.session_state["rc_only_comparison_result"] = rc_only_result
@@ -10509,9 +10509,9 @@ def _project_design_code_status_cards(*, workflow: str) -> list[dict[str, object
     edition = workflow_project_code_edition_from_session(st.session_state)
     code_detail = "Source of truth from Setup"
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
-        capability = "REVIEW / planned"
-        detail = "AASHTO LRFD PMM is planned; current PMM solver remains ACI-oriented until a named solver milestone."
-        status = "warning"
+        capability = "Available / review"
+        detail = "AASHTO LRFD 9th PMM route is active for Column/Pier B-region axial-flexure; shear, torsion, slenderness, seismic, and hollow-wall local-buckling checks remain guarded."
+        status = "ready"
     elif workflow == "pmm":
         capability = "Available"
         detail = "Current PMM workflow is ACI-oriented."
@@ -10542,20 +10542,20 @@ def _render_project_design_code_guard(*, workflow: str) -> None:
     _render_analysis_summary_strip(_project_design_code_status_cards(workflow=workflow), columns=3)
     code = workflow_project_design_code_from_session(st.session_state)
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
-        st.warning(
-            "Project Design Code is AASHTO LRFD, but the current Column/Pier/Wall/Pylon PMM solver is still ACI-oriented. "
-            "Treat PMM results as REVIEW until the future AASHTO LRFD PMM solver milestone is implemented."
+        st.info(
+            "Project Design Code is AASHTO LRFD. The Column/Pier/Wall/Pylon PMM route now uses the AASHTO LRFD 9th "
+            "B-region axial-flexure basis; shear, torsion, slenderness/second-order, seismic, and hollow-wall local-buckling checks remain separate guarded milestones."
         )
 
 
 def _column_pier_analysis_scope_cards() -> list[dict[str, object]]:
     code = workflow_project_design_code_from_session(st.session_state)
     edition = workflow_project_code_edition_from_session(st.session_state)
-    pmm_status = "Preview available" if code != PROJECT_CODE_AASHTO_LRFD else "REVIEW / planned"
+    pmm_status = "Preview available" if code != PROJECT_CODE_AASHTO_LRFD else "AASHTO PMM available"
     pmm_detail = (
         "ACI-oriented PMM interaction engine with Pu, Mux, and Muy demand/capacity review"
         if code != PROJECT_CODE_AASHTO_LRFD
-        else "AASHTO LRFD PMM is not implemented; current PMM remains ACI-oriented and must be treated as REVIEW"
+        else "AASHTO LRFD 9th PMM route uses Section 5 B-region axial-flexure strain compatibility with code-specific stress block, φ, and axial cap guards"
     )
     shear_status = "ACI RC scoped gate" if code == PROJECT_CODE_ACI318 else "REVIEW / planned"
     shear_detail = (
@@ -10696,7 +10696,11 @@ def _column_pier_check_decision_rows(
             "Governing Case": pmm_case,
             "Demand": "Pu, Mux, Muy",
             "D/C": pmm_dc,
-            "Route / Scope": "ACI RC/PSC PMM production-preview; AASHTO PMM remains REVIEW",
+            "Route / Scope": (
+                "AASHTO LRFD 9th PMM engineering-review route; shear/torsion/slenderness/seismic/detailing remain REVIEW"
+                if code == PROJECT_CODE_AASHTO_LRFD
+                else "ACI RC/PSC PMM production-preview route"
+            ),
             "Required Action": pmm_action,
         },
         {
@@ -18504,8 +18508,9 @@ def _render_analysis_settings_panel() -> None:
                 "Subtract displaced concrete at rebar locations",
                 value=current.subtract_rebar_displaced_concrete,
                 help=(
-                    "When enabled, ordinary rebar inside the Whitney compression block uses net force "
-                    "As(fs - 0.85f'c) to avoid double counting concrete compression."
+                    "When enabled, ordinary rebar inside the equivalent rectangular compression block uses net force "
+                    "As(fs - block stress) to avoid double counting concrete compression; ACI uses 0.85f'c and "
+                    "AASHTO uses alpha1*f'c with alpha1 evaluated from fc in ksi."
                 ),
             )
         with cols[2]:

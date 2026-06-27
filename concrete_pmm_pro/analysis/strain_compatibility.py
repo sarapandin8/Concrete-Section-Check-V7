@@ -105,12 +105,15 @@ def rebar_net_force_n(
     fc_MPa: float,
     inside_compression_block: bool,
     subtract_displaced_concrete: bool = True,
+    concrete_stress_MPa: float | None = None,
 ) -> tuple[float, dict[str, float | bool]]:
     """Return ordinary rebar net force with optional displaced concrete subtraction.
 
     Compression is positive and tension is negative. If a bar is inside the
-    Whitney compression block, subtracting 0.85 f'c avoids double counting the
-    concrete stress already present in the compression block.
+    Whitney/equivalent rectangular compression block, subtracting the active
+    concrete block stress avoids double counting the concrete stress already
+    present in the compression block.  The optional ``concrete_stress_MPa``
+    lets AASHTO routes use alpha1*f'c rather than the ACI 0.85*f'c default.
     """
 
     if area_mm2 <= 0.0:
@@ -118,7 +121,8 @@ def rebar_net_force_n(
     if fc_MPa <= 0.0:
         raise ValueError("fc_MPa must be positive.")
 
-    concrete_stress_subtracted = 0.85 * fc_MPa if subtract_displaced_concrete and inside_compression_block else 0.0
+    block_stress = 0.85 * fc_MPa if concrete_stress_MPa is None else float(concrete_stress_MPa)
+    concrete_stress_subtracted = block_stress if subtract_displaced_concrete and inside_compression_block else 0.0
     net_stress = steel_stress_MPa - concrete_stress_subtracted
     return area_mm2 * net_stress, {
         "steel_stress_MPa": float(steel_stress_MPa),

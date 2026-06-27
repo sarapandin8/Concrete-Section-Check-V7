@@ -9,6 +9,16 @@ from concrete_pmm_pro.code_checks.aci318 import (
     prestress_axial_strength_reference_mpa,
 )
 from concrete_pmm_pro.code_checks.phi_factor import aci_phi_and_strain_condition, aci_phi_from_tensile_strain
+from concrete_pmm_pro.code_checks.aashto_lrfd import (
+    AASHTO_ECU_STRENGTH,
+    aashto_alpha1,
+    aashto_beta1,
+    aashto_compression_controlled_strain_limit,
+    aashto_max_phiPn,
+    aashto_nominal_po_rc_prestressed,
+    aashto_phi_and_strain_condition,
+    aashto_tension_controlled_strain_limit,
+)
 
 __all__ = [
     "aci_beta1",
@@ -16,6 +26,14 @@ __all__ = [
     "aci_max_phiPn",
     "aci_phi_and_strain_condition",
     "aci_phi_from_tensile_strain",
+    "AASHTO_ECU_STRENGTH",
+    "aashto_alpha1",
+    "aashto_beta1",
+    "aashto_compression_controlled_strain_limit",
+    "aashto_max_phiPn",
+    "aashto_nominal_po_rc_prestressed",
+    "aashto_phi_and_strain_condition",
+    "aashto_tension_controlled_strain_limit",
     "nominal_po_rc",
     "nominal_po_rc_prestressed",
     "prestress_axial_strength_reference_mpa",

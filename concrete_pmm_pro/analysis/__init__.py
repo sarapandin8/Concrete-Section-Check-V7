@@ -18,7 +18,7 @@ from concrete_pmm_pro.analysis.prestress_checks import (
     compare_rc_vs_prestress_pmm,
     summarize_prestress_contribution,
 )
-from concrete_pmm_pro.analysis.pmm_solver import run_rc_pmm_solver
+from concrete_pmm_pro.analysis.pmm_solver import run_aashto_lrfd_column_pmm_solver, run_pmm_solver, run_rc_pmm_solver
 from concrete_pmm_pro.analysis.prestress_stress import prestress_stress_mpa, prestress_total_tensile_strain
 from concrete_pmm_pro.analysis.result_models import (
     PMMPoint,
@@ -88,6 +88,8 @@ __all__ = [
     "rebar_net_force_n",
     "remove_near_duplicate_slice_points",
     "recalculation_required",
+    "run_aashto_lrfd_column_pmm_solver",
+    "run_pmm_solver",
     "run_rc_pmm_solver",
     "serviceability_input_hash",
     "stable_hash_from_payload",

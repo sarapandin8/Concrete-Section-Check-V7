@@ -5,7 +5,7 @@ This milestone aligns the user-facing workflow status wording after the QA.BASEL
 ## Scope
 
 - Align Setup, Analysis, Project Design Code guard, and draft report wording with the current implemented Beam/Girder guarded preview capabilities.
-- Keep Column/Pier AASHTO PMM guarded as planned / REVIEW.
+- Keep Column/Pier AASHTO PMM described as implemented engineering-review after AASHTO.COL.PMM1, with shear/torsion/slenderness/seismic/detailing still guarded.
 - Keep all Beam/Girder ULS/SLS outputs described as preview / engineering-review workflows unless a later named code-certified milestone exists.
 - Do not change PMM, prestress, shear, torsion, SLS stress, deflection/camber, load, or report calculation formulas.
 

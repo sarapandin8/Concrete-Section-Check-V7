@@ -19,17 +19,20 @@ def test_pmm_final_audit_documents_safe_finalization_gate() -> None:
     assert "PMM.FINAL.RC1" in audit
     assert "PMM.FINAL.RC1.STATUS.READINESS1" in audit
     assert "PMM.FINAL.RC1.CLOSEOUT" in audit
-    assert "PMM.AASHTO.PMM1" in audit
+    assert "AASHTO.COL.PMM1" in audit
 
 
-def test_pmm_final_audit_keeps_aashto_pmm_guarded() -> None:
+def test_pmm_final_audit_recognizes_aashto_pmm1_with_remaining_guards() -> None:
     audit = _read("docs/design/pmm_final_audit1.md")
     analysis_source = _read("concrete_pmm_pro/ui/analysis_page.py")
     design_code_source = _read("concrete_pmm_pro/core/design_code.py")
 
-    assert "AASHTO LRFD Column/Pier PMM is not implemented" in audit
-    assert "current PMM remains ACI-oriented" in analysis_source
-    assert "AASHTO LRFD PMM for Column/Pier/Wall/Pylon is a future solver milestone" in design_code_source
+    assert "AASHTO.COL.PMM1" in audit
+    assert "Implemented engineering-review route / not final code-certified" in audit
+    assert "AASHTO LRFD 9th PMM route uses Section 5" in analysis_source
+    assert "AASHTO LRFD 9th Column/Pier/Wall/Pylon PMM route is implemented" in design_code_source
+    for token in ["shear", "torsion", "slenderness", "seismic", "hollow-wall"]:
+        assert token in audit
 
 
 def test_pmm_final_audit_retains_key_validation_and_limitation_evidence() -> None:
@@ -58,4 +61,4 @@ def test_pmm_final_audit_blocks_cosmetic_final_labeling() -> None:
 
     assert "Do not remove prototype or engineering-review wording solely to make the UI" in audit
     assert "Do not modify solver equations merely to make validation checks pass" in audit
-    assert "Do not treat ACI-oriented PMM as final AASHTO LRFD PMM" in audit
+    assert "Do not treat the AASHTO.COL.PMM1 engineering-review route as final code-certified AASHTO LRFD PMM" in audit
