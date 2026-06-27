@@ -70,6 +70,7 @@ from concrete_pmm_pro.core.design_code import (
     default_project_design_code_for_workflow,
     girder_sls_code_for_project_code,
     normalize_project_code_edition,
+    normalize_project_design_code,
     project_code_edition_from_session,
     project_design_code_from_session,
     workflow_project_code_edition_from_session,
@@ -10661,11 +10662,22 @@ def _column_pier_analysis_scope_cards() -> list[dict[str, object]]:
     ]
 
 
+def _column_pier_decision_caption_for_code(code: object) -> str:
+    normalized = normalize_project_design_code(code)
+    if normalized == PROJECT_CODE_AASHTO_LRFD:
+        return (
+            "Commercial workflow focus: run AASHTO LRFD 9th PMM interaction for Pu-Mux-Muy strength, "
+            "then keep Column/Pier shear, torsion, V+T, slenderness, seismic, and hollow-wall local-buckling items in REVIEW until their AASHTO solvers are validated."
+        )
+    return (
+        "Commercial workflow focus: run PMM interaction for Pu-Mux-Muy strength, then review scoped ACI RC shear, "
+        "torsion, and V+T gates without extending them to unsupported routes."
+    )
+
+
 def _render_column_pier_analysis_decision_view() -> None:
     st.markdown("### Column / Pier / Wall / Pylon Decision View")
-    st.caption(
-        "Commercial workflow focus: run PMM interaction for Pu-Mux-Muy strength, then review scoped ACI RC shear, torsion, and V+T gates without extending them to unsupported routes."
-    )
+    st.caption(_column_pier_decision_caption_for_code(workflow_project_design_code_from_session(st.session_state)))
     _render_analysis_summary_strip(_column_pier_analysis_scope_cards(), columns=5)
     _render_column_pier_uls_decision_summary()
 
@@ -10763,7 +10775,11 @@ def _column_pier_check_decision_rows(
             "Governing Case": "-" if shear is None else f"{shear.get('Case', '-')} / {shear.get('Direction', '-')}",
             "Demand": "Vux, Vuy",
             "D/C": "-" if shear is None else _column_pier_dc_text(shear.get("Governing D/C value")),
-            "Route / Scope": "ACI 318 RC scoped shear gate; AASHTO, PSC shear, and seismic detailing remain REVIEW",
+            "Route / Scope": (
+                "AASHTO LRFD Column/Pier shear not implemented; REVIEW only, no Vn or PASS/FAIL issued"
+                if code == PROJECT_CODE_AASHTO_LRFD
+                else "ACI 318 RC scoped shear gate; PSC shear and seismic/detailing remain REVIEW"
+            ),
             "Required Action": "Confirm Control section transverse reinforcement, section/material, and seismic detailing separately.",
         },
         {
@@ -10772,7 +10788,11 @@ def _column_pier_check_decision_rows(
             "Governing Case": "-" if torsion is None else str(torsion.get("Case", "-")),
             "Demand": "Tu",
             "D/C": "-" if torsion is None else _column_pier_dc_text(torsion.get("Governing D/C value")),
-            "Route / Scope": "ACI 318 RC scoped torsion gate; closed ties/hoops plus ordinary longitudinal Al only",
+            "Route / Scope": (
+                "AASHTO LRFD Column/Pier torsion not implemented; REVIEW only, no Tn or PASS/FAIL issued"
+                if code == PROJECT_CODE_AASHTO_LRFD
+                else "ACI 318 RC scoped torsion gate; closed ties/hoops plus ordinary longitudinal Al only"
+            ),
             "Required Action": "Confirm closed hoop/tie geometry, torsion core, ordinary Al, hooks, and anchorage.",
         },
         {
@@ -10781,8 +10801,16 @@ def _column_pier_check_decision_rows(
             "Governing Case": "-" if vt is None else f"{vt.get('Case', '-')} / {vt.get('Direction', '-')}",
             "Demand": "Vux/Vuy + Tu",
             "D/C": "-" if vt is None else _column_pier_dc_text(vt.get("Overall D/C value")),
-            "Route / Scope": "ACI 318 RC nonprestressed V+T gate; QA1 hand-check references available",
-            "Required Action": "Use this as the controlling V+T decision only within the scoped nonprestressed ACI RC route.",
+            "Route / Scope": (
+                "AASHTO LRFD Column/Pier combined shear + torsion not implemented; REVIEW only"
+                if code == PROJECT_CODE_AASHTO_LRFD
+                else "ACI 318 RC nonprestressed V+T gate; QA1 hand-check references available"
+            ),
+            "Required Action": (
+                "Do not issue final combined V+T acceptance until the AASHTO V+T milestone is validated."
+                if code == PROJECT_CODE_AASHTO_LRFD
+                else "Use this as the controlling V+T decision only within the scoped nonprestressed ACI RC route."
+            ),
         },
     ]
     return rows
@@ -10826,13 +10854,21 @@ def _column_pier_uls_decision_summary_cards(
         {
             "title": "Code route",
             "value": code,
-            "detail": "ACI RC shear/torsion/V+T is scoped; AASHTO routes stay REVIEW until validated",
+            "detail": (
+                "AASHTO PMM is active; Column/Pier shear/torsion/V+T stay REVIEW until validated"
+                if code == PROJECT_CODE_AASHTO_LRFD
+                else "ACI RC shear/torsion/V+T is scoped; unsupported routes stay REVIEW until validated"
+            ),
             "status": "info" if code == PROJECT_CODE_ACI318 else "warning",
         },
         {
             "title": "V+T gate",
             "value": vt_status,
-            "detail": "Final scoped ACI RC nonprestressed interaction gate",
+            "detail": (
+                "AASHTO V+T is not implemented; no final PASS/FAIL is issued"
+                if code == PROJECT_CODE_AASHTO_LRFD
+                else "Final scoped ACI RC nonprestressed interaction gate"
+            ),
             "status": _column_pier_status_style(vt_status),
         },
         {
