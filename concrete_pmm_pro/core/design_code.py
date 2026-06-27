@@ -16,6 +16,10 @@ PROJECT_CODE_ACI318 = "ACI 318"
 PROJECT_CODE_AASHTO_LRFD = "AASHTO LRFD"
 DEFAULT_PROJECT_DESIGN_CODE = PROJECT_CODE_ACI318
 PROJECT_DESIGN_CODE_OPTIONS: tuple[str, ...] = (PROJECT_CODE_ACI318, PROJECT_CODE_AASHTO_LRFD)
+PROJECT_DESIGN_CODE_STATE_KEY = "project_design_code"
+PROJECT_CODE_EDITION_STATE_KEY = "project_code_edition"
+LEGACY_DESIGN_CODE_WIDGET_KEY = "design_code"
+LEGACY_CODE_EDITION_WIDGET_KEY = "code_edition"
 
 DEFAULT_CODE_EDITION_BY_CODE: dict[str, str] = {
     PROJECT_CODE_ACI318: "ACI 318-19",
@@ -113,15 +117,77 @@ def normalize_project_code_edition(code: object | None, edition: object | None) 
     return default_code_edition_for(code)
 
 
+def _state_getter(session_state: Mapping[str, Any] | Any):
+    return session_state.get if hasattr(session_state, "get") else lambda key, default=None: getattr(session_state, key, default)
+
+
+def _state_setter(session_state: Any):
+    if hasattr(session_state, "__setitem__"):
+        return lambda key, value: session_state.__setitem__(key, value)
+    return lambda key, value: setattr(session_state, key, value)
+
+
 def project_design_code_from_session(session_state: Mapping[str, Any] | Any) -> str:
-    getter = session_state.get if hasattr(session_state, "get") else lambda key, default=None: getattr(session_state, key, default)
-    return normalize_project_design_code(getter("design_code", getter("code", DEFAULT_PROJECT_DESIGN_CODE)))
+    """Return the durable project design-code source of truth.
+
+    Streamlit removes widget-owned keys when their widget is not rendered on the
+    active workspace.  The Setup selector therefore mirrors its value into
+    ``project_design_code``.  Analysis, Report, Prestress, save/load, and chrome
+    must read the durable key first instead of falling back to the Setup-only
+    selectbox key and accidentally returning ACI 318 after navigating away from
+    Setup.
+    """
+
+    getter = _state_getter(session_state)
+    return normalize_project_design_code(
+        getter(
+            PROJECT_DESIGN_CODE_STATE_KEY,
+            getter(LEGACY_DESIGN_CODE_WIDGET_KEY, getter("code", DEFAULT_PROJECT_DESIGN_CODE)),
+        )
+    )
 
 
 def project_code_edition_from_session(session_state: Mapping[str, Any] | Any) -> str:
-    getter = session_state.get if hasattr(session_state, "get") else lambda key, default=None: getattr(session_state, key, default)
+    getter = _state_getter(session_state)
     code = project_design_code_from_session(session_state)
-    return normalize_project_code_edition(code, getter("code_edition", None))
+    return normalize_project_code_edition(
+        code,
+        getter(PROJECT_CODE_EDITION_STATE_KEY, getter(LEGACY_CODE_EDITION_WIDGET_KEY, getter("design_code_edition", None))),
+    )
+
+
+def sync_project_design_code_to_session(
+    session_state: Any,
+    *,
+    member_type: object | None = None,
+    selected_code: object | None = None,
+    selected_edition: object | None = None,
+    sync_legacy_widget_keys: bool = True,
+) -> tuple[str, str]:
+    """Persist the workflow-compatible project code outside Setup widgets.
+
+    ``design_code`` and ``code_edition`` remain as legacy/widget keys for the
+    Setup selectboxes and old project files.  ``project_design_code`` and
+    ``project_code_edition`` are the durable keys that survive when Setup is not
+    rendered.
+    """
+
+    getter = _state_getter(session_state)
+    setter = _state_setter(session_state)
+    workflow_member = member_type if member_type is not None else workflow_member_type_from_session(session_state)
+    raw_code = selected_code if selected_code is not None else project_design_code_from_session(session_state)
+    code = default_project_design_code_for_workflow(workflow_member, raw_code)
+    raw_edition = selected_edition if selected_edition is not None else project_code_edition_from_session(session_state)
+    edition = normalize_project_code_edition(code, raw_edition)
+    setter(PROJECT_DESIGN_CODE_STATE_KEY, code)
+    setter(PROJECT_CODE_EDITION_STATE_KEY, edition)
+    # Keep legacy keys synchronized before Setup widgets are created or during
+    # save/load.  Do not write widget-owned keys after the widgets have been
+    # instantiated in the same Streamlit run.
+    if sync_legacy_widget_keys:
+        setter(LEGACY_DESIGN_CODE_WIDGET_KEY, code)
+        setter(LEGACY_CODE_EDITION_WIDGET_KEY, edition)
+    return code, edition
 
 
 def workflow_member_type_from_session(session_state: Mapping[str, Any] | Any) -> str:
@@ -133,7 +199,7 @@ def workflow_member_type_from_session(session_state: Mapping[str, Any] | Any) ->
     still show the workflow-compatible design code.
     """
 
-    getter = session_state.get if hasattr(session_state, "get") else lambda key, default=None: getattr(session_state, key, default)
+    getter = _state_getter(session_state)
     settings = getter("analysis_mode_settings", None)
     if isinstance(settings, Mapping):
         member = str(settings.get("member_type") or "").strip()
@@ -160,9 +226,9 @@ def workflow_project_design_code_from_session(session_state: Mapping[str, Any] |
 def workflow_project_code_edition_from_session(session_state: Mapping[str, Any] | Any) -> str:
     """Return a valid edition label for the workflow-compatible design code."""
 
-    getter = session_state.get if hasattr(session_state, "get") else lambda key, default=None: getattr(session_state, key, default)
+    getter = _state_getter(session_state)
     code = workflow_project_design_code_from_session(session_state)
-    return normalize_project_code_edition(code, getter("code_edition", getter("project_code_edition", None)))
+    return normalize_project_code_edition(code, getter(PROJECT_CODE_EDITION_STATE_KEY, getter(LEGACY_CODE_EDITION_WIDGET_KEY, None)))
 
 
 def workflow_project_code_label_from_session(session_state: Mapping[str, Any] | Any) -> str:

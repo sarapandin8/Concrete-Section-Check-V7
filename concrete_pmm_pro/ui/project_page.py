@@ -11,6 +11,8 @@ import streamlit as st
 from concrete_pmm_pro.core.analysis import AnalysisModeSettings
 from concrete_pmm_pro.core.design_code import (
     PROJECT_DESIGN_CODE_OPTIONS,
+    PROJECT_CODE_EDITION_STATE_KEY,
+    PROJECT_DESIGN_CODE_STATE_KEY,
     allowed_project_design_codes_for_workflow,
     code_edition_options_for,
     default_code_edition_for,
@@ -18,6 +20,9 @@ from concrete_pmm_pro.core.design_code import (
     normalize_project_code_edition,
     normalize_project_design_code,
     project_code_capability_cards,
+    project_code_edition_from_session,
+    project_design_code_from_session,
+    sync_project_design_code_to_session,
     workflow_code_policy_message,
 )
 from concrete_pmm_pro.core.analysis_modes import analysis_mode_description, analysis_mode_label, analysis_mode_warnings
@@ -833,11 +838,19 @@ def _render_workflow_aware_design_code_selector(analysis_mode: AnalysisModeSetti
     """
 
     allowed_codes = list(allowed_project_design_codes_for_workflow(analysis_mode.member_type))
-    current_code = default_project_design_code_for_workflow(analysis_mode.member_type, st.session_state.get("design_code"))
-    st.session_state["design_code"] = current_code
+    current_code, current_edition = sync_project_design_code_to_session(
+        st.session_state,
+        member_type=analysis_mode.member_type,
+    )
     edition_options = code_edition_options_for(current_code)
     if st.session_state.get("code_edition") not in edition_options:
-        st.session_state["code_edition"] = default_code_edition_for(current_code)
+        current_edition = default_code_edition_for(current_code)
+        sync_project_design_code_to_session(
+            st.session_state,
+            member_type=analysis_mode.member_type,
+            selected_code=current_code,
+            selected_edition=current_edition,
+        )
 
     with st.container(border=True):
         st.markdown("#### Project Design Code")
@@ -851,16 +864,30 @@ def _render_workflow_aware_design_code_selector(analysis_mode: AnalysisModeSetti
                 disabled=len(allowed_codes) == 1,
                 help="Workflow-aware source of truth. Bridge Beam/Girder is AASHTO LRFD only; Building Beam/Girder is ACI 318 only; Column/Pier/Wall/Pylon may choose either code.",
             )
+        sync_project_design_code_to_session(
+            st.session_state,
+            member_type=analysis_mode.member_type,
+            selected_code=selected_code,
+            selected_edition=st.session_state.get("code_edition"),
+            sync_legacy_widget_keys=False,
+        )
         with code_cols[1]:
             edition_options = code_edition_options_for(selected_code)
             if st.session_state.get("code_edition") not in edition_options:
                 st.session_state["code_edition"] = default_code_edition_for(selected_code)
-            st.selectbox(
+            selected_edition = st.selectbox(
                 "Code Edition",
                 list(edition_options),
                 key="code_edition",
                 help="Saved with the project JSON. Solver-specific edition calibration is added only by named future milestones.",
             )
+        sync_project_design_code_to_session(
+            st.session_state,
+            member_type=analysis_mode.member_type,
+            selected_code=selected_code,
+            selected_edition=selected_edition,
+            sync_legacy_widget_keys=False,
+        )
         if len(allowed_codes) == 1:
             st.info(f"Design Code is locked by workflow: {selected_code}.")
 
@@ -1060,11 +1087,14 @@ def _ensure_project_defaults() -> None:
     st.session_state.setdefault("project_name", "Untitled Project")
     st.session_state.setdefault("designer", "")
     st.session_state.setdefault("description", "")
-    st.session_state["design_code"] = normalize_project_design_code(st.session_state.get("design_code", "ACI 318"))
-    st.session_state["code_edition"] = normalize_project_code_edition(
-        st.session_state["design_code"],
-        st.session_state.get("code_edition"),
-    )
+    # DESIGN.CODE.STATE1: keep Project Design Code in durable non-widget keys.
+    # Streamlit may drop the Setup selectbox-owned keys when Analysis is opened.
+    code = project_design_code_from_session(st.session_state)
+    edition = project_code_edition_from_session(st.session_state)
+    st.session_state[PROJECT_DESIGN_CODE_STATE_KEY] = code
+    st.session_state[PROJECT_CODE_EDITION_STATE_KEY] = normalize_project_code_edition(code, edition)
+    st.session_state["design_code"] = st.session_state[PROJECT_DESIGN_CODE_STATE_KEY]
+    st.session_state["code_edition"] = st.session_state[PROJECT_CODE_EDITION_STATE_KEY]
 
 
 

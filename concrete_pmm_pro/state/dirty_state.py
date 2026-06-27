@@ -30,6 +30,8 @@ INPUT_GROUP_KEYS: dict[str, tuple[str, ...]] = {
         "designer",
         "description",
         "analysis_mode_settings",
+        "project_design_code",
+        "project_code_edition",
         "design_code",
         "code_edition",
         "beam_girder_system_settings",

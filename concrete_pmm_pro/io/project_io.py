@@ -16,7 +16,14 @@ from concrete_pmm_pro.analysis.result_models import PMMSolverResult
 from concrete_pmm_pro.analysis.runtime import analysis_input_hash
 from concrete_pmm_pro.core.analysis import AnalysisModeSettings, AnalysisSettings
 from concrete_pmm_pro.core.concrete_materials import c45_precast_material, ensure_concrete_material_library
-from concrete_pmm_pro.core.design_code import normalize_project_code_edition, normalize_project_design_code
+from concrete_pmm_pro.core.design_code import (
+    PROJECT_CODE_EDITION_STATE_KEY,
+    PROJECT_DESIGN_CODE_STATE_KEY,
+    normalize_project_code_edition,
+    normalize_project_design_code,
+    project_code_edition_from_session,
+    project_design_code_from_session,
+)
 from concrete_pmm_pro.core.reinforcement_system import (
     ORDINARY_REBAR_FLAG_KEY,
     PRESTRESSING_STEEL_FLAG_KEY,
@@ -736,11 +743,8 @@ def project_from_session_state(session_state: Any) -> ProjectModel:
         project_name=_get_session_value(session_state, "project_name", "Untitled Project") or "Untitled Project",
         designer=_get_session_value(session_state, "designer", None),
         description=_get_session_value(session_state, "description", None),
-        code=normalize_project_design_code(_get_session_value(session_state, "design_code", _get_session_value(session_state, "code", "ACI 318"))),
-        code_edition=normalize_project_code_edition(
-            _get_session_value(session_state, "design_code", _get_session_value(session_state, "code", "ACI 318")),
-            _get_session_value(session_state, "code_edition", _get_session_value(session_state, "design_code_edition", None)),
-        ),
+        code=project_design_code_from_session(session_state),
+        code_edition=project_code_edition_from_session(session_state),
         section_preset_key=_get_session_value(session_state, "section_preset_key", None),
         section_preset_name=_get_session_value(session_state, "section_preset_name", None),
         section_parameters=dict(_get_session_value(session_state, "section_parameters", {}) or {}),
@@ -1082,8 +1086,12 @@ def apply_project_to_session_state(project: ProjectModel, session_state: Mutable
     session_state["project_name"] = project.project_name
     session_state["designer"] = project.designer or ""
     session_state["description"] = project.description or ""
-    session_state["design_code"] = normalize_project_design_code(project.code)
-    session_state["code_edition"] = normalize_project_code_edition(project.code, project.code_edition)
+    restored_code = normalize_project_design_code(project.code)
+    restored_edition = normalize_project_code_edition(restored_code, project.code_edition)
+    session_state[PROJECT_DESIGN_CODE_STATE_KEY] = restored_code
+    session_state[PROJECT_CODE_EDITION_STATE_KEY] = restored_edition
+    session_state["design_code"] = restored_code
+    session_state["code_edition"] = restored_edition
 
     session_state["section_preset_key"] = project.section_preset_key
     session_state["section_preset_name"] = project.section_preset_name

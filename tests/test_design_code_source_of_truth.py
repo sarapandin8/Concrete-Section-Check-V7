@@ -13,6 +13,9 @@ from concrete_pmm_pro.core.design_code import (
     normalize_project_code_edition,
     normalize_project_design_code,
     project_code_capability_cards,
+    project_code_edition_from_session,
+    project_design_code_from_session,
+    sync_project_design_code_to_session,
     workflow_project_code_edition_from_session,
     workflow_project_code_label_from_session,
     workflow_project_design_code_from_session,
@@ -56,6 +59,57 @@ def test_project_model_and_io_preserve_code_and_edition() -> None:
     assert restored["design_code"] == PROJECT_CODE_AASHTO_LRFD
     assert restored["code_edition"] == "AASHTO LRFD 9th Edition"
 
+
+
+def test_design_code_state1_durable_key_survives_navigation_after_setup_widget_unmount() -> None:
+    # Streamlit can remove widget-owned keys (design_code/code_edition) when
+    # Setup is no longer rendered.  Analysis must still read the durable project
+    # keys created by the Setup selector.
+    analysis_state = {
+        "project_design_code": "AASHTO LRFD",
+        "project_code_edition": "AASHTO LRFD 9th Edition",
+        "analysis_mode_settings": AnalysisModeSettings(member_type="column_pier_pmm"),
+    }
+
+    assert project_design_code_from_session(analysis_state) == PROJECT_CODE_AASHTO_LRFD
+    assert project_code_edition_from_session(analysis_state) == "AASHTO LRFD 9th Edition"
+    assert workflow_project_design_code_from_session(analysis_state) == PROJECT_CODE_AASHTO_LRFD
+    assert workflow_project_code_edition_from_session(analysis_state) == "AASHTO LRFD 9th Edition"
+
+
+def test_design_code_state1_durable_key_wins_over_stale_setup_widget_key() -> None:
+    # This mirrors the observed bug: Setup visually selected AASHTO, but Analysis
+    # still saw a stale legacy/widget ACI key.  Durable project code must win.
+    state = {
+        "project_design_code": "AASHTO LRFD",
+        "project_code_edition": "AASHTO LRFD 9th Edition",
+        "design_code": "ACI 318",
+        "code_edition": "ACI 318-19",
+        "analysis_mode_settings": AnalysisModeSettings(member_type="column_pier_pmm"),
+    }
+
+    assert workflow_project_design_code_from_session(state) == PROJECT_CODE_AASHTO_LRFD
+    assert workflow_project_code_edition_from_session(state) == "AASHTO LRFD 9th Edition"
+    saved = project_from_session_state(state)
+    assert saved.code == PROJECT_CODE_AASHTO_LRFD
+    assert saved.code_edition == "AASHTO LRFD 9th Edition"
+
+
+def test_design_code_state1_setup_sync_writes_durable_and_legacy_before_widget_creation() -> None:
+    state = {"analysis_mode_settings": AnalysisModeSettings(member_type="column_pier_pmm")}
+    code, edition = sync_project_design_code_to_session(
+        state,
+        member_type="column_pier_pmm",
+        selected_code="AASHTO LRFD",
+        selected_edition="AASHTO LRFD 9th Edition",
+    )
+
+    assert code == PROJECT_CODE_AASHTO_LRFD
+    assert edition == "AASHTO LRFD 9th Edition"
+    assert state["project_design_code"] == PROJECT_CODE_AASHTO_LRFD
+    assert state["project_code_edition"] == "AASHTO LRFD 9th Edition"
+    assert state["design_code"] == PROJECT_CODE_AASHTO_LRFD
+    assert state["code_edition"] == "AASHTO LRFD 9th Edition"
 
 def test_project_design_code_cards_flag_aashto_pmm_as_available_review() -> None:
     cards = _project_design_code_cards(
