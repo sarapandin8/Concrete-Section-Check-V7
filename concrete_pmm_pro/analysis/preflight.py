@@ -11,6 +11,7 @@ from typing import Any
 
 from concrete_pmm_pro.code_checks import aci_beta1
 from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisSettings
+from concrete_pmm_pro.core.design_code import workflow_project_design_code_from_session
 from concrete_pmm_pro.core.models import ConcreteMaterial, LoadCase, PrestressElement, Rebar
 from concrete_pmm_pro.core.reinforcement_system import (
     effective_prestress_for_analysis,
@@ -37,12 +38,27 @@ def _get_session_value(session_state: Any, key: str, default: Any = None) -> Any
 
 
 def _analysis_settings_from_session_state(session_state: Any) -> AnalysisSettings:
+    """Return AnalysisSettings synchronized to the project/workflow design code.
+
+    AnalysisSettings is a solver-control object and older sessions may retain
+    ``code="ACI 318"`` even after Setup changes the project code to AASHTO
+    LRFD.  The project/workflow design code is the source of truth for routing;
+    keep the returned settings synchronized so PMM input hashes and solver
+    routes cannot remain on stale ACI when Setup selects AASHTO.
+    """
+
     value = _get_session_value(session_state, "analysis_settings", None)
     if isinstance(value, AnalysisSettings):
-        return value
-    if isinstance(value, dict):
-        return AnalysisSettings.model_validate(value)
-    return AnalysisSettings()
+        settings = value
+    elif isinstance(value, dict):
+        settings = AnalysisSettings.model_validate(value)
+    else:
+        settings = AnalysisSettings()
+
+    project_code = workflow_project_design_code_from_session(session_state)
+    if settings.code != project_code:
+        settings = settings.model_copy(update={"code": project_code})
+    return settings
 
 
 def _active_strength_load_cases(load_cases: list[LoadCase], settings: AnalysisSettings) -> list[LoadCase]:

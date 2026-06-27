@@ -799,13 +799,67 @@ _ANALYSIS_DASHBOARD_CSS = """
 """
 
 
-def _settings_from_session() -> AnalysisSettings:
+def _raw_settings_from_session() -> AnalysisSettings:
     value = st.session_state.get("analysis_settings")
     if isinstance(value, AnalysisSettings):
         return value
     if isinstance(value, dict):
         return AnalysisSettings.model_validate(value)
     return AnalysisSettings()
+
+
+def _settings_from_session() -> AnalysisSettings:
+    """Return AnalysisSettings synchronized to Setup Project Design Code.
+
+    The AnalysisSettings object owns solver controls such as sweep resolution
+    and prestress model, but it must not own the project design-code route.
+    Setup/workflow is the source of truth; otherwise an older ``code=ACI 318``
+    value can survive in ``analysis_settings`` and keep Analysis labels/results
+    on ACI after the user selects AASHTO LRFD in Setup.
+    """
+
+    settings = _raw_settings_from_session()
+    project_code = workflow_project_design_code_from_session(st.session_state)
+    if settings.code != project_code:
+        settings = settings.model_copy(update={"code": project_code})
+    return settings
+
+
+def _clear_pmm_route_caches_for_code_change() -> None:
+    for key in (
+        "rc_pmm_result",
+        "rc_only_comparison_result",
+        "prestress_comparison_summary",
+        "rc_pmm_result_input_hash",
+        "pmm_last_analysis_hash",
+        "rc_demand_capacity_result",
+        "rc_demand_capacity_result_hash",
+        "rc_demand_capacity_input_hash",
+        "rc_demand_capacity_pmm_result_hash",
+        "rc_pmm_display_cache_hash",
+        "rc_pmm_display_dataframe",
+        "rc_pmm_display_summary",
+        "rc_pmm_numeric_summary",
+        "pmm_result_display_cache_status",
+        "_pmm_result_views_rendered_upstream",
+    ):
+        st.session_state.pop(key, None)
+
+
+def _sync_analysis_settings_code_to_project() -> None:
+    """Persist project-code synchronization before Analysis renders cached PMM views."""
+
+    raw_settings = _raw_settings_from_session()
+    project_code = workflow_project_design_code_from_session(st.session_state)
+    if raw_settings.code == project_code:
+        return
+    st.session_state["analysis_settings"] = raw_settings.model_copy(update={"code": project_code})
+    st.session_state["analysis_runtime_last_status"] = "Not run"
+    st.session_state["analysis_runtime_cache_status"] = "Input changed, recalculation required"
+    st.session_state["analysis_runtime_code_sync_note"] = (
+        f"Analysis code synchronized to Project Design Code: {project_code}. Cached PMM result was cleared."
+    )
+    _clear_pmm_route_caches_for_code_change()
 
 
 def _analysis_accuracy_preset_from_session() -> str:
@@ -18680,7 +18734,11 @@ def _analysis_subpage_choice() -> str:
 
 
 def render_analysis_page() -> None:
+    _sync_analysis_settings_code_to_project()
+    sync_note = st.session_state.pop("analysis_runtime_code_sync_note", None)
     settings = _analysis_mode_from_session()
+    if sync_note:
+        st.info(str(sync_note))
     render_page_header(
         "Analysis",
         "Run and review strength, serviceability, and deflection/camber workflows under the active engineering context.",
