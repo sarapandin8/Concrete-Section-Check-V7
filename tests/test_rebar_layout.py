@@ -120,6 +120,16 @@ def test_rebar_page_exposes_auto_perimeter_preview_apply_workflow() -> None:
     assert "does not silently overwrite manual bars" in source
 
 
+
+
+def test_rebar_input_mode_defaults_to_auto_perimeter_layout() -> None:
+    source = (REPO_ROOT / "concrete_pmm_pro" / "ui" / "rebar_page.py").read_text(encoding="utf-8")
+
+    assert 'DEFAULT_REBAR_INPUT_MODE = REBAR_INPUT_MODE_AUTO_PERIMETER' in source
+    assert 'REBAR_INPUT_MODE_OPTIONS = [REBAR_INPUT_MODE_MANUAL, REBAR_INPUT_MODE_AUTO_PERIMETER]' in source
+    assert 'index=REBAR_INPUT_MODE_OPTIONS.index(DEFAULT_REBAR_INPUT_MODE)' in source
+    assert 'st.session_state["rebar_input_mode"] = DEFAULT_REBAR_INPUT_MODE' in source
+
 def test_perimeter_rebar_layout_places_mandatory_corner_control_bars() -> None:
     from concrete_pmm_pro.geometry.rebar_layout import generate_perimeter_rebar_layout
 

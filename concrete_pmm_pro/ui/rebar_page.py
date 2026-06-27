@@ -36,6 +36,10 @@ REBAR_DEFAULT_MATERIAL_BY_SIZE = {
     "DB28": "SD40",
     "DB32": "SD50",
 }
+REBAR_INPUT_MODE_MANUAL = "Manual table"
+REBAR_INPUT_MODE_AUTO_PERIMETER = "Auto perimeter layout"
+REBAR_INPUT_MODE_OPTIONS = [REBAR_INPUT_MODE_MANUAL, REBAR_INPUT_MODE_AUTO_PERIMETER]
+DEFAULT_REBAR_INPUT_MODE = REBAR_INPUT_MODE_AUTO_PERIMETER
 
 # Keep the editor column contract centralized.  The same ordered column list is
 # used when creating the default table, normalizing data_editor output, comparing
@@ -512,7 +516,7 @@ def apply_generated_perimeter_layout_state(session_state: Any, generated_table: 
     applied_table = _ensure_rebar_table_columns(pd.DataFrame(generated_table)).reset_index(drop=True)
     session_state["rebar_table"] = applied_table
     session_state["rebar_editor_revision"] = int(session_state.get("rebar_editor_revision", 0) or 0) + 1
-    session_state["rebar_input_mode"] = "Manual table"
+    session_state["rebar_input_mode"] = REBAR_INPUT_MODE_MANUAL
     session_state["rebar_apply_status"] = f"Applied {len(applied_table):,} generated bar row(s) to the Longitudinal Rebar table."
 
     for key in list(session_state.keys()):
@@ -2248,7 +2252,7 @@ def _render_longitudinal_rebar_tab(
     if "rebar_editor_revision" not in st.session_state:
         st.session_state["rebar_editor_revision"] = 0
 
-    input_mode = "Manual table"
+    input_mode = DEFAULT_REBAR_INPUT_MODE
     edited_df = st.session_state["rebar_table"]
 
     input_col, status_col = st.columns([1.28, 1.0], gap="large")
@@ -2268,16 +2272,19 @@ def _render_longitudinal_rebar_tab(
             apply_status = st.session_state.pop("rebar_apply_status", None)
             if apply_status:
                 st.success(str(apply_status))
+            if st.session_state.get("rebar_input_mode") not in REBAR_INPUT_MODE_OPTIONS:
+                st.session_state["rebar_input_mode"] = DEFAULT_REBAR_INPUT_MODE
             input_mode = st.selectbox(
                 "Rebar input mode",
-                ["Manual table", "Auto perimeter layout"],
+                REBAR_INPUT_MODE_OPTIONS,
+                index=REBAR_INPUT_MODE_OPTIONS.index(DEFAULT_REBAR_INPUT_MODE),
                 key="rebar_input_mode",
             )
             st.markdown(
                 '<div class="cpmm-rebar-note">Selecting a database bar size fills Diameter and enforces the standard material/fy rule: DB10–DB28 = SD40, DB32 = SD50. Use Custom bar size for project-specific overrides.</div>',
                 unsafe_allow_html=True,
             )
-            if input_mode == "Auto perimeter layout":
+            if input_mode == REBAR_INPUT_MODE_AUTO_PERIMETER:
                 _render_auto_perimeter_controls(rebar_db, st.session_state.get("section_geometry"))
 
             # The editable table is always shown. Auto perimeter layout is a
