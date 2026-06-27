@@ -204,6 +204,40 @@ def _enforce_minimum_center_spacing(
     return kept, removed
 
 
+def _merge_spatially_close_points(
+    points: Iterable[tuple[float, float]],
+    section: Polygon,
+    minimum_center_spacing_mm: float,
+) -> tuple[list[tuple[float, float]], int]:
+    """Merge generated bar centers that are too close in true x/y space.
+
+    The perimeter-order guard removes duplicate bars on very short perimeter
+    steps.  Narrow webs need a second, geometric guard: left/right offset faces
+    can be far apart by perimeter distance but closer than the detailing center
+    spacing in actual space.  When this happens, merge the pair to a single
+    midpoint if the midpoint remains inside the concrete; otherwise keep the
+    first point and drop the later one.  This avoids both visual collision and
+    leaving an entire narrow web side without a readable centerline bar.
+    """
+
+    kept: list[tuple[float, float]] = []
+    merged_or_removed = 0
+    for raw_x, raw_y in points:
+        candidate = (float(raw_x), float(raw_y))
+        merged = False
+        for index, existing in enumerate(kept):
+            if math.hypot(candidate[0] - existing[0], candidate[1] - existing[1]) < minimum_center_spacing_mm:
+                midpoint = ((candidate[0] + existing[0]) / 2.0, (candidate[1] + existing[1]) / 2.0)
+                if _point_is_effectively_inside(section, Point(midpoint[0], midpoint[1])):
+                    kept[index] = midpoint
+                merged_or_removed += 1
+                merged = True
+                break
+        if not merged:
+            kept.append(candidate)
+    return kept, merged_or_removed
+
+
 def _uniform_distances(perimeter_length_mm: float, target_spacing_mm: float, min_bars: int) -> tuple[list[float], float]:
     generated_count = max(int(min_bars), int(math.ceil(perimeter_length_mm / target_spacing_mm)))
     actual_spacing_mm = perimeter_length_mm / generated_count
@@ -348,7 +382,6 @@ def generate_perimeter_rebar_layout(
         minimum_center_spacing_mm,
     )
     actual_spacing_mm = _max_circular_spacing(distances, perimeter_length_mm)
-    generated_count = len(distances)
     if removed_close_points:
         warnings.append(
             f"Removed {removed_close_points} closely spaced generated bar point(s) to avoid overlapping perimeter bars; "
@@ -374,9 +407,23 @@ def generate_perimeter_rebar_layout(
     outside_count = 0
     void_count = 0
     hole_polygons = [Polygon([point.as_tuple() for point in hole]) for hole in geometry.holes]
+    candidate_points = [
+        (float(point.x), float(point.y))
+        for point in (perimeter.interpolate(distance % perimeter_length_mm) for distance in distances)
+    ]
+    candidate_points, merged_spatial_points = _merge_spatially_close_points(
+        candidate_points,
+        section,
+        minimum_center_spacing_mm,
+    )
+    if merged_spatial_points:
+        warnings.append(
+            f"Merged {merged_spatial_points} spatially close generated bar point(s) where opposite offset faces were closer than the minimum center spacing guard."
+        )
+    generated_count = len(candidate_points)
     prefix = str(label_prefix or "B").strip() or "B"
-    for index, distance in enumerate(distances):
-        point = perimeter.interpolate(distance % perimeter_length_mm)
+    for index, (x_mm, y_mm) in enumerate(candidate_points):
+        point = Point(float(x_mm), float(y_mm))
         if any(hole.covers(point) for hole in hole_polygons):
             void_count += 1
         elif not _point_is_effectively_inside(section, point):
@@ -385,8 +432,8 @@ def generate_perimeter_rebar_layout(
             {
                 "Active": True,
                 "Label": f"{prefix}{index + 1}",
-                "x_mm": round(float(point.x), 3),
-                "y_mm": round(float(point.y), 3),
+                "x_mm": round(float(x_mm), 3),
+                "y_mm": round(float(y_mm), 3),
                 "Bar Size": str(bar_size),
                 "Diameter_mm": float(diameter_mm),
                 "Material": str(material or "SD40"),
