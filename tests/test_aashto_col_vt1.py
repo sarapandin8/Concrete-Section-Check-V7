@@ -12,6 +12,7 @@ from concrete_pmm_pro.geometry.generators import rectangle
 from concrete_pmm_pro.ui.analysis_page import (
     _column_pier_check_decision_rows,
     _column_pier_combined_vt_check_dataframe,
+    _column_pier_combined_vt_controlling_cause,
     _column_pier_combined_vt_governing_tie_info,
     _column_pier_combined_vt_screen_dataframe,
 )
@@ -129,6 +130,71 @@ def test_aashto_vt1_directional_mapping_uses_vux_and_vuy_independently() -> None
     assert float(by_direction["Vuy"]["Stress D/C value"]) > float(by_direction["Vux"]["Stress D/C value"])
     assert float(by_direction["Vuy"]["Overall D/C value"]) > float(by_direction["Vux"]["Overall D/C value"])
 
+
+
+
+def test_aashto_vt2_asymmetric_vu_tu_demands_change_dc_and_governing_row() -> None:
+    state = _state(spacing_mm=300.0)
+    state["column_uls_loads_table"] = [
+        {
+            "Active": True,
+            "Case Name": "ULS-A",
+            "Pu": 1_200.0,
+            "Mux": 120.0,
+            "Muy": 60.0,
+            "Vux": 20.0,
+            "Vuy": 800.0,
+            "Tu": 50.0,
+            "Note": "asymmetric lower torsion",
+        },
+        {
+            "Active": True,
+            "Case Name": "ULS-B",
+            "Pu": 1_200.0,
+            "Mux": 120.0,
+            "Muy": 60.0,
+            "Vux": 800.0,
+            "Vuy": 20.0,
+            "Tu": 120.0,
+            "Note": "asymmetric higher torsion",
+        },
+    ]
+
+    vt_df = _column_pier_combined_vt_check_dataframe(state, _analysis_input())
+    active = vt_df[vt_df["Status"].astype(str) != "NOT APPLICABLE"]
+    by_key = {(row["Case"], row["Direction"]): row for _, row in active.iterrows()}
+
+    assert float(by_key[("ULS-A", "Vuy")]["Overall D/C value"]) > float(by_key[("ULS-A", "Vux")]["Overall D/C value"])
+    assert float(by_key[("ULS-B", "Vux")]["Overall D/C value"]) > float(by_key[("ULS-B", "Vuy")]["Overall D/C value"])
+    assert float(by_key[("ULS-B", "Vux")]["Overall D/C value"]) > float(by_key[("ULS-A", "Vuy")]["Overall D/C value"])
+
+    tie_info = _column_pier_combined_vt_governing_tie_info(vt_df)
+    assert tie_info["count"] == 1
+    assert tie_info["rows"] == ["ULS-B / Vux"]
+
+
+def test_aashto_vt2_controlling_cause_reports_torsion_source_failure() -> None:
+    vt_df = _column_pier_combined_vt_check_dataframe(_state(spacing_mm=100.0, tu_kNm=50.0), _analysis_input())
+
+    cause = _column_pier_combined_vt_controlling_cause(vt_df)
+
+    assert cause.startswith("Controlling cause:")
+    assert "source torsion strength" in cause
+
+
+def test_aashto_vt2_seismic_scope_guard_is_warning_not_failure_alert() -> None:
+    source = __import__("pathlib").Path("concrete_pmm_pro/ui/analysis_page.py").read_text()
+    warning_snippet = (
+        "st.warning(\n"
+        "            \"Seismic confinement/detailing review remains separate: this V+T gate uses the Control section transverse row only \""
+    )
+    error_snippet = (
+        "st.error(\n"
+        "            \"Seismic confinement/detailing review remains separate: this V+T gate uses the Control section transverse row only \""
+    )
+
+    assert warning_snippet in source
+    assert error_snippet not in source
 
 def test_aashto_vt1_governing_tie_info_reports_tied_rows_for_summary_card() -> None:
     state = _state()

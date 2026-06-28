@@ -12036,7 +12036,7 @@ def _column_pier_combined_vt_summary_cards(
         status_color = "warning"
     elif any(str(value) == "FAIL" for value in vt_df["Status"].tolist()):
         status_value = "FAIL"
-        status_detail = "Strength gate failed: at least one stress, transverse, longitudinal, or source check exceeds 1.0."
+        status_detail = _column_pier_combined_vt_controlling_cause(vt_df)
         status_color = "danger"
     elif any(str(value) == "DATA REQUIRED" for value in vt_df["Status"].tolist()):
         status_value = "DATA REQUIRED"
@@ -12077,6 +12077,48 @@ def _column_pier_combined_vt_summary_cards(
         {"title": "Seismic detailing", "value": "REVIEW REQUIRED", "detail": "Confinement, hoop anchorage, lap-splice confinement, and plastic-hinge detailing are not certified by this gate.", "status": "warning"},
         {"title": "Prestress route", "value": prestress_value, "detail": prestress_detail, "status": prestress_status},
     ]
+
+
+def _column_pier_combined_vt_controlling_cause(vt_df: pd.DataFrame | None) -> str:
+    """Return a concise root-cause label for the governing Column/Pier V+T row."""
+
+    ranked = _column_pier_combined_vt_ranked_dataframe(vt_df)
+    if ranked.empty:
+        return "No active V+T row"
+    row = ranked.iloc[0]
+    row_status = str(row.get("Status") or "-")
+    if row_status not in {"FAIL", "REVIEW", "DATA REQUIRED"}:
+        return "No failing governing cause"
+
+    causes: list[str] = []
+    source_shear = str(row.get("Source shear status") or "-")
+    source_torsion = str(row.get("Source torsion status") or "-")
+    if source_shear in {"FAIL", "Preview FAIL"}:
+        causes.append("source shear strength")
+    if source_torsion in {"FAIL", "Preview FAIL"}:
+        causes.append("source torsion strength")
+
+    gate_map = [
+        ("source/stress gate", "Stress status", "Stress D/C value"),
+        ("combined transverse reinforcement", "Transverse status", "Transverse D/C value"),
+        ("ordinary longitudinal Al", "Longitudinal status", "Longitudinal D/C value"),
+    ]
+    for label, status_col, dc_col in gate_map:
+        gate_status = str(row.get(status_col) or "-")
+        gate_dc = _beam_uls_float(row.get(dc_col))
+        if gate_status == "FAIL" or (math.isfinite(gate_dc) and gate_dc > 1.0 + 1.0e-9):
+            causes.append(label)
+        elif row_status in {"REVIEW", "DATA REQUIRED"} and gate_status in {"REVIEW", "DATA REQUIRED", "LAYOUT REQUIRED", "NOT CHECKED", "NOT READY"}:
+            causes.append(label)
+
+    unique_causes = list(dict.fromkeys(causes))
+    if unique_causes:
+        return "Controlling cause: " + " + ".join(unique_causes[:3])
+    if row_status == "FAIL":
+        return "Controlling cause: strength gate exceeds 1.0"
+    if row_status == "DATA REQUIRED":
+        return "Controlling cause: required V+T source data is incomplete"
+    return "Controlling cause: guarded V+T route review"
 
 
 def _column_pier_combined_vt_screen_dataframe(vt_df: pd.DataFrame | None) -> pd.DataFrame:
@@ -12149,7 +12191,7 @@ def _render_column_pier_combined_vt_workspace() -> None:
 
     if not vt_df.empty:
         st.dataframe(_column_pier_combined_vt_screen_dataframe(vt_df), use_container_width=True, hide_index=True)
-        st.error(
+        st.warning(
             "Seismic confinement/detailing review remains separate: this V+T gate uses the Control section transverse row only "
             "and does not certify plastic-hinge confinement, hoop anchorage, lap-splice confinement, or seismic detailing."
         )
