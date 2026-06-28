@@ -61,7 +61,7 @@ from concrete_pmm_pro.analysis.warnings import (
     UNBONDED_PRESTRESS_IGNORED_WARNING,
     deduplicate_warnings,
 )
-from concrete_pmm_pro.code_checks import aci_beta1
+from concrete_pmm_pro.code_checks import aci_beta1, aashto_simplified_shear_result
 from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisModeSettings, AnalysisSettings
 from concrete_pmm_pro.core.models import ConcreteMaterial, LoadCase, PrestressElement, RebarMaterial, SectionGeometry
 from concrete_pmm_pro.core.design_code import (
@@ -3827,20 +3827,6 @@ def _column_pier_shear_result_for_case_direction(
     case = str(demand_row.get("Case Name") or "-")
     vu_kN = _beam_uls_float(demand_row.get(direction))
     code = workflow_project_design_code_from_session(state)
-    if code != PROJECT_CODE_ACI318:
-        return {
-            "Check": "Shear",
-            "Status": "REVIEW",
-            "Direction": direction,
-            "Case": case,
-            "Demand": _format_beam_uls_demand(vu_kN, "kN"),
-            "Capacity": "-",
-            "Utilization": "-",
-            "Demand kN": vu_kN if math.isfinite(vu_kN) else float("nan"),
-            "phiVn kN": float("nan"),
-            "Governing D/C value": float("nan"),
-            "Notes": "AASHTO LRFD Column/Pier shear is not implemented in ULS.COL.SHEAR.ACI1.",
-        }
     if not math.isfinite(vu_kN) or abs(float(vu_kN)) <= _COLUMN_PIER_SHEAR_DEMAND_TOL:
         return {
             "Check": "Shear",
@@ -3921,49 +3907,131 @@ def _column_pier_shear_result_for_case_direction(
             "Governing D/C value": float("nan"),
             "Notes": "Active Column/Pier transverse region has incomplete bar, legs, spacing, or fy input.",
         }
-    phi = 0.75
     sqrt_fc = math.sqrt(fc)
     avs_mm2_per_mm = float(stirrup_area) * float(legs) / float(spacing)
-    vc_n = 0.17 * sqrt_fc * float(bw_mm) * float(d_mm)
-    vs_n = avs_mm2_per_mm * float(fy) * float(d_mm)
-    vs_limit_n = 0.66 * sqrt_fc * float(bw_mm) * float(d_mm)
-    vn_uncapped_n = max(0.0, vc_n + vs_n)
-    vn_limit_n = vc_n + vs_limit_n
-    vn_n = min(vn_uncapped_n, vn_limit_n)
-    phi_vn_kN = phi * vn_n / 1000.0
-    strength_dc = abs(float(vu_kN)) / phi_vn_kN if phi_vn_kN > 0.0 else float("nan")
-    avs_required = max(0.062 * sqrt_fc * float(bw_mm) / float(fy), 0.35 * float(bw_mm) / float(fy))
-    s_max = min(0.50 * float(d_mm), 600.0)
-    avs_dc = avs_required / avs_mm2_per_mm if avs_mm2_per_mm > 0.0 else float("nan")
-    spacing_dc = float(spacing) / s_max if s_max > 0.0 else float("nan")
+    has_prestress = _column_pier_has_active_prestress(analysis_input)
+    if code == PROJECT_CODE_AASHTO_LRFD:
+        try:
+            aashto = aashto_simplified_shear_result(
+                fc_MPa=fc,
+                bv_mm=float(bw_mm),
+                dv_mm=float(d_mm),
+                vu_N=abs(float(vu_kN)) * 1000.0,
+                avs_mm2_per_mm=avs_mm2_per_mm,
+                fy_MPa=float(fy),
+            )
+            phi = aashto.phi
+            vc_n = aashto.vc_N
+            vs_n = aashto.vs_N
+            vn_uncapped_n = aashto.vn_uncapped_N
+            vn_limit_n = aashto.vn_limit_N
+            vn_n = aashto.vn_N
+            phi_vn_kN = aashto.phi_vn_N / 1000.0
+            strength_dc = aashto.vu_over_phi_vn
+            avs_required = aashto.avs_required_mm2_per_mm
+            s_max = aashto.s_max_mm
+            avs_dc = aashto.avs_dc
+            spacing_dc = float(spacing) / s_max if s_max > 0.0 else float("nan")
+            beta = aashto.beta
+            theta_deg = aashto.theta_deg
+            shear_stress_ratio = aashto.shear_stress_ratio_to_fc
+            method = "AASHTO LRFD 5.7.3 simplified shear; beta=2.0, theta=45 deg"
+            code_basis = "AASHTO LRFD 9th Column/Pier shear"
+            notes = [
+                "AASHTO.COL.SHEAR1 uses the AASHTO LRFD Section 5.7 simplified sectional shear route for nonprestressed B-regions.",
+                "Vn = min(Vc + Vs + Vp, 0.25 fc bv dv + Vp); current Column/Pier case-based route uses Vp = 0 until PSC/general-procedure shear is validated.",
+                "Vc uses the AASHTO ksi sqrt(fc) coefficient through SI-safe conversion before multiplying bv and dv in mm.",
+                "Method 1 parameters are beta = 2.0 and theta = 45 deg; applicable only when nonprestressed, no axial tension, and minimum transverse reinforcement is satisfied.",
+                "Case-based Column/Pier loads have no station owner yet; the active transverse region with the lowest Av/s is used conservatively.",
+                str(geometry.get("basis") or ""),
+                str(geometry.get("notes") or ""),
+                "Effective shear legs are read from the active transverse region; verify direction-specific tie legs, anchorage, and development before final issue.",
+            ]
+            if has_prestress:
+                notes.append("Active prestress is present; this row remains REVIEW because AASHTO general procedure/PSC Vp and tendon inclination effects are not implemented in SHEAR1.")
+            pu_kN = _beam_uls_float(demand_row.get("Pu"))
+            axial_tension = math.isfinite(pu_kN) and float(pu_kN) < -1.0e-9
+            if axial_tension:
+                notes.append("Axial tension is present; AASHTO simplified Method 1 is not used for final PASS/FAIL and the row remains REVIEW.")
+            if int(geometry.get("void_count") or 0) > 0:
+                notes.append("Section has holes/voids; bv is based on centroid-line concrete breadth, not the full bounding box.")
+            if vn_uncapped_n > vn_n + 1.0e-6:
+                notes.append("Nominal Vn was capped by the AASHTO 0.25 fc bv dv limit.")
+            if float(fy) > 689.4757293168361 + 1.0e-9:
+                notes.append("Transverse reinforcement fy exceeds the 100 ksi AASHTO Section 5.7 shear scope used by this route; row remains REVIEW.")
+            if math.isfinite(avs_dc) and avs_dc > 1.0 + 1.0e-9:
+                notes.append("Provided Av/s is less than the AASHTO minimum transverse reinforcement gate.")
+            if math.isfinite(spacing_dc) and spacing_dc > 1.0 + 1.0e-9:
+                notes.append("Provided tie spacing exceeds the AASHTO maximum spacing gate.")
+            if has_prestress or axial_tension or float(fy) > 689.4757293168361 + 1.0e-9:
+                status = "REVIEW"
+            elif any(math.isfinite(value) and value > 1.0 + 1.0e-9 for value in [strength_dc, avs_dc, spacing_dc]):
+                status = "FAIL"
+            else:
+                status = "PASS"
+        except ValueError as exc:
+            return {
+                "Check": "Shear",
+                "Status": "REVIEW",
+                "Direction": direction,
+                "Case": case,
+                "Demand": _format_beam_uls_demand(vu_kN, "kN"),
+                "Capacity": "-",
+                "Utilization": "-",
+                "Demand kN": float(vu_kN),
+                "phiVn kN": float("nan"),
+                "Governing D/C value": float("nan"),
+                "Code basis": "AASHTO LRFD 9th Column/Pier shear",
+                "Method": "AASHTO LRFD 5.7.3 simplified sectional shear",
+                "Notes": f"AASHTO shear inputs are outside the implemented SHEAR1 scope: {exc}",
+            }
+    else:
+        phi = 0.75
+        vc_n = 0.17 * sqrt_fc * float(bw_mm) * float(d_mm)
+        vs_n = avs_mm2_per_mm * float(fy) * float(d_mm)
+        vs_limit_n = 0.66 * sqrt_fc * float(bw_mm) * float(d_mm)
+        vn_uncapped_n = max(0.0, vc_n + vs_n)
+        vn_limit_n = vc_n + vs_limit_n
+        vn_n = min(vn_uncapped_n, vn_limit_n)
+        phi_vn_kN = phi * vn_n / 1000.0
+        strength_dc = abs(float(vu_kN)) / phi_vn_kN if phi_vn_kN > 0.0 else float("nan")
+        avs_required = max(0.062 * sqrt_fc * float(bw_mm) / float(fy), 0.35 * float(bw_mm) / float(fy))
+        s_max = min(0.50 * float(d_mm), 600.0)
+        avs_dc = avs_required / avs_mm2_per_mm if avs_mm2_per_mm > 0.0 else float("nan")
+        spacing_dc = float(spacing) / s_max if s_max > 0.0 else float("nan")
+        beta = float("nan")
+        theta_deg = float("nan")
+        shear_stress_ratio = float("nan")
+        method = "ACI 318 simplified one-way shear, minimum Av/s, spacing, and Vs-limit gate; case-based conservative active-region source"
+        code_basis = "ACI 318 Column/Pier RC shear scoped gate"
+        if has_prestress:
+            status = "REVIEW"
+        elif any(math.isfinite(value) and value > 1.0 + 1.0e-9 for value in [strength_dc, avs_dc, spacing_dc]):
+            status = "FAIL"
+        else:
+            status = "PASS"
+        notes = [
+            "ULS.COL.SHEAR.ACI_FINAL1 uses ACI 318 SI simplified one-way shear: Vc = 0.17 sqrt(fc) bw d, Vs = Av fy d / s, phi = 0.75.",
+            "Case-based Column/Pier loads have no station owner yet; the active transverse region with the lowest Av/s is used conservatively.",
+            str(geometry.get("basis") or ""),
+            str(geometry.get("notes") or ""),
+            "Effective shear legs are read from the active transverse region; verify direction-specific tie legs and anchorage before final design.",
+        ]
+        if int(geometry.get("void_count") or 0) > 0:
+            notes.append("Section has holes/voids; bw is based on centroid-line concrete breadth, not the full bounding box.")
+        if has_prestress:
+            notes.append("Active prestress is present. Prestress shear contribution, Vp, Vci/Vcw, and PSC-specific ACI provisions are not implemented, so the shear result remains REVIEW.")
+        if vn_uncapped_n > vn_n + 1.0e-6:
+            notes.append("Nominal Vn was capped by the ACI Vs maximum screen.")
+        if math.isfinite(avs_dc) and avs_dc > 1.0 + 1.0e-9:
+            notes.append("Provided Av/s is less than the ACI minimum shear reinforcement gate.")
+        if math.isfinite(spacing_dc) and spacing_dc > 1.0 + 1.0e-9:
+            notes.append("Provided tie spacing exceeds the ACI maximum spacing gate.")
+
     detailing_values = [value for value in [avs_dc, spacing_dc] if math.isfinite(value)]
     detailing_dc = max(detailing_values) if detailing_values else float("nan")
     governing_values = [value for value in [strength_dc, detailing_dc] if math.isfinite(value)]
     governing_dc = max(governing_values) if governing_values else float("nan")
-    has_prestress = _column_pier_has_active_prestress(analysis_input)
-    if has_prestress:
-        status = "REVIEW"
-    elif any(math.isfinite(value) and value > 1.0 + 1.0e-9 for value in [strength_dc, detailing_dc]):
-        status = "FAIL"
-    else:
-        status = "PASS"
-    notes = [
-        "ULS.COL.SHEAR.ACI_FINAL1 uses ACI 318 SI simplified one-way shear: Vc = 0.17 sqrt(fc) bw d, Vs = Av fy d / s, phi = 0.75.",
-        "Case-based Column/Pier loads have no station owner yet; the active transverse region with the lowest Av/s is used conservatively.",
-        str(geometry.get("basis") or ""),
-        str(geometry.get("notes") or ""),
-        "Effective shear legs are read from the active transverse region; verify direction-specific tie legs and anchorage before final design.",
-    ]
-    if int(geometry.get("void_count") or 0) > 0:
-        notes.append("Section has holes/voids; bw is based on centroid-line concrete breadth, not the full bounding box.")
-    if has_prestress:
-        notes.append("Active prestress is present. Prestress shear contribution, Vp, Vci/Vcw, and PSC-specific ACI provisions are not implemented, so the shear result remains REVIEW.")
-    if vn_uncapped_n > vn_n + 1.0e-6:
-        notes.append("Nominal Vn was capped by the ACI Vs maximum screen.")
-    if math.isfinite(avs_dc) and avs_dc > 1.0 + 1.0e-9:
-        notes.append("Provided Av/s is less than the ACI minimum shear reinforcement gate.")
-    if math.isfinite(spacing_dc) and spacing_dc > 1.0 + 1.0e-9:
-        notes.append("Provided tie spacing exceeds the ACI maximum spacing gate.")
     return {
         "Check": "Shear",
         "Status": status,
@@ -3996,8 +4064,11 @@ def _column_pier_shear_result_for_case_direction(
         "d mm": float(d_mm),
         "gross dimension mm": float(geometry.get("gross_dimension_mm") or float("nan")),
         "phi": phi,
-        "Code basis": "ACI 318 Column/Pier RC shear scoped gate",
-        "Method": "ACI 318 simplified one-way shear, minimum Av/s, spacing, and Vs-limit gate; case-based conservative active-region source",
+        "beta": beta,
+        "theta deg": theta_deg,
+        "vu/fc ratio": shear_stress_ratio,
+        "Code basis": code_basis,
+        "Method": method,
         "Notes": "; ".join(part for part in notes if part),
     }
 
@@ -4009,7 +4080,7 @@ def _column_pier_shear_check_dataframe(state: Mapping[str, object], analysis_inp
         "Vn kN", "Vn uncapped kN", "Vn limit kN", "Strength D/C value", "Detailing D/C value",
         "Governing D/C value", "Zone", "Tie/hoop", "Av/s mm2/mm", "Av/s required mm2/mm",
         "Av/s min D/C", "s max mm", "Spacing D/C", "bw mm", "d mm", "gross dimension mm",
-        "phi", "Code basis", "Method", "Notes",
+        "phi", "beta", "theta deg", "vu/fc ratio", "Code basis", "Method", "Notes",
     ]
     active_df = _active_column_pier_uls_demand_dataframe_from_state(state)
     if active_df.empty:
@@ -10565,7 +10636,7 @@ def _project_design_code_status_cards(*, workflow: str) -> list[dict[str, object
     code_detail = "Source of truth from Setup"
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
         capability = "Available / review"
-        detail = "AASHTO LRFD 9th PMM route is active for Column/Pier B-region axial-flexure; shear, torsion, slenderness, seismic, and hollow-wall local-buckling checks remain guarded."
+        detail = "AASHTO LRFD 9th PMM route is active for Column/Pier B-region axial-flexure; AASHTO.COL.SHEAR1 simplified nonprestressed B-region shear is active; torsion, slenderness, seismic, and hollow-wall local-buckling remain guarded."
         status = "ready"
     elif workflow == "pmm":
         capability = "Available"
@@ -10599,7 +10670,7 @@ def _render_project_design_code_guard(*, workflow: str) -> None:
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
         st.info(
             "Project Design Code is AASHTO LRFD. The Column/Pier/Wall/Pylon PMM route now uses the AASHTO LRFD 9th "
-            "B-region axial-flexure basis; shear, torsion, slenderness/second-order, seismic, and hollow-wall local-buckling checks remain separate guarded milestones."
+            "B-region axial-flexure basis; shear, torsion, slenderness/second-order, seismic, and hollow-wall local-buckling checks remain separate guarded milestones; AASHTO.COL.SHEAR1 adds a simplified nonprestressed B-region shear route."
         )
 
 
@@ -10612,11 +10683,11 @@ def _column_pier_analysis_scope_cards() -> list[dict[str, object]]:
         if code != PROJECT_CODE_AASHTO_LRFD
         else "AASHTO LRFD 9th PMM route uses Section 5 B-region axial-flexure strain compatibility with code-specific stress block, φ, and axial cap guards"
     )
-    shear_status = "ACI RC scoped gate" if code == PROJECT_CODE_ACI318 else "REVIEW / planned"
+    shear_status = "ACI RC scoped gate" if code == PROJECT_CODE_ACI318 else "AASHTO simplified shear"
     shear_detail = (
         "ACI 318 RC Column/Pier scoped shear gate reads Vux/Vuy and active transverse reinforcement; PSC and seismic/detailing certification remain guarded"
         if code == PROJECT_CODE_ACI318
-        else "AASHTO LRFD Column/Pier shear is not implemented; no Vn or PASS/FAIL is issued"
+        else "AASHTO LRFD 9th Section 5.7 simplified sectional shear route is active for nonprestressed B-regions; PSC/general procedure, torsion, and seismic remain guarded"
     )
     torsion_status = "ACI RC V+T gate" if code == PROJECT_CODE_ACI318 else "REVIEW / planned"
     torsion_detail = (
@@ -10643,15 +10714,15 @@ def _column_pier_analysis_scope_cards() -> list[dict[str, object]]:
             "title": "Shear",
             "value": shear_status,
             "detail": shear_detail,
-            "status": "info" if code == PROJECT_CODE_ACI318 else "warning",
-            "strong": code != PROJECT_CODE_ACI318,
+            "status": "info",
+            "strong": False,
         },
         {
             "title": "Torsion",
             "value": torsion_status,
             "detail": torsion_detail,
-            "status": "info" if code == PROJECT_CODE_ACI318 else "warning",
-            "strong": code != PROJECT_CODE_ACI318,
+            "status": "info",
+            "strong": False,
         },
         {
             "title": "Serviceability",
@@ -10667,7 +10738,7 @@ def _column_pier_decision_caption_for_code(code: object) -> str:
     if normalized == PROJECT_CODE_AASHTO_LRFD:
         return (
             "Commercial workflow focus: run AASHTO LRFD 9th PMM interaction for Pu-Mux-Muy strength, "
-            "then keep Column/Pier shear, torsion, V+T, slenderness, seismic, and hollow-wall local-buckling items in REVIEW until their AASHTO solvers are validated."
+            "then review AASHTO Section 5.7 simplified shear for nonprestressed B-regions while torsion, V+T, slenderness, seismic, and hollow-wall local-buckling items remain guarded."
         )
     return (
         "Commercial workflow focus: run PMM interaction for Pu-Mux-Muy strength, then review scoped ACI RC shear, "
@@ -10738,8 +10809,6 @@ def _column_pier_check_decision_rows(
     vt = _column_pier_governing_combined_vt_row(vt_df)
 
     def _check_status(df: pd.DataFrame, *, empty_status: str, fail_status: str = "FAIL") -> str:
-        if code != PROJECT_CODE_ACI318:
-            return "REVIEW"
         if df.empty:
             return empty_status
         statuses = {str(value) for value in df.get("Status", pd.Series(dtype=str)).tolist()}
@@ -10763,7 +10832,7 @@ def _column_pier_check_decision_rows(
             "Demand": "Pu, Mux, Muy",
             "D/C": pmm_dc,
             "Route / Scope": (
-                "AASHTO LRFD 9th PMM engineering-review route; shear/torsion/slenderness/seismic/detailing remain REVIEW"
+                "AASHTO LRFD 9th PMM engineering-review route; shear uses AASHTO Section 5.7 simplified nonprestressed B-region route; torsion/slenderness/seismic/detailing remain REVIEW"
                 if code == PROJECT_CODE_AASHTO_LRFD
                 else "ACI RC/PSC PMM production-preview route"
             ),
@@ -10776,7 +10845,7 @@ def _column_pier_check_decision_rows(
             "Demand": "Vux, Vuy",
             "D/C": "-" if shear is None else _column_pier_dc_text(shear.get("Governing D/C value")),
             "Route / Scope": (
-                "AASHTO LRFD Column/Pier shear not implemented; REVIEW only, no Vn or PASS/FAIL issued"
+                "AASHTO LRFD 9th Section 5.7 simplified shear route; PASS/FAIL only for nonprestressed, no axial-tension, minimum-transverse B-region scope"
                 if code == PROJECT_CODE_AASHTO_LRFD
                 else "ACI 318 RC scoped shear gate; PSC shear and seismic/detailing remain REVIEW"
             ),
@@ -11070,11 +11139,7 @@ def _column_pier_shear_summary_cards(
     if not active_demands.empty:
         for column in ["Vux", "Vuy"]:
             active_demand_count += int(pd.to_numeric(active_demands[column], errors="coerce").abs().gt(_COLUMN_PIER_SHEAR_DEMAND_TOL).sum())
-    if code != PROJECT_CODE_ACI318:
-        status_value = "REVIEW"
-        status_detail = "AASHTO LRFD Column/Pier shear is not implemented in this milestone"
-        status_color = "warning"
-    elif shear_df.empty:
+    if shear_df.empty:
         status_value = "NOT READY"
         status_detail = "Needs nonzero Vux/Vuy and an active valid transverse reinforcement region"
         status_color = "warning"
@@ -11088,7 +11153,7 @@ def _column_pier_shear_summary_cards(
         status_color = "warning"
     else:
         status_value = "PASS"
-        status_detail = "ACI RC scoped shear gates are below 1.0 within the implemented nonprestressed route"
+        status_detail = "Scoped shear gates are below 1.0 within the implemented nonprestressed route"
         status_color = "ready"
     capacity_detail = "-"
     demand_detail = "-"
@@ -11101,10 +11166,10 @@ def _column_pier_shear_summary_cards(
         zone_value = str(zone.get("Zone") or "Active transverse region")
         zone_detail = f"{zone.get('Bar Size') or '-'} @ {_beam_uls_float(zone.get('Spacing_mm')):.0f} mm; lowest active Av/s source"
     prestress_value = "No"
-    prestress_detail = "ACI RC shear route"
+    prestress_detail = "Nonprestressed shear route"
     if _column_pier_has_active_prestress(analysis_input):
         prestress_value = "Present"
-        prestress_detail = "PSC shear contribution is not implemented; result remains REVIEW"
+        prestress_detail = "PSC/general procedure shear is not implemented; result remains REVIEW"
     return [
         {
             "title": "Shear status",
@@ -11115,9 +11180,9 @@ def _column_pier_shear_summary_cards(
         },
         {
             "title": "Code route",
-            "value": "ACI 318 RC" if code == PROJECT_CODE_ACI318 else "Not implemented",
-            "detail": f"{edition}; AASHTO/PSC routes remain future milestones",
-            "status": "info" if code == PROJECT_CODE_ACI318 else "warning",
+            "value": "ACI 318 RC" if code == PROJECT_CODE_ACI318 else "AASHTO 5.7 simplified",
+            "detail": f"{edition}; PSC/general procedure, torsion, and seismic remain guarded",
+            "status": "info",
         },
         {
             "title": "Active V demands",
@@ -11148,7 +11213,7 @@ def _column_pier_shear_summary_cards(
 
 def _render_column_pier_shear_guarded_workspace() -> None:
     st.markdown("#### Shear")
-    st.caption("ACI 318 RC scoped shear gate for column, pier, wall, and pylon case-based ULS rows.")
+    st.caption("Column/Pier/Wall/Pylon case-based shear gate. ACI and AASHTO routes are selected from the Project Design Code.")
     active_demands = _active_column_pier_uls_demand_dataframe_from_state(st.session_state)
     analysis_input = _serviceability_analysis_input_from_session()
     shear_df = _column_pier_shear_check_dataframe(st.session_state, analysis_input)
@@ -11161,8 +11226,8 @@ def _render_column_pier_shear_guarded_workspace() -> None:
         columns=3,
     )
     code = workflow_project_design_code_from_session(st.session_state)
-    if code != PROJECT_CODE_ACI318:
-        st.warning("Column/Pier AASHTO LRFD shear is not implemented. This tab does not issue Vn or PASS/FAIL for AASHTO projects.")
+    if code == PROJECT_CODE_AASHTO_LRFD and not shear_df.empty and any(str(value) == "REVIEW" for value in shear_df["Status"].tolist()):
+        st.warning("AASHTO shear rows are calculated, but one or more rows remain REVIEW because prestress, axial tension, high-fy, or other guarded assumptions apply.")
     elif shear_df.empty:
         st.warning("No Column/Pier ACI shear rows are ready. Enter nonzero Vux/Vuy, confirm section/material inputs, and activate valid transverse reinforcement regions.")
     elif any(str(value) in {"FAIL", "Preview FAIL"} for value in shear_df["Status"].tolist()):
@@ -11170,13 +11235,13 @@ def _render_column_pier_shear_guarded_workspace() -> None:
     elif any(str(value) == "REVIEW" for value in shear_df["Status"].tolist()):
         st.warning("ACI shear values are calculated, but the result remains REVIEW because one or more guarded assumptions apply.")
     else:
-        st.success("ACI RC scoped shear gates PASS for the current visible rows. Seismic/detailing items called out below remain separate engineering review items.")
+        st.success("Scoped shear gates PASS for the current visible rows. Seismic/detailing items called out below remain separate engineering review items.")
 
     if not shear_df.empty:
         display_columns = [
             "Status", "Direction", "Case", "Demand", "Capacity", "Utilization",
             "Zone", "Tie/hoop", "bw mm", "d mm", "Av/s mm2/mm", "Av/s required mm2/mm",
-            "Governing D/C value",
+            "Governing D/C value", "Code basis", "beta", "theta deg",
         ]
         st.dataframe(shear_df[display_columns], use_container_width=True, hide_index=True)
         st.error(
@@ -11189,7 +11254,7 @@ def _render_column_pier_shear_guarded_workspace() -> None:
             st.info("Seismic spacing advisor is not selected in Sections -> Rebar -> Transverse Rebar. Activate it there to show the recommended seismic tie/hoop spacing here.")
         else:
             st.dataframe(seismic_advisor_df, use_container_width=True, hide_index=True)
-    with st.expander("ACI shear audit / method details", expanded=False):
+    with st.expander("Shear audit / method details", expanded=False):
         if shear_df.empty:
             st.info("Audit rows are not available until the section, material, active Vux/Vuy demand, and active transverse reinforcement are ready.")
         else:

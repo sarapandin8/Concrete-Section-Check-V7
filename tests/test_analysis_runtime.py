@@ -149,13 +149,14 @@ def test_column_pier_aci_shear_hollow_section_breadth_subtracts_void() -> None:
     assert "holes/voids" in str(df.iloc[0]["Notes"])
 
 
-def test_column_pier_aashto_shear_remains_review_without_capacity_claim() -> None:
+def test_column_pier_aashto_shear_has_simplified_capacity_route() -> None:
     analysis_input = _analysis_input(prestress_elements=[])
     df = _column_pier_shear_check_dataframe(_column_pier_shear_state(code="AASHTO LRFD"), analysis_input)
 
-    assert set(df["Status"]) == {"REVIEW"}
-    assert df["Capacity"].eq("-").all()
-    assert df["Notes"].str.contains("AASHTO LRFD Column/Pier shear is not implemented").all()
+    assert set(df["Status"]) == {"PASS"}
+    assert (pd.to_numeric(df["phiVn kN"], errors="coerce") > pd.to_numeric(df["Abs demand kN"], errors="coerce")).all()
+    assert df["Code basis"].eq("AASHTO LRFD 9th Column/Pier shear").all()
+    assert df["Notes"].str.contains("AASHTO.COL.SHEAR1").all()
 
 
 def test_column_pier_shear_view_reads_aci_seismic_spacing_advisor_summary() -> None:

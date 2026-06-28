@@ -178,7 +178,7 @@ def test_column_pier_uls_has_guarded_flexural_shear_torsion_subviews() -> None:
     assert "_column_pier_shear_check_dataframe" in source
     assert "_column_pier_combined_vt_check_dataframe" in source
     assert "ACI 318 RC scoped shear gate" in source
-    assert "AASHTO LRFD Column/Pier shear is not implemented" in source
+    assert "AASHTO LRFD 9th Section 5.7 simplified shear route" in source
     assert "ACI 318 RC combined shear-torsion interaction gate" in source
     assert "ULS.COL.VT.QA1" in source
     assert "Seismic confinement review" in source

@@ -10,8 +10,9 @@ ksi, these helpers convert the SI input to ksi before applying the code rule.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 
-from concrete_pmm_pro.core.aashto_units import mpa_to_ksi
+from concrete_pmm_pro.core.aashto_units import aashto_sqrt_fc_stress_mpa, ksi_to_mpa, mpa_to_ksi
 from concrete_pmm_pro.core.models import PrestressElement, Rebar, RebarMaterial
 
 AASHTO_ECU_STRENGTH = 0.003
@@ -19,6 +20,11 @@ AASHTO_COMPRESSION_CONTROLLED_PHI = 0.75
 AASHTO_TENSION_CONTROLLED_RC_PHI = 0.90
 AASHTO_TENSION_CONTROLLED_BONDED_PRESTRESS_PHI = 1.00
 AASHTO_TENSION_CONTROLLED_UNBONDED_PRESTRESS_PHI = 0.90
+AASHTO_SHEAR_PHI = 0.90
+AASHTO_SHEAR_SIMPLIFIED_BETA = 2.0
+AASHTO_SHEAR_SIMPLIFIED_THETA_DEG = 45.0
+AASHTO_SHEAR_MAX_FC_MPA = 103.42135939752542  # 15 ksi
+AASHTO_SHEAR_TRANSVERSE_FY_MAX_MPA = 689.4757293168361  # 100 ksi
 
 
 @dataclass(frozen=True)
@@ -221,3 +227,137 @@ def aashto_max_phiPn(
     if phi_compression <= 0:
         raise ValueError("phi_compression must be positive.")
     return aashto_column_axial_cap_factor(transverse_reinforcement) * phi_compression * Po_N
+
+
+
+@dataclass(frozen=True)
+class AashtoShearResult:
+    phi: float
+    beta: float
+    theta_deg: float
+    alpha_deg: float
+    lambda_concrete: float
+    vc_N: float
+    vs_N: float
+    vp_N: float
+    vn_uncapped_N: float
+    vn_limit_N: float
+    vn_N: float
+    phi_vn_N: float
+    vu_over_phi_vn: float
+    avs_provided_mm2_per_mm: float
+    avs_required_mm2_per_mm: float
+    avs_dc: float
+    s_max_mm: float
+    spacing_dc: float
+    shear_stress_mpa: float
+    shear_stress_ratio_to_fc: float
+    method: str
+    basis: str
+
+
+def aashto_min_transverse_avs_mm2_per_mm(fc_MPa: float, bv_mm: float, fy_MPa: float, *, lambda_concrete: float = 1.0) -> float:
+    """Return AASHTO LRFD Article 5.7.2.5 minimum transverse Av/s in mm²/mm.
+
+    The AASHTO expression is written with ``f'c`` in ksi and yields an area
+    ratio after multiplication by ``bv / fy``.  The helper evaluates the
+    ``0.0316*lambda*sqrt(f'c)`` stress term in MPa before multiplying by SI
+    ``bv`` and dividing by SI ``fy``.
+    """
+
+    if fc_MPa <= 0 or bv_mm <= 0 or fy_MPa <= 0:
+        raise ValueError("fc_MPa, bv_mm, and fy_MPa must be positive.")
+    stress_mpa = aashto_sqrt_fc_stress_mpa(0.0316 * float(lambda_concrete), float(fc_MPa))
+    return stress_mpa * float(bv_mm) / float(fy_MPa)
+
+
+def aashto_shear_smax_mm(fc_MPa: float, bv_mm: float, dv_mm: float, vu_N: float) -> tuple[float, float, str]:
+    """Return AASHTO LRFD Article 5.7.2.6 maximum transverse spacing.
+
+    The spacing branch is based on ``vu/f'c``.  Because both stresses are in
+    MPa in the app, the 0.125 threshold is dimensionless and can be applied
+    directly after computing ``vu = Vu/(bv*dv)``.
+    """
+
+    if fc_MPa <= 0 or bv_mm <= 0 or dv_mm <= 0:
+        raise ValueError("fc_MPa, bv_mm, and dv_mm must be positive.")
+    vu_mpa = abs(float(vu_N)) / (float(bv_mm) * float(dv_mm))
+    ratio = vu_mpa / float(fc_MPa)
+    if ratio < 0.125:
+        return min(0.8 * float(dv_mm), 24.0 * 25.4), ratio, "vu < 0.125 fc: smax = min(0.8dv, 24 in)"
+    return min(0.4 * float(dv_mm), 12.0 * 25.4), ratio, "vu >= 0.125 fc: smax = min(0.4dv, 12 in)"
+
+
+def aashto_simplified_shear_result(
+    *,
+    fc_MPa: float,
+    bv_mm: float,
+    dv_mm: float,
+    vu_N: float,
+    avs_mm2_per_mm: float,
+    fy_MPa: float,
+    vp_N: float = 0.0,
+    lambda_concrete: float = 1.0,
+    alpha_deg: float = 90.0,
+    phi: float = AASHTO_SHEAR_PHI,
+) -> AashtoShearResult:
+    """Return AASHTO LRFD Section 5.7 simplified sectional shear result in SI.
+
+    Scope: nonprestressed B-regions using Method 1 parameters ``beta=2.0`` and
+    ``theta=45 deg``.  Prestress component ``Vp`` is accepted for transparent
+    traceability, but Column/Pier UI keeps active-prestress rows in REVIEW until
+    the general procedure/PSC milestone is validated.
+    """
+
+    values = [fc_MPa, bv_mm, dv_mm, fy_MPa, phi, lambda_concrete]
+    if not all(math.isfinite(float(v)) and float(v) > 0.0 for v in values):
+        raise ValueError("fc_MPa, bv_mm, dv_mm, fy_MPa, phi, and lambda_concrete must be positive finite values.")
+    if not math.isfinite(float(avs_mm2_per_mm)) or float(avs_mm2_per_mm) < 0.0:
+        raise ValueError("avs_mm2_per_mm must be finite and nonnegative.")
+    fc_ksi = mpa_to_ksi(float(fc_MPa))
+    if fc_ksi > 15.0 + 1.0e-9:
+        raise ValueError("AASHTO LRFD Article 5.7 shear fc limit is 15 ksi for Article 5.7.3.")
+
+    beta = AASHTO_SHEAR_SIMPLIFIED_BETA
+    theta_deg = AASHTO_SHEAR_SIMPLIFIED_THETA_DEG
+    theta = math.radians(theta_deg)
+    alpha = math.radians(float(alpha_deg))
+    if abs(math.sin(alpha)) <= 1.0e-12:
+        raise ValueError("alpha_deg must define a transverse reinforcement angle with nonzero sine.")
+
+    vc_stress_mpa = aashto_sqrt_fc_stress_mpa(0.0316 * beta * float(lambda_concrete), float(fc_MPa))
+    vc_N = vc_stress_mpa * float(bv_mm) * float(dv_mm)
+    vs_N = float(avs_mm2_per_mm) * float(fy_MPa) * float(dv_mm) * (1.0 / math.tan(theta) + 1.0 / math.tan(alpha)) * math.sin(alpha)
+    vn_uncapped_N = max(0.0, vc_N + vs_N + float(vp_N))
+    vn_limit_N = 0.25 * float(fc_MPa) * float(bv_mm) * float(dv_mm) + float(vp_N)
+    vn_N = min(vn_uncapped_N, vn_limit_N)
+    phi_vn_N = float(phi) * vn_N
+    vu_over_phi_vn = abs(float(vu_N)) / phi_vn_N if phi_vn_N > 0.0 else float("nan")
+    avs_required = aashto_min_transverse_avs_mm2_per_mm(float(fc_MPa), float(bv_mm), float(fy_MPa), lambda_concrete=float(lambda_concrete))
+    avs_dc = avs_required / float(avs_mm2_per_mm) if float(avs_mm2_per_mm) > 0.0 else float("inf")
+    s_max_mm, stress_ratio, spacing_basis = aashto_shear_smax_mm(float(fc_MPa), float(bv_mm), float(dv_mm), float(vu_N))
+    shear_stress_mpa = abs(float(vu_N)) / (float(bv_mm) * float(dv_mm))
+    return AashtoShearResult(
+        phi=float(phi),
+        beta=beta,
+        theta_deg=theta_deg,
+        alpha_deg=float(alpha_deg),
+        lambda_concrete=float(lambda_concrete),
+        vc_N=vc_N,
+        vs_N=vs_N,
+        vp_N=float(vp_N),
+        vn_uncapped_N=vn_uncapped_N,
+        vn_limit_N=vn_limit_N,
+        vn_N=vn_N,
+        phi_vn_N=phi_vn_N,
+        vu_over_phi_vn=vu_over_phi_vn,
+        avs_provided_mm2_per_mm=float(avs_mm2_per_mm),
+        avs_required_mm2_per_mm=avs_required,
+        avs_dc=avs_dc,
+        s_max_mm=s_max_mm,
+        spacing_dc=float("nan"),
+        shear_stress_mpa=shear_stress_mpa,
+        shear_stress_ratio_to_fc=stress_ratio,
+        method="AASHTO LRFD 5.7.3 simplified sectional shear (beta=2.0, theta=45 deg)",
+        basis=f"Article 5.7.3.3 Vn=min(Vc+Vs+Vp,0.25fc*bv*dv+Vp); Article 5.7.2.6 {spacing_basis}",
+    )

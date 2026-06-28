@@ -160,7 +160,7 @@ def test_aashto_col_pmm_qa1_decision_view_does_not_label_guarded_checks_as_aci_r
     route_text = " | ".join(str(row["Route / Scope"]) for row in rows)
 
     assert "AASHTO LRFD 9th PMM" in route_text
-    assert "AASHTO LRFD Column/Pier shear not implemented" in route_text
+    assert "AASHTO LRFD 9th Section 5.7 simplified shear route" in route_text
     assert "AASHTO LRFD Column/Pier torsion not implemented" in route_text
     assert "AASHTO LRFD Column/Pier combined shear + torsion not implemented" in route_text
     assert "ACI 318 RC scoped shear gate" not in route_text
@@ -174,5 +174,5 @@ def test_aashto_col_pmm_qa1_caption_is_code_specific() -> None:
     aci_caption = _column_pier_decision_caption_for_code("ACI 318")
 
     assert "AASHTO LRFD 9th PMM interaction" in aashto_caption
-    assert "shear, torsion, V+T" in aashto_caption
+    assert "AASHTO Section 5.7 simplified shear" in aashto_caption
     assert "scoped ACI RC shear" in aci_caption

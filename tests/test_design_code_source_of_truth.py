@@ -218,7 +218,7 @@ def test_design_code_route2_column_pier_preserves_selected_aashto_in_analysis_gu
 
     assert "workflow_project_code_edition_from_session" in ANALYSIS_SOURCE
     assert "code = workflow_project_design_code_from_session(st.session_state)" in ANALYSIS_SOURCE
-    assert "Column/Pier AASHTO LRFD shear is not implemented" in ANALYSIS_SOURCE
+    assert "AASHTO LRFD 9th Section 5.7 simplified shear route" in ANALYSIS_SOURCE
     assert "Column/Pier AASHTO LRFD torsion is not implemented" in ANALYSIS_SOURCE
     assert "Column/Pier AASHTO LRFD V+T interaction is not implemented" in ANALYSIS_SOURCE
 
