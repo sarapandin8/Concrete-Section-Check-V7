@@ -10,6 +10,14 @@ from typing import Any
 
 import pandas as pd
 import streamlit as st
+
+from concrete_pmm_pro.code_checks import (
+    aashto_seismic_circular_spiral_required,
+    aashto_seismic_column_spacing_limit_mm,
+    aashto_seismic_confinement_length_mm,
+    aashto_seismic_rectangular_ash_required_mm2,
+)
+from concrete_pmm_pro.core.aashto_units import inch_to_mm
 from shapely.geometry import Point, Polygon
 
 from concrete_pmm_pro.core.models import Rebar, SectionGeometry
@@ -86,6 +94,7 @@ COLUMN_PIER_SEISMIC_DETAILING_OPTIONS = [
 ]
 COLUMN_PIER_SEISMIC_DETAILING_DEFAULT = COLUMN_PIER_SEISMIC_DETAILING_OPTIONS[0]
 COLUMN_PIER_SEISMIC_HX_DEFAULT_MM = 300.0
+COLUMN_PIER_SEISMIC_CLEAR_HEIGHT_DEFAULT_MM = 0.0
 COLUMN_PIER_SEISMIC_SPACING_INCREMENT_MM = 25.0
 
 REBAR_TABLE_COLUMNS = [
@@ -1437,6 +1446,215 @@ def _aci_special_seismic_spacing_advisor(
     )
 
 
+
+def _section_outer_dimensions_area_mm(geometry: SectionGeometry | None) -> dict[str, float] | None:
+    if geometry is None:
+        return None
+    try:
+        outer = Polygon([point.as_tuple() for point in geometry.outer_polygon])
+        section_poly = to_shapely_polygon(geometry)
+        minx, miny, maxx, maxy = outer.bounds
+    except Exception:
+        return None
+    width = float(maxx) - float(minx)
+    depth = float(maxy) - float(miny)
+    area = float(getattr(section_poly, "area", outer.area))
+    if width <= 0.0 or depth <= 0.0 or area <= 0.0:
+        return None
+    return {"width_mm": width, "depth_mm": depth, "area_mm2": area, "min_dim_mm": min(width, depth), "max_dim_mm": max(width, depth)}
+
+
+def _concrete_fc_mpa_from_state(default: float | None = None) -> float | None:
+    concrete = st.session_state.get("concrete_material")
+    value = getattr(concrete, "fc_MPa", None)
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    return numeric if math.isfinite(numeric) and numeric > 0.0 else default
+
+
+def _aashto_lrfd_seismic_bridge_column_advisor(
+    *,
+    section_geometry: SectionGeometry | None,
+    settings: dict[str, Any],
+    table: pd.DataFrame,
+    rebar_db: pd.DataFrame,
+    fc_MPa: float | None,
+    spacing_increment_mm: float = COLUMN_PIER_SEISMIC_SPACING_INCREMENT_MM,
+) -> SeismicSpacingAdvisorResult:
+    """Return a bounded AASHTO LRFD bridge-column seismic detailing advisor.
+
+    Scope is intentionally limited to the current control-section row: Article
+    5.11.4.1.5 confinement spacing/length and Article 5.11.4.1.4 hoop or
+    spiral confinement area.  The result remains an input/detailing advisor;
+    it does not create overstrength shear demand, R-factor selection, splice
+    qualification, or shop-drawing hook certification.
+    """
+
+    criteria: list[dict[str, object]] = []
+    warnings: list[str] = []
+    notes: list[str] = [
+        "AASHTO LRFD seismic advisor: checks spacing, confinement length, and transverse confinement area for the current control-section row only.",
+        "Verify seismic zone, R-factor/system classification, plastic-hinge locations, lap-splice restrictions, hook anchorage, and contract drawing details separately.",
+    ]
+
+    normalized = _ensure_shear_reinforcement_columns(pd.DataFrame(table))
+    if normalized.empty:
+        warnings.append("No Column/Pier transverse reinforcement row is available.")
+        return SeismicSpacingAdvisorResult("REVIEW", "AASHTO LRFD 9th seismic bridge-column advisor", None, None, "Unavailable", tuple(criteria), tuple(warnings), tuple(notes))
+    active = normalized[normalized["Active"].map(_to_bool)].copy()
+    row = active.iloc[0] if not active.empty else normalized.iloc[0]
+
+    dims = _section_outer_dimensions_area_mm(section_geometry)
+    if dims is None:
+        warnings.append("Section geometry is unavailable; cannot evaluate AASHTO seismic spacing or core confinement dimensions.")
+        return SeismicSpacingAdvisorResult("REVIEW", "AASHTO LRFD 9th seismic bridge-column advisor", None, None, "Unavailable", tuple(criteria), tuple(warnings), tuple(notes))
+    fc = float(fc_MPa or 0.0)
+    if not math.isfinite(fc) or fc <= 0.0:
+        warnings.append("Concrete f'c is unavailable; cannot evaluate AASHTO confinement area equations.")
+    bar_size = str(row.get("Bar Size") or DEFAULT_SHEAR_STIRRUP_BAR).strip() or DEFAULT_SHEAR_STIRRUP_BAR
+    tie_area = _shear_stirrup_bar_area_mm2(bar_size, rebar_db)
+    tie_diameter = _to_float(row.get("Diameter_mm")) or None
+    if tie_diameter is None or tie_diameter <= 0.0:
+        match = rebar_db[rebar_db["name"].astype(str) == bar_size] if isinstance(rebar_db, pd.DataFrame) and not rebar_db.empty else pd.DataFrame()
+        if not match.empty:
+            tie_diameter = _to_float(match.iloc[0].get("diameter_mm"))
+    legs = _to_count(row.get("Legs")) or DEFAULT_SHEAR_STIRRUP_LEGS
+    spacing = _to_float(row.get("Spacing_mm"))
+    fyh = _to_float(row.get("fy_MPa")) or DEFAULT_SHEAR_STIRRUP_FY_MPA
+    if tie_area is None or tie_area <= 0.0:
+        warnings.append("Tie/hoop bar area is unavailable from the reinforcement database.")
+    if spacing is None or spacing <= 0.0:
+        warnings.append("Control-section spacing is unavailable.")
+    if fyh is None or fyh <= 0.0:
+        warnings.append("Tie/hoop yield strength is unavailable.")
+    if fyh is not None and fyh > 517.106797 + 1.0e-9:
+        warnings.append("AASHTO seismic hooks are limited to fyh <= 75 ksi (≈517 MPa); verify reinforcement grade before final detailing.")
+
+    try:
+        s_max, governing = aashto_seismic_column_spacing_limit_mm(float(dims["min_dim_mm"]))
+    except Exception as exc:
+        warnings.append(str(exc))
+        s_max, governing = None, "Unavailable"
+    if s_max is not None:
+        criteria.append({"Criterion": "0.25 x minimum member dimension", "Limit (mm)": 0.25 * float(dims["min_dim_mm"]), "Basis": "AASHTO 5.11.4.1.5"})
+        criteria.append({"Criterion": "4.0 in maximum", "Limit (mm)": inch_to_mm(4.0), "Basis": "AASHTO 5.11.4.1.5"})
+        criteria.append({"Criterion": "Governing maximum spacing", "Limit (mm)": s_max, "Basis": governing})
+
+    clear_height = _to_float(settings.get("seismic_clear_height_mm"))
+    try:
+        confinement_length, length_criteria = aashto_seismic_confinement_length_mm(
+            max_member_dimension_mm=float(dims["max_dim_mm"]),
+            clear_height_mm=clear_height if clear_height and clear_height > 0.0 else None,
+        )
+        criteria.extend(length_criteria)
+        criteria.append({"Criterion": "Governing plastic-hinge confinement length", "Limit (mm)": confinement_length, "Basis": "AASHTO 5.11.4.1.5"})
+        if clear_height is None or clear_height <= 0.0:
+            notes.append("Clear height was not entered; confinement length uses max member dimension and 18 in only until clear height is provided.")
+    except Exception as exc:
+        confinement_length = None
+        warnings.append(str(exc))
+
+    edge_to_center = _to_float(settings.get("tie_center_offset_mm")) or 50.0
+    tie_dia_for_core = tie_diameter if tie_diameter is not None and tie_diameter > 0.0 else 12.0
+    edge_to_outside = max(0.0, float(edge_to_center) - 0.5 * float(tie_dia_for_core))
+    core_width = max(0.0, float(dims["width_mm"]) - 2.0 * edge_to_outside)
+    core_depth = max(0.0, float(dims["depth_mm"]) - 2.0 * edge_to_outside)
+    core_area = core_width * core_depth
+    if core_width <= 0.0 or core_depth <= 0.0 or core_area <= 0.0:
+        warnings.append("Tie/hoop offset leaves no positive AASHTO core dimension; reduce offset or define the section correctly.")
+    if len(getattr(section_geometry, "holes", []) or []) > 0:
+        warnings.append("Section has holes/voids; seismic confinement advisor uses the outside tied core only and remains REVIEW for hollow/local wall behavior.")
+
+    provided_area = float(tie_area or 0.0) * float(legs or 0.0)
+    required_area = None
+    required_area_y = None
+    provided_rho = None
+    required_rho = None
+    area_dc = float("nan")
+    layout = str(settings.get("closed_tie_layout") or COLUMN_PIER_CLOSED_TIE_OPTIONS[0])
+    if fc > 0.0 and fyh and fyh > 0.0 and spacing and spacing > 0.0 and tie_area and tie_area > 0.0 and core_area > 0.0:
+        if layout == "Spiral reinforcement":
+            dc = min(core_width, core_depth)
+            try:
+                asp_req, rho_req, rho_511, rho_564 = aashto_seismic_circular_spiral_required(
+                    fc_MPa=fc,
+                    fyh_MPa=float(fyh),
+                    Ag_mm2=float(dims["area_mm2"]),
+                    Ac_mm2=float(math.pi * (dc**2) / 4.0),
+                    dc_mm=float(dc),
+                    s_mm=float(spacing),
+                )
+                required_area = asp_req
+                required_rho = rho_req
+                provided_rho = 4.0 * float(tie_area) / (float(dc) * float(spacing)) if dc > 0.0 else float("nan")
+                area_dc = asp_req / float(tie_area) if float(tie_area) > 0.0 else float("inf")
+                criteria.append({"Criterion": "Required spiral/hoop bar area Asp", "Limit (mm)": asp_req, "Basis": "AASHTO 5.11.4.1.4-1 and 5.6.4.6"})
+                criteria.append({"Criterion": "Required volumetric ratio rho_s", "Limit (mm)": rho_req, "Basis": f"max(0.12fc/fyh={rho_511:.5f}, 0.45(Ag/Ac-1)fc/fyh={rho_564:.5f})"})
+                criteria.append({"Criterion": "Provided spiral/hoop bar area Asp", "Limit (mm)": float(tie_area), "Basis": bar_size})
+            except Exception as exc:
+                warnings.append(str(exc))
+        else:
+            try:
+                req_x, req_x_eq2, req_x_eq3 = aashto_seismic_rectangular_ash_required_mm2(
+                    fc_MPa=fc,
+                    fyh_MPa=float(fyh),
+                    Ag_mm2=float(dims["area_mm2"]),
+                    Ac_mm2=float(core_area),
+                    s_mm=float(spacing),
+                    hc_mm=float(core_width),
+                )
+                req_y, req_y_eq2, req_y_eq3 = aashto_seismic_rectangular_ash_required_mm2(
+                    fc_MPa=fc,
+                    fyh_MPa=float(fyh),
+                    Ag_mm2=float(dims["area_mm2"]),
+                    Ac_mm2=float(core_area),
+                    s_mm=float(spacing),
+                    hc_mm=float(core_depth),
+                )
+                required_area = req_x
+                required_area_y = req_y
+                req_control = max(req_x, req_y)
+                area_dc = req_control / provided_area if provided_area > 0.0 else float("inf")
+                criteria.append({"Criterion": "Required Ash about x/core width", "Limit (mm)": req_x, "Basis": "max(AASHTO 5.11.4.1.4-2, -3)"})
+                criteria.append({"Criterion": "Required Ash about y/core depth", "Limit (mm)": req_y, "Basis": "max(AASHTO 5.11.4.1.4-2, -3)"})
+                criteria.append({"Criterion": "Provided Ash from selected control row", "Limit (mm)": provided_area, "Basis": f"{bar_size} x {legs} effective legs"})
+                notes.append("For rectangular hoops, the app uses the control-row effective legs for both axes; verify actual hoop/cross-tie leg distribution on shop drawings.")
+            except Exception as exc:
+                warnings.append(str(exc))
+    elif fc > 0.0:
+        warnings.append("AASHTO confinement area check needs fc, fyh, bar area, spacing, and positive tied-core dimensions.")
+
+    hook_extension = None
+    if tie_dia_for_core > 0.0:
+        hook_extension = max(6.0 * float(tie_dia_for_core), inch_to_mm(3.0))
+        criteria.append({"Criterion": "Seismic hook extension", "Limit (mm)": hook_extension, "Basis": "larger of 6db or 3.0 in"})
+
+    spacing_dc = float(spacing) / float(s_max) if spacing and s_max and s_max > 0.0 else float("nan")
+    if warnings:
+        status = "REVIEW"
+    elif math.isfinite(spacing_dc) and spacing_dc > 1.0 + 1.0e-9:
+        status = "FAIL"
+    elif math.isfinite(area_dc) and area_dc > 1.0 + 1.0e-9:
+        status = "FAIL"
+    else:
+        status = "PASS"
+    if s_max is not None:
+        suggested = _round_down_to_increment(float(s_max), spacing_increment_mm)
+    else:
+        suggested = None
+    return SeismicSpacingAdvisorResult(
+        status=status,
+        code_basis="AASHTO LRFD 9th seismic bridge-column advisor",
+        s_max_mm=s_max,
+        suggested_spacing_mm=suggested,
+        governing_limit=governing,
+        criteria=tuple(criteria),
+        warnings=tuple(warnings),
+        notes=tuple(notes),
+    )
+
 def _minimum_active_rebar_diameter_from_state(rebar_db: pd.DataFrame) -> float | None:
     parsed = st.session_state.get("rebars")
     parsed_min = _min_rebar_diameter_mm(parsed if isinstance(parsed, list) else [])
@@ -1533,6 +1751,7 @@ def _column_pier_transverse_settings_from_state() -> dict[str, Any]:
         "manual_core_depth_mm": _num(raw.get("manual_core_depth_mm")),
         "seismic_detailing": seismic_detailing,
         "seismic_hx_mm": _num(raw.get("seismic_hx_mm")) or COLUMN_PIER_SEISMIC_HX_DEFAULT_MM,
+        "seismic_clear_height_mm": _num(raw.get("seismic_clear_height_mm")) or COLUMN_PIER_SEISMIC_CLEAR_HEIGHT_DEFAULT_MM,
         "note": str(raw.get("note") or "").strip(),
     }
 
@@ -1546,6 +1765,7 @@ def _store_column_pier_transverse_settings_metadata(settings: dict[str, Any]) ->
         "manual_core_depth_mm": settings.get("manual_core_depth_mm"),
         "seismic_detailing": str(settings.get("seismic_detailing") or COLUMN_PIER_SEISMIC_DETAILING_DEFAULT),
         "seismic_hx_mm": settings.get("seismic_hx_mm"),
+        "seismic_clear_height_mm": settings.get("seismic_clear_height_mm"),
         "note": str(settings.get("note") or "").strip(),
     }
     st.session_state[COLUMN_PIER_TRANSVERSE_SETTINGS_KEY] = clean
@@ -1654,21 +1874,34 @@ def _render_column_pier_transverse_settings() -> dict[str, Any]:
             help="Input advisor only. It recommends a control-section tie/hoop spacing for seismic confinement review; it is not a final code certification.",
         )
     with seismic_cols[1]:
-        seismic_hx_mm = st.number_input(
-            "hx for confinement (mm)",
-            min_value=1.0,
-            value=float(current.get("seismic_hx_mm") or COLUMN_PIER_SEISMIC_HX_DEFAULT_MM),
-            step=25.0,
-            format="%.1f",
-            disabled=seismic_detailing != "ACI 318 special seismic confinement advisor",
-            key="column_pier_transverse_seismic_hx_mm",
-            help="Maximum horizontal spacing of supported longitudinal bars around the hoop/tie perimeter used by the ACI spacing advisor.",
-        )
+        if seismic_detailing == "AASHTO LRFD seismic bridge column - manual review":
+            seismic_clear_height_mm = st.number_input(
+                "Clear height for confinement length (mm)",
+                min_value=0.0,
+                value=float(current.get("seismic_clear_height_mm") or COLUMN_PIER_SEISMIC_CLEAR_HEIGHT_DEFAULT_MM),
+                step=100.0,
+                format="%.1f",
+                key="column_pier_transverse_seismic_clear_height_mm",
+                help="Optional AASHTO 5.11.4.1.5 clear height used for the 1/6 clear-height confinement-length criterion. Use 0.0 if not defined yet.",
+            )
+            seismic_hx_mm = float(current.get("seismic_hx_mm") or COLUMN_PIER_SEISMIC_HX_DEFAULT_MM)
+        else:
+            seismic_hx_mm = st.number_input(
+                "hx for confinement (mm)",
+                min_value=1.0,
+                value=float(current.get("seismic_hx_mm") or COLUMN_PIER_SEISMIC_HX_DEFAULT_MM),
+                step=25.0,
+                format="%.1f",
+                disabled=seismic_detailing != "ACI 318 special seismic confinement advisor",
+                key="column_pier_transverse_seismic_hx_mm",
+                help="Maximum horizontal spacing of supported longitudinal bars around the hoop/tie perimeter used by the ACI spacing advisor.",
+            )
+            seismic_clear_height_mm = float(current.get("seismic_clear_height_mm") or COLUMN_PIER_SEISMIC_CLEAR_HEIGHT_DEFAULT_MM)
     with seismic_cols[2]:
         if seismic_detailing == "ACI 318 special seismic confinement advisor":
             st.caption("Advisor will compare 0.25 section dimension, 6db, and s0 from hx; verify confinement length, hook anchorage, and seismic system separately.")
         elif seismic_detailing == "AASHTO LRFD seismic bridge column - manual review":
-            st.caption("AASHTO LRFD seismic column detailing remains a manual REVIEW route until a named validation milestone is implemented.")
+            st.caption("AASHTO advisor checks Section 5.11.4 spacing, plastic-hinge confinement length, and hoop/spiral confinement area from the current control-section row.")
         elif seismic_detailing == "Project-specific manual review":
             st.caption("Use project-specific seismic detailing rules manually; the app will not override the provided control-section spacing.")
         else:
@@ -1681,6 +1914,7 @@ def _render_column_pier_transverse_settings() -> dict[str, Any]:
         "manual_core_depth_mm": float(manual_core_depth_mm) if not manual_disabled and float(manual_core_depth_mm) > 0.0 else None,
         "seismic_detailing": seismic_detailing,
         "seismic_hx_mm": float(seismic_hx_mm) if float(seismic_hx_mm) > 0.0 else COLUMN_PIER_SEISMIC_HX_DEFAULT_MM,
+        "seismic_clear_height_mm": float(seismic_clear_height_mm) if float(seismic_clear_height_mm) > 0.0 else COLUMN_PIER_SEISMIC_CLEAR_HEIGHT_DEFAULT_MM,
         "note": note,
     }
     _store_column_pier_transverse_settings_metadata(settings)
@@ -1701,7 +1935,50 @@ def _render_column_pier_seismic_spacing_advisor(
         st.info("Seismic spacing advisor is not selected. Current control-section spacing remains user-provided.")
         return
     if seismic_detailing == "AASHTO LRFD seismic bridge column - manual review":
-        st.warning("AASHTO LRFD seismic bridge-column transverse detailing is not implemented yet. Keep spacing as manual REVIEW until a named AASHTO seismic validation milestone is completed.")
+        geometry = st.session_state.get("section_geometry")
+        fc_MPa = _concrete_fc_mpa_from_state()
+        result = _aashto_lrfd_seismic_bridge_column_advisor(
+            section_geometry=geometry if isinstance(geometry, SectionGeometry) else None,
+            settings=settings,
+            table=table,
+            rebar_db=rebar_db,
+            fc_MPa=fc_MPa,
+        )
+        with st.expander("AASHTO LRFD seismic bridge-column transverse advisor", expanded=True):
+            st.caption(
+                "Section 5.11.4 input advisor for expected plastic-hinge regions. "
+                "It checks control-row spacing, confinement length, and hoop/spiral confinement area; final seismic system, splice, and hook detailing remain engineer review items."
+            )
+            metric_cols = st.columns(5)
+            metric_cols[0].metric("Advisor status", result.status)
+            metric_cols[1].metric("Max spacing", "-" if result.s_max_mm is None else f"{result.s_max_mm:.1f} mm")
+            metric_cols[2].metric("Suggested spacing", "-" if result.suggested_spacing_mm is None else f"{result.suggested_spacing_mm:.0f} mm")
+            metric_cols[3].metric("Governing", result.governing_limit)
+            metric_cols[4].metric("Code basis", "AASHTO 5.11.4")
+            if result.criteria:
+                st.dataframe(pd.DataFrame(result.criteria), use_container_width=True, hide_index=True)
+            for warning in result.warnings:
+                st.warning(warning)
+            for note in result.notes:
+                st.info(note)
+            normalized = _ensure_shear_reinforcement_columns(pd.DataFrame(table))
+            apply_disabled = result.suggested_spacing_mm is None or normalized.empty
+            if st.button(
+                "Apply AASHTO suggested spacing to control section",
+                use_container_width=True,
+                disabled=apply_disabled,
+                key="column_pier_apply_aashto_seismic_spacing_advisor",
+            ):
+                updated = normalized.copy()
+                updated.at[0, "Active"] = True
+                updated.at[0, "Spacing_mm"] = float(result.suggested_spacing_mm or 0.0)
+                existing_note = str(updated.at[0, "Note"] or "").strip()
+                advisor_note = f"AASHTO seismic advisor applied: s <= {float(result.suggested_spacing_mm or 0.0):.0f} mm; verify 5.11.4 confinement length, hooks, splices, and cross-ties."
+                updated.at[0, "Note"] = advisor_note if not existing_note else f"{existing_note} {advisor_note}"
+                st.session_state[COLUMN_PIER_TRANSVERSE_TABLE_KEY] = updated
+                st.session_state["column_pier_transverse_reinforcement_editor_revision"] = int(st.session_state.get("column_pier_transverse_reinforcement_editor_revision", 0)) + 1
+                _store_column_pier_transverse_metadata(updated)
+                st.rerun()
         return
     if seismic_detailing == "Project-specific manual review":
         st.warning("Project-specific seismic detailing is selected. The app will not auto-recommend spacing; document the governing project clause in the transverse reinforcement note.")
@@ -1777,20 +2054,29 @@ def _column_pier_transverse_preview_with_seismic_advisor(
     """
 
     seismic_detailing = str(settings.get("seismic_detailing") or COLUMN_PIER_SEISMIC_DETAILING_DEFAULT)
-    if seismic_detailing != "ACI 318 special seismic confinement advisor":
+    if seismic_detailing not in {"ACI 318 special seismic confinement advisor", "AASHTO LRFD seismic bridge column - manual review"}:
         return preview_df
 
     normalized = _ensure_shear_reinforcement_columns(pd.DataFrame(table))
     base_row = normalized.iloc[0] if not normalized.empty else pd.Series(dtype=object)
     geometry = st.session_state.get("section_geometry")
-    section_min_dimension_mm = _section_outer_min_dimension_mm(geometry if isinstance(geometry, SectionGeometry) else None)
-    min_bar_diameter_mm = _minimum_active_rebar_diameter_from_state(rebar_db)
-    hx_mm = _to_float(settings.get("seismic_hx_mm")) or COLUMN_PIER_SEISMIC_HX_DEFAULT_MM
-    advisor = _aci_special_seismic_spacing_advisor(
-        section_min_dimension_mm=section_min_dimension_mm,
-        min_longitudinal_bar_diameter_mm=min_bar_diameter_mm,
-        hx_mm=hx_mm,
-    )
+    if seismic_detailing == "AASHTO LRFD seismic bridge column - manual review":
+        advisor = _aashto_lrfd_seismic_bridge_column_advisor(
+            section_geometry=geometry if isinstance(geometry, SectionGeometry) else None,
+            settings=settings,
+            table=table,
+            rebar_db=rebar_db,
+            fc_MPa=_concrete_fc_mpa_from_state(),
+        )
+    else:
+        section_min_dimension_mm = _section_outer_min_dimension_mm(geometry if isinstance(geometry, SectionGeometry) else None)
+        min_bar_diameter_mm = _minimum_active_rebar_diameter_from_state(rebar_db)
+        hx_mm = _to_float(settings.get("seismic_hx_mm")) or COLUMN_PIER_SEISMIC_HX_DEFAULT_MM
+        advisor = _aci_special_seismic_spacing_advisor(
+            section_min_dimension_mm=section_min_dimension_mm,
+            min_longitudinal_bar_diameter_mm=min_bar_diameter_mm,
+            hx_mm=hx_mm,
+        )
 
     spacing = advisor.suggested_spacing_mm
     bar_size = str(base_row.get("Bar Size") or DEFAULT_SHEAR_STIRRUP_BAR).strip()
@@ -1800,7 +2086,7 @@ def _column_pier_transverse_preview_with_seismic_advisor(
     avs_mm2_per_mm = float(area) * float(legs) / float(spacing) if area is not None and spacing is not None and spacing > 0.0 else None
     advisor_row = {
         "Active": False,
-        "Zone": "Recommended seismic spacing (ACI advisor)",
+        "Zone": "Recommended seismic spacing (AASHTO advisor)" if seismic_detailing == "AASHTO LRFD seismic bridge column - manual review" else "Recommended seismic spacing (ACI advisor)",
         "x start (m)": "-",
         "x end (m)": "-",
         "Stirrup": f"{bar_size} × {legs} legs @ {spacing:.0f} mm" if spacing is not None else f"{bar_size} × {legs} legs @ -",

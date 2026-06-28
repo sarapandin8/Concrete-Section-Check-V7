@@ -274,7 +274,7 @@ def project_code_capability_cards(code: object | None, member_type: str | None =
     elif canonical == PROJECT_CODE_AASHTO_LRFD:
         workflow_note = "Active Column/Pier/Wall/Pylon workflow"
         pmm_status = "AVAILABLE / REVIEW"
-        pmm_note = "AASHTO LRFD 9th Column/Pier/Wall/Pylon PMM route is implemented for B-region axial-flexure, and AASHTO.COL.SHEAR1 provides simplified nonprestressed B-region shear; torsion, PSC/general-procedure shear, slenderness, seismic, and hollow-wall local-buckling checks remain guarded."
+        pmm_note = "AASHTO LRFD 9th Column/Pier/Wall/Pylon PMM route is implemented for B-region axial-flexure, and AASHTO.COL.SHEAR1 provides simplified nonprestressed B-region shear; torsion, PSC/general-procedure shear, slenderness, final seismic certification, and hollow-wall local-buckling checks remain guarded; AASHTO.COL.SEISMIC1 provides a Section 5.11.4 transverse detailing advisor."
         girder_status = "NOT ACTIVE"
         girder_note = "Bridge/Building beam-girder checks are hidden because the active workflow is Column/Pier/Wall/Pylon."
     else:

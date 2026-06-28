@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 
-from concrete_pmm_pro.core.aashto_units import aashto_sqrt_fc_stress_mpa, ksi_to_mpa, mpa_to_ksi
+from concrete_pmm_pro.core.aashto_units import aashto_sqrt_fc_stress_mpa, inch_to_mm, ksi_to_mpa, mpa_to_ksi
 from concrete_pmm_pro.core.models import PrestressElement, Rebar, RebarMaterial
 
 AASHTO_ECU_STRENGTH = 0.003
@@ -25,6 +25,121 @@ AASHTO_SHEAR_SIMPLIFIED_BETA = 2.0
 AASHTO_SHEAR_SIMPLIFIED_THETA_DEG = 45.0
 AASHTO_SHEAR_MAX_FC_MPA = 103.42135939752542  # 15 ksi
 AASHTO_SHEAR_TRANSVERSE_FY_MAX_MPA = 689.4757293168361  # 100 ksi
+
+AASHTO_SEISMIC_HOOK_FYH_MAX_MPA = 517.106797
+AASHTO_SEISMIC_SPACING_MAX_MM = 101.6  # 4 in
+AASHTO_SEISMIC_CONFINEMENT_MIN_LENGTH_MM = 457.2  # 18 in
+
+
+@dataclass(frozen=True)
+class AashtoSeismicConfinementResult:
+    status: str
+    section_type: str
+    s_max_mm: float | None
+    suggested_spacing_mm: float | None
+    governing_limit: str
+    confinement_length_mm: float | None
+    spacing_dc: float
+    area_dc: float
+    provided_transverse_area_mm2: float | None
+    required_transverse_area_mm2: float | None
+    required_transverse_area_y_mm2: float | None
+    provided_rho: float | None
+    required_rho: float | None
+    core_width_mm: float | None
+    core_depth_mm: float | None
+    core_area_mm2: float | None
+    criteria: tuple[dict[str, object], ...]
+    warnings: tuple[str, ...] = ()
+    notes: tuple[str, ...] = ()
+    basis: str = "AASHTO LRFD 9th Article 5.11.4.1.4/5.11.4.1.5"
+
+
+def aashto_seismic_column_spacing_limit_mm(min_member_dimension_mm: float) -> tuple[float, str]:
+    """Return AASHTO LRFD 5.11.4.1.5 confinement spacing limit in mm."""
+
+    if not math.isfinite(float(min_member_dimension_mm)) or float(min_member_dimension_mm) <= 0.0:
+        raise ValueError("min_member_dimension_mm must be positive and finite.")
+    quarter_dim = 0.25 * float(min_member_dimension_mm)
+    four_in = inch_to_mm(4.0)
+    if quarter_dim <= four_in:
+        return quarter_dim, "0.25 x minimum member dimension"
+    return four_in, "4.0 in maximum"
+
+
+def aashto_seismic_confinement_length_mm(
+    *,
+    max_member_dimension_mm: float,
+    clear_height_mm: float | None = None,
+) -> tuple[float, tuple[dict[str, object], ...]]:
+    """Return AASHTO LRFD 5.11.4.1.5 plastic-hinge confinement length in mm."""
+
+    if not math.isfinite(float(max_member_dimension_mm)) or float(max_member_dimension_mm) <= 0.0:
+        raise ValueError("max_member_dimension_mm must be positive and finite.")
+    criteria: list[dict[str, object]] = [
+        {"Criterion": "Maximum cross-sectional dimension", "Limit (mm)": float(max_member_dimension_mm), "Basis": "AASHTO LRFD 5.11.4.1.5"},
+        {"Criterion": "18.0 in", "Limit (mm)": inch_to_mm(18.0), "Basis": "AASHTO LRFD 5.11.4.1.5"},
+    ]
+    values = [float(max_member_dimension_mm), inch_to_mm(18.0)]
+    if clear_height_mm is not None and math.isfinite(float(clear_height_mm)) and float(clear_height_mm) > 0.0:
+        one_sixth = float(clear_height_mm) / 6.0
+        criteria.append({"Criterion": "1/6 clear height", "Limit (mm)": one_sixth, "Basis": "AASHTO LRFD 5.11.4.1.5"})
+        values.append(one_sixth)
+    return max(values), tuple(criteria)
+
+
+def aashto_seismic_rectangular_ash_required_mm2(
+    *,
+    fc_MPa: float,
+    fyh_MPa: float,
+    Ag_mm2: float,
+    Ac_mm2: float,
+    s_mm: float,
+    hc_mm: float,
+) -> tuple[float, float, float]:
+    """Return required rectangular hoop ``Ash`` by AASHTO 5.11.4.1.4 in SI.
+
+    The AASHTO equations use ksi for both ``fc`` and ``fyh``; the ratio is
+    dimensionless, so the app may use MPa/MPa after keeping the same unit in
+    numerator and denominator.  ``s`` and ``hc`` are supplied in mm, giving
+    ``Ash`` in mm².
+    """
+
+    values = [fc_MPa, fyh_MPa, Ag_mm2, Ac_mm2, s_mm, hc_mm]
+    if not all(math.isfinite(float(v)) and float(v) > 0.0 for v in values):
+        raise ValueError("fc_MPa, fyh_MPa, Ag_mm2, Ac_mm2, s_mm, and hc_mm must be positive finite values.")
+    ag_ac = float(Ag_mm2) / float(Ac_mm2)
+    eq2 = 0.30 * float(s_mm) * float(hc_mm) * float(fc_MPa) / float(fyh_MPa) * max(0.0, ag_ac - 1.0)
+    eq3 = 0.12 * float(s_mm) * float(hc_mm) * float(fc_MPa) / float(fyh_MPa)
+    return max(eq2, eq3), eq2, eq3
+
+
+def aashto_seismic_circular_spiral_required(
+    *,
+    fc_MPa: float,
+    fyh_MPa: float,
+    Ag_mm2: float,
+    Ac_mm2: float,
+    dc_mm: float,
+    s_mm: float,
+) -> tuple[float, float, float, float]:
+    """Return circular spiral/hoop confinement requirement in SI.
+
+    Returns ``(Asp_required_mm2, rho_required, rho_5_11_4_1_4, rho_5_6_4_6)``.
+    Article 5.11.4.1.4 gives ``rho >= 0.12 fc/fyh`` and references Article
+    5.6.4.6, which gives the familiar ``0.45(Ag/Ac - 1)fc/fyh`` minimum when
+    it controls.  The controlling ratio is converted to ``Asp`` from
+    ``rho = 4Asp/(dc*s)``.
+    """
+
+    values = [fc_MPa, fyh_MPa, Ag_mm2, Ac_mm2, dc_mm, s_mm]
+    if not all(math.isfinite(float(v)) and float(v) > 0.0 for v in values):
+        raise ValueError("fc_MPa, fyh_MPa, Ag_mm2, Ac_mm2, dc_mm, and s_mm must be positive finite values.")
+    rho_511 = 0.12 * float(fc_MPa) / float(fyh_MPa)
+    rho_564 = 0.45 * max(0.0, float(Ag_mm2) / float(Ac_mm2) - 1.0) * float(fc_MPa) / float(fyh_MPa)
+    rho_req = max(rho_511, rho_564)
+    asp_req = rho_req * float(dc_mm) * float(s_mm) / 4.0
+    return asp_req, rho_req, rho_511, rho_564
 
 
 @dataclass(frozen=True)

@@ -61,7 +61,15 @@ from concrete_pmm_pro.analysis.warnings import (
     UNBONDED_PRESTRESS_IGNORED_WARNING,
     deduplicate_warnings,
 )
-from concrete_pmm_pro.code_checks import aci_beta1, aashto_simplified_shear_result
+from concrete_pmm_pro.code_checks import (
+    aci_beta1,
+    aashto_seismic_circular_spiral_required,
+    aashto_seismic_column_spacing_limit_mm,
+    aashto_seismic_confinement_length_mm,
+    aashto_seismic_rectangular_ash_required_mm2,
+    aashto_simplified_shear_result,
+)
+from concrete_pmm_pro.core.aashto_units import inch_to_mm
 from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisModeSettings, AnalysisSettings
 from concrete_pmm_pro.core.models import ConcreteMaterial, LoadCase, PrestressElement, RebarMaterial, SectionGeometry
 from concrete_pmm_pro.core.design_code import (
@@ -278,6 +286,7 @@ COLUMN_PIER_TRANSVERSE_COLUMNS_ANALYSIS = [
 _BEAM_ULS_DEMAND_TOL = 1.0e-9
 _COLUMN_PIER_SHEAR_DEMAND_TOL = 1.0e-9
 _COLUMN_PIER_ACI_SEISMIC_ADVISOR_LABEL = "ACI 318 special seismic confinement advisor"
+_COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LABEL = "AASHTO LRFD seismic bridge column - manual review"
 _COLUMN_PIER_SEISMIC_SPACING_INCREMENT_MM = 25.0
 _BEAM_ULS_FLEXURE_PREVIEW_MAX_ROWS = 24
 _GIRDER_STRAND_FPU_MPA_DEFAULT = 1860.0
@@ -3730,6 +3739,157 @@ def _column_pier_aci_seismic_spacing_summary_dataframe(
         ]
     )
 
+
+
+def _round_down_to_column_pier_increment(value: float, increment: float = _COLUMN_PIER_SEISMIC_SPACING_INCREMENT_MM) -> float:
+    if not math.isfinite(float(value)) or float(value) <= 0.0:
+        return float(value)
+    return max(float(increment), math.floor(float(value) / float(increment)) * float(increment))
+
+
+def _column_pier_outer_dimensions_area_mm(section_geometry: SectionGeometry | None) -> dict[str, float] | None:
+    if section_geometry is None:
+        return None
+    try:
+        outer_polygon = to_shapely_polygon(SectionGeometry(name=section_geometry.name, outer_polygon=section_geometry.outer_polygon, holes=[]))
+        section_polygon = to_shapely_polygon(section_geometry)
+        minx, miny, maxx, maxy = outer_polygon.bounds
+    except Exception:
+        return None
+    width = float(maxx) - float(minx)
+    depth = float(maxy) - float(miny)
+    area = float(getattr(section_polygon, "area", outer_polygon.area))
+    if not all(math.isfinite(value) and value > 0.0 for value in [width, depth, area]):
+        return None
+    return {"width_mm": width, "depth_mm": depth, "area_mm2": area, "min_dim_mm": min(width, depth), "max_dim_mm": max(width, depth)}
+
+
+def _column_pier_aashto_seismic_spacing_summary_dataframe(
+    state: Mapping[str, object],
+    analysis_input: AnalysisInput | None,
+) -> pd.DataFrame:
+    settings = _column_pier_transverse_settings_from_state(state)
+    if str(settings.get("seismic_detailing") or "") != _COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LABEL:
+        return pd.DataFrame()
+    if analysis_input is None:
+        return pd.DataFrame(
+            [
+                {
+                    "Recommendation": "AASHTO seismic advisor",
+                    "Tie / hoop": "-",
+                    "Suggested spacing": "-",
+                    "Current spacing": "-",
+                    "Confinement length": "-",
+                    "Area check": "REVIEW - analysis input missing",
+                    "Analysis use": "Advisor only / REVIEW",
+                }
+            ]
+        )
+    row = _column_pier_reference_transverse_row_for_seismic_advisor(state)
+    dims = _column_pier_outer_dimensions_area_mm(analysis_input.section_geometry)
+    if row is None or dims is None:
+        return pd.DataFrame(
+            [
+                {
+                    "Recommendation": "AASHTO seismic advisor",
+                    "Tie / hoop": "-",
+                    "Suggested spacing": "-",
+                    "Current spacing": "-",
+                    "Confinement length": "-",
+                    "Area check": "REVIEW - transverse row or geometry missing",
+                    "Analysis use": "Advisor only / REVIEW",
+                }
+            ]
+        )
+    area = _beam_uls_stirrup_area_mm2(row)
+    legs = _beam_uls_float(row.get("Legs"))
+    spacing = _beam_uls_float(row.get("Spacing_mm"))
+    fyh = _beam_uls_float(row.get("fy_MPa"))
+    diameter = _beam_uls_float(row.get("Diameter_mm"))
+    if not math.isfinite(diameter) or diameter <= 0.0:
+        diameter = 12.0
+    try:
+        s_max, governing = aashto_seismic_column_spacing_limit_mm(float(dims["min_dim_mm"]))
+    except Exception:
+        s_max, governing = float("nan"), "Unavailable"
+    clear_height = _beam_uls_float(settings.get("seismic_clear_height_mm"))
+    try:
+        l_conf, _ = aashto_seismic_confinement_length_mm(
+            max_member_dimension_mm=float(dims["max_dim_mm"]),
+            clear_height_mm=clear_height if math.isfinite(clear_height) and clear_height > 0.0 else None,
+        )
+    except Exception:
+        l_conf = float("nan")
+    offset = _beam_uls_float(settings.get("tie_center_offset_mm"))
+    if not math.isfinite(offset) or offset <= 0.0:
+        offset = 50.0
+    edge_to_outside = max(0.0, float(offset) - 0.5 * float(diameter))
+    core_width = max(0.0, float(dims["width_mm"]) - 2.0 * edge_to_outside)
+    core_depth = max(0.0, float(dims["depth_mm"]) - 2.0 * edge_to_outside)
+    core_area = core_width * core_depth
+    fc = _beam_uls_float(getattr(analysis_input.concrete_material, "fc_MPa", None))
+    layout = str(settings.get("closed_tie_layout") or "Closed ties / hoops")
+    area_status = "REVIEW - input missing"
+    if all(math.isfinite(value) and value > 0.0 for value in [area, spacing, fyh, fc, core_area]):
+        if layout == "Spiral reinforcement":
+            dc = min(core_width, core_depth)
+            try:
+                req_asp, req_rho, _, _ = aashto_seismic_circular_spiral_required(
+                    fc_MPa=fc,
+                    fyh_MPa=fyh,
+                    Ag_mm2=float(dims["area_mm2"]),
+                    Ac_mm2=math.pi * dc**2 / 4.0,
+                    dc_mm=dc,
+                    s_mm=spacing,
+                )
+                dc_area = req_asp / area if area > 0.0 else float("inf")
+                area_status = "PASS" if dc_area <= 1.0 + 1.0e-9 else f"FAIL D/C {dc_area:.2f}"
+            except Exception:
+                area_status = "REVIEW - circular core check unavailable"
+        else:
+            try:
+                req_x, _, _ = aashto_seismic_rectangular_ash_required_mm2(
+                    fc_MPa=fc,
+                    fyh_MPa=fyh,
+                    Ag_mm2=float(dims["area_mm2"]),
+                    Ac_mm2=core_area,
+                    s_mm=spacing,
+                    hc_mm=core_width,
+                )
+                req_y, _, _ = aashto_seismic_rectangular_ash_required_mm2(
+                    fc_MPa=fc,
+                    fyh_MPa=fyh,
+                    Ag_mm2=float(dims["area_mm2"]),
+                    Ac_mm2=core_area,
+                    s_mm=spacing,
+                    hc_mm=core_depth,
+                )
+                provided = area * legs
+                dc_area = max(req_x, req_y) / provided if provided > 0.0 else float("inf")
+                area_status = "PASS" if dc_area <= 1.0 + 1.0e-9 else f"FAIL D/C {dc_area:.2f}"
+            except Exception:
+                area_status = "REVIEW - rectangular core check unavailable"
+    current_spacing = "-" if not math.isfinite(spacing) else f"{spacing:.0f} mm"
+    spacing_status = "-"
+    if math.isfinite(spacing) and math.isfinite(s_max) and s_max > 0.0:
+        spacing_status = "PASS" if spacing <= s_max + 1.0e-9 else f"FAIL D/C {spacing/s_max:.2f}"
+    bar_size = str(row.get("Bar Size") or "-").strip() or "-"
+    legs_text = "-" if not math.isfinite(legs) or legs <= 0.0 else f"{int(legs)} legs"
+    suggested = _round_down_to_column_pier_increment(s_max) if math.isfinite(s_max) else float("nan")
+    return pd.DataFrame(
+        [
+            {
+                "Recommendation": "AASHTO 5.11.4 seismic confinement",
+                "Tie / hoop": f"{bar_size} x {legs_text}",
+                "Suggested spacing": "-" if not math.isfinite(suggested) else f"{suggested:.0f} mm",
+                "Current spacing": f"{current_spacing} ({spacing_status})",
+                "Confinement length": "-" if not math.isfinite(l_conf) else f"{l_conf:.0f} mm",
+                "Area check": area_status,
+                "Governing criterion": governing,
+                "Analysis use": "Advisor only / details must be verified on drawings",
+            }
+        ]
+    )
 
 def _lineal_intersection_length_mm(geometry: object) -> float:
     if geometry is None or bool(getattr(geometry, "is_empty", False)):
@@ -10636,7 +10796,7 @@ def _project_design_code_status_cards(*, workflow: str) -> list[dict[str, object
     code_detail = "Source of truth from Setup"
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
         capability = "Available / review"
-        detail = "AASHTO LRFD 9th PMM route is active for Column/Pier B-region axial-flexure; AASHTO.COL.SHEAR1 simplified nonprestressed B-region shear is active; torsion, slenderness, seismic, and hollow-wall local-buckling remain guarded."
+        detail = "AASHTO LRFD 9th PMM route is active for Column/Pier B-region axial-flexure; AASHTO.COL.SHEAR1 simplified nonprestressed B-region shear is active; torsion, slenderness, final seismic certification, and hollow-wall local-buckling remain guarded; AASHTO.COL.SEISMIC1 advisor is available."
         status = "ready"
     elif workflow == "pmm":
         capability = "Available"
@@ -10670,7 +10830,7 @@ def _render_project_design_code_guard(*, workflow: str) -> None:
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
         st.info(
             "Project Design Code is AASHTO LRFD. The Column/Pier/Wall/Pylon PMM route now uses the AASHTO LRFD 9th "
-            "B-region axial-flexure basis; shear, torsion, slenderness/second-order, seismic, and hollow-wall local-buckling checks remain separate guarded milestones; AASHTO.COL.SHEAR1 adds a simplified nonprestressed B-region shear route."
+            "B-region axial-flexure basis; shear, torsion, slenderness/second-order, final seismic certification, and hollow-wall local-buckling checks remain separate guarded milestones; AASHTO.COL.SHEAR1 adds a simplified nonprestressed B-region shear route and AASHTO.COL.SEISMIC1 adds a Section 5.11.4 transverse detailing advisor."
         )
 
 
@@ -10687,7 +10847,7 @@ def _column_pier_analysis_scope_cards() -> list[dict[str, object]]:
     shear_detail = (
         "ACI 318 RC Column/Pier scoped shear gate reads Vux/Vuy and active transverse reinforcement; PSC and seismic/detailing certification remain guarded"
         if code == PROJECT_CODE_ACI318
-        else "AASHTO LRFD 9th Section 5.7 simplified sectional shear route is active for nonprestressed B-regions; PSC/general procedure, torsion, and seismic remain guarded"
+        else "AASHTO LRFD 9th Section 5.7 simplified sectional shear route is active for nonprestressed B-regions; PSC/general procedure and torsion remain guarded; seismic transverse detailing has an AASHTO 5.11.4 advisor"
     )
     torsion_status = "ACI RC V+T gate" if code == PROJECT_CODE_ACI318 else "REVIEW / planned"
     torsion_detail = (
@@ -10738,7 +10898,7 @@ def _column_pier_decision_caption_for_code(code: object) -> str:
     if normalized == PROJECT_CODE_AASHTO_LRFD:
         return (
             "Commercial workflow focus: run AASHTO LRFD 9th PMM interaction for Pu-Mux-Muy strength, "
-            "then review AASHTO Section 5.7 simplified shear for nonprestressed B-regions while torsion, V+T, slenderness, seismic, and hollow-wall local-buckling items remain guarded."
+            "then review AASHTO Section 5.7 simplified shear for nonprestressed B-regions while torsion, V+T, slenderness, final seismic certification, and hollow-wall local-buckling items remain guarded while AASHTO seismic transverse advisor is available."
         )
     return (
         "Commercial workflow focus: run PMM interaction for Pu-Mux-Muy strength, then review scoped ACI RC shear, "
@@ -10832,7 +10992,7 @@ def _column_pier_check_decision_rows(
             "Demand": "Pu, Mux, Muy",
             "D/C": pmm_dc,
             "Route / Scope": (
-                "AASHTO LRFD 9th PMM engineering-review route; shear uses AASHTO Section 5.7 simplified nonprestressed B-region route; torsion/slenderness/seismic/detailing remain REVIEW"
+                "AASHTO LRFD 9th PMM engineering-review route; shear uses AASHTO Section 5.7 simplified nonprestressed B-region route; torsion/slenderness/final seismic certification remain REVIEW; AASHTO 5.11.4 transverse advisor is available"
                 if code == PROJECT_CODE_AASHTO_LRFD
                 else "ACI RC/PSC PMM production-preview route"
             ),
@@ -11181,7 +11341,7 @@ def _column_pier_shear_summary_cards(
         {
             "title": "Code route",
             "value": "ACI 318 RC" if code == PROJECT_CODE_ACI318 else "AASHTO 5.7 simplified",
-            "detail": f"{edition}; PSC/general procedure, torsion, and seismic remain guarded",
+            "detail": f"{edition}; PSC/general procedure and torsion remain guarded; seismic transverse detailing has an AASHTO 5.11.4 advisor",
             "status": "info",
         },
         {
@@ -11250,6 +11410,8 @@ def _render_column_pier_shear_guarded_workspace() -> None:
             "and does not certify seismic confinement detailing."
         )
         seismic_advisor_df = _column_pier_aci_seismic_spacing_summary_dataframe(st.session_state, analysis_input)
+        if seismic_advisor_df.empty:
+            seismic_advisor_df = _column_pier_aashto_seismic_spacing_summary_dataframe(st.session_state, analysis_input)
         if seismic_advisor_df.empty:
             st.info("Seismic spacing advisor is not selected in Sections -> Rebar -> Transverse Rebar. Activate it there to show the recommended seismic tie/hoop spacing here.")
         else:
@@ -11599,7 +11761,7 @@ def _pmm_traceability_context_for_code(
         phi_basis = "AASHTO strain-controlled φ transition"
         units_basis = "SI solver units; AASHTO ksi/kips constants converted before use"
         units_basis_short = "SI-safe"
-        scope_note = "PMM route is AASHTO-based; shear, torsion, V+T, slenderness, seismic, and detailing remain guarded."
+        scope_note = "PMM route is AASHTO-based; shear, torsion, V+T, slenderness, and final detailing certification remain guarded; AASHTO 5.11.4 seismic transverse advisor is available."
     else:
         pmm_route = "ACI-oriented Column/Pier PMM"
         pmm_route_short = "Column/Pier PMM"
