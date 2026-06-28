@@ -420,6 +420,31 @@ _REBAR_PAGE_CSS = """
   line-height: 1.35;
   padding: 0.18rem 0;
 }
+/* AASHTO.COL.SEISMIC3: Streamlit metric defaults are too large for the
+   dense seismic-detailing advisor cards. Keep the commercial blue emphasis
+   but reduce value size and allow long values to wrap cleanly on first render. */
+div[data-testid="stMetric"] {
+  border-radius: 10px;
+}
+div[data-testid="stMetricLabel"] {
+  color: #344054;
+  font-size: 0.64rem !important;
+  font-weight: 760 !important;
+  letter-spacing: 0.065em !important;
+  text-transform: uppercase !important;
+}
+div[data-testid="stMetricValue"] {
+  color: #175cd3 !important;
+  font-size: 1.04rem !important;
+  line-height: 1.12 !important;
+  font-weight: 760 !important;
+  letter-spacing: -0.01em !important;
+  overflow-wrap: anywhere !important;
+  white-space: normal !important;
+}
+div[data-testid="stMetricDelta"] {
+  font-size: 0.68rem !important;
+}
 @media (max-width: 1250px) {
   .cpmm-rebar-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
