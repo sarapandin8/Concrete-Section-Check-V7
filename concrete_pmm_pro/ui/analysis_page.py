@@ -68,6 +68,7 @@ from concrete_pmm_pro.code_checks import (
     aashto_seismic_confinement_length_mm,
     aashto_seismic_rectangular_ash_required_mm2,
     aashto_simplified_shear_result,
+    aashto_simplified_torsion_result,
 )
 from concrete_pmm_pro.core.aashto_units import inch_to_mm
 from concrete_pmm_pro.core.analysis import AnalysisInput, AnalysisModeSettings, AnalysisSettings
@@ -4405,6 +4406,274 @@ def _column_pier_torsion_geometry(
     }
 
 
+
+def _column_pier_aashto_torsion_result_for_case(
+    state: Mapping[str, object],
+    demand_row: Mapping[str, object],
+    *,
+    analysis_input: AnalysisInput | None,
+) -> dict[str, object]:
+    """Return AASHTO LRFD 9th scoped Column/Pier torsion result.
+
+    This route is intentionally parallel to AASHTO.COL.SHEAR1: nonprestressed
+    B-region, closed transverse reinforcement, theta=45 degrees, and SI-safe
+    Section 5.7 torsion equations.  Combined V+T and PSC torsion remain guarded.
+    """
+
+    case = str(demand_row.get("Case Name") or "-")
+    tu_kNm = _beam_uls_float(demand_row.get("Tu"))
+    if not math.isfinite(tu_kNm) or abs(float(tu_kNm)) <= _COLUMN_PIER_SHEAR_DEMAND_TOL:
+        return {
+            "Check": "Torsion",
+            "Status": "NO DEMAND",
+            "Case": case,
+            "Demand": "-",
+            "Capacity": "-",
+            "Utilization": "-",
+            "Demand kN-m": 0.0,
+            "phiTn kN-m": float("nan"),
+            "Governing D/C value": float("nan"),
+            "Code basis": "AASHTO LRFD 9th Column/Pier torsion",
+            "Method": "AASHTO LRFD 5.7.3.6 torsion route",
+            "Notes": "No finite Tu demand.",
+        }
+    if analysis_input is None:
+        return {
+            "Check": "Torsion",
+            "Status": "REVIEW",
+            "Case": case,
+            "Demand": _format_beam_uls_demand(tu_kNm, "kN-m"),
+            "Capacity": "-",
+            "Utilization": "-",
+            "Demand kN-m": float(tu_kNm),
+            "phiTn kN-m": float("nan"),
+            "Governing D/C value": float("nan"),
+            "Code basis": "AASHTO LRFD 9th Column/Pier torsion",
+            "Method": "AASHTO LRFD 5.7.3.6 torsion route",
+            "Notes": "Section geometry and concrete material are required for AASHTO Column/Pier torsion.",
+        }
+
+    settings = _column_pier_transverse_settings_from_state(state)
+    closed_layout = str(settings.get("closed_tie_layout") or "")
+    zone = _column_pier_active_transverse_zone_for_torsion(state)
+    if closed_layout not in {"Closed ties / hoops", "Spiral reinforcement"}:
+        return {
+            "Check": "Torsion",
+            "Status": "REVIEW",
+            "Case": case,
+            "Demand": _format_beam_uls_demand(tu_kNm, "kN-m"),
+            "Capacity": "-",
+            "Utilization": "-",
+            "Demand kN-m": float(tu_kNm),
+            "phiTn kN-m": float("nan"),
+            "Governing D/C value": float("nan"),
+            "Code basis": "AASHTO LRFD 9th Column/Pier torsion",
+            "Method": "AASHTO LRFD 5.7.3.6 torsion route",
+            "Notes": "AASHTO torsional reinforcement requires closed ties/hoops, spirals, or a closed transverse cage; open ties are shear-only review input.",
+        }
+    if zone is None:
+        return {
+            "Check": "Torsion",
+            "Status": "REVIEW",
+            "Case": case,
+            "Demand": _format_beam_uls_demand(tu_kNm, "kN-m"),
+            "Capacity": "-",
+            "Utilization": "-",
+            "Demand kN-m": float(tu_kNm),
+            "phiTn kN-m": float("nan"),
+            "Governing D/C value": float("nan"),
+            "Code basis": "AASHTO LRFD 9th Column/Pier torsion",
+            "Method": "AASHTO LRFD 5.7.3.6 torsion route",
+            "Notes": "No active valid closed transverse region is available for AASHTO Column/Pier torsion.",
+        }
+
+    fc = float(analysis_input.concrete_material.fc_MPa)
+    diameter = _beam_uls_float(zone.get("Diameter_mm"))
+    geometry = _column_pier_torsion_geometry(analysis_input.section_geometry, settings, transverse_diameter_mm=diameter)
+    acp = _beam_uls_float(geometry.get("Acp mm2"))
+    pcp = _beam_uls_float(geometry.get("Pcp mm"))
+    ao = _beam_uls_float(geometry.get("Ao mm2"))
+    aoh = _beam_uls_float(geometry.get("Aoh mm2"))
+    ph = _beam_uls_float(geometry.get("ph mm"))
+    at_mm2 = _beam_uls_float(zone.get("At mm2"))
+    at_per_s = _beam_uls_float(zone.get("At/s mm2/mm"))
+    spacing = _beam_uls_float(zone.get("Spacing_mm"))
+    fy = _beam_uls_float(zone.get("fy_MPa"))
+    shape = _column_pier_section_torsion_shape_type(analysis_input)
+    be = acp / pcp if all(math.isfinite(value) and value > 0.0 for value in [acp, pcp]) else float("nan")
+    notes = [
+        "AASHTO.COL.TORSION1 uses AASHTO LRFD 9th Section 5.7 nonprestressed B-region torsion with closed transverse reinforcement and theta=45 degrees.",
+        "Torsion At is one closed tie/hoop bar area per spacing; shear leg count is not multiplied into At.",
+        str(geometry.get("Note") or ""),
+    ]
+    if _column_pier_has_active_prestress(analysis_input):
+        notes.append("Active prestress is present. Prestressed torsion and tendon contribution to longitudinal torsion reinforcement remain REVIEW in this milestone.")
+    if shape == "hollow":
+        notes.append("Hollow/multi-cell torsion path is a guarded preview; verify Ao, be, ph, and exterior closed cell manually before final design.")
+    if not all(math.isfinite(value) and value > 0.0 for value in [fc, acp, pcp, ao, ph, at_mm2, at_per_s, fy, spacing]):
+        return {
+            "Check": "Torsion",
+            "Status": "REVIEW",
+            "Case": case,
+            "Demand": _format_beam_uls_demand(tu_kNm, "kN-m"),
+            "Capacity": "-",
+            "Utilization": "-",
+            "Demand kN-m": float(tu_kNm),
+            "phiTn kN-m": float("nan"),
+            "Governing D/C value": float("nan"),
+            "Acp mm2": acp,
+            "Pcp mm": pcp,
+            "Aoh mm2": aoh,
+            "Ao mm2": ao,
+            "ph mm": ph,
+            "At mm2": at_mm2,
+            "At/s mm2/mm": at_per_s,
+            "Zone": str(zone.get("Zone") or "Column/Pier transverse region"),
+            "Tie/hoop": f"{zone.get('Bar Size') or '-'} @ {float(spacing):.0f} mm" if math.isfinite(spacing) else str(zone.get("Bar Size") or "-"),
+            "Code basis": "AASHTO LRFD 9th Column/Pier torsion",
+            "Method": "AASHTO LRFD 5.7.3.6 torsion route",
+            "Notes": "; ".join(part for part in [*notes, "Torsion core geometry or active closed transverse reinforcement is incomplete."] if part),
+        }
+
+    try:
+        torsion = aashto_simplified_torsion_result(
+            fc_MPa=fc,
+            Acp_mm2=acp,
+            Pcp_mm=pcp,
+            Ao_mm2=ao,
+            ph_mm=ph,
+            tu_Nmm=float(tu_kNm) * 1.0e6,
+            at_mm2_per_mm=at_per_s,
+            fy_MPa=fy,
+            spacing_mm=spacing,
+            shape=shape,
+            be_mm=be,
+        )
+    except Exception as exc:
+        return {
+            "Check": "Torsion",
+            "Status": "REVIEW",
+            "Case": case,
+            "Demand": _format_beam_uls_demand(tu_kNm, "kN-m"),
+            "Capacity": "-",
+            "Utilization": "-",
+            "Demand kN-m": float(tu_kNm),
+            "phiTn kN-m": float("nan"),
+            "Governing D/C value": float("nan"),
+            "Code basis": "AASHTO LRFD 9th Column/Pier torsion",
+            "Method": "AASHTO LRFD 5.7.3.6 torsion route",
+            "Notes": "; ".join(part for part in [*notes, f"AASHTO torsion calculation failed: {exc}"] if part),
+        }
+
+    threshold_kNm = torsion.threshold_Nmm / 1.0e6
+    phi_tcr_kNm = torsion.phi_tcr_Nmm / 1.0e6
+    if torsion.threshold_status == "BELOW THRESHOLD":
+        status = "REVIEW" if _column_pier_has_active_prestress(analysis_input) or shape == "hollow" else "BELOW THRESHOLD"
+        return {
+            "Check": "Torsion",
+            "Status": status,
+            "Transverse status": "THRESHOLD OK",
+            "Longitudinal status": "NOT REQUIRED" if status == "BELOW THRESHOLD" else "REVIEW",
+            "Detailing status": "THRESHOLD OK",
+            "Threshold status": torsion.threshold_status,
+            "Case": case,
+            "Demand": _format_beam_uls_demand(tu_kNm, "kN-m"),
+            "Capacity": f"0.25 phiTcr = {threshold_kNm:,.2f} kN-m",
+            "Utilization": "-",
+            "Demand kN-m": float(tu_kNm),
+            "Abs demand kN-m": abs(float(tu_kNm)),
+            "phiTn kN-m": float("nan"),
+            "phiTcr kN-m": phi_tcr_kNm,
+            "Tn kN-m": float("nan"),
+            "Governing D/C value": float("nan"),
+            "Acp mm2": acp,
+            "Pcp mm": pcp,
+            "Aoh mm2": aoh,
+            "Ao mm2": ao,
+            "ph mm": ph,
+            "Hoop offset mm": _beam_uls_float(geometry.get("offset mm")),
+            "At mm2": at_mm2,
+            "At/s mm2/mm": at_per_s,
+            "Al req mm2": 0.0,
+            "Al provided mm2": float("nan"),
+            "Al D/C value": float("nan"),
+            "s max mm": torsion.s_max_mm,
+            "Spacing D/C": torsion.spacing_dc,
+            "At/s req mm2/mm": 0.0,
+            "Zone": str(zone.get("Zone") or "Column/Pier transverse region"),
+            "Tie/hoop": f"{zone.get('Bar Size') or '-'} @ {float(spacing):.0f} mm",
+            "phi": torsion.phi,
+            "Code basis": "AASHTO LRFD 9th Column/Pier torsion",
+            "Method": torsion.method,
+            "Notes": "; ".join(part for part in [*notes, "Tu is below the AASHTO 0.25phiTcr investigation threshold; torsion reinforcement is not required by this threshold gate."] if part),
+        }
+
+    transverse_status = "PASS" if math.isfinite(torsion.tu_over_phi_tn) and torsion.tu_over_phi_tn <= 1.0 + 1.0e-9 else "FAIL"
+    at_status = "PASS" if math.isfinite(torsion.at_dc) and torsion.at_dc <= 1.0 + 1.0e-9 else "FAIL"
+    spacing_status = "PASS" if math.isfinite(torsion.spacing_dc) and torsion.spacing_dc <= 1.0 + 1.0e-9 else "FAIL"
+    detailing_status = "PASS" if at_status == "PASS" and spacing_status == "PASS" else "FAIL"
+    longitudinal_review = _beam_uls_torsion_longitudinal_review(state, torsion.al_required_mm2)
+    longitudinal_status = str(longitudinal_review.get("status") or "LAYOUT REQUIRED")
+    governing_values = [
+        value for value in [torsion.tu_over_phi_tn, torsion.at_dc, torsion.spacing_dc, _beam_uls_float(longitudinal_review.get("utilization"))] if math.isfinite(value)
+    ]
+    governing_dc = max(governing_values) if governing_values else float("nan")
+    if _column_pier_has_active_prestress(analysis_input) or shape == "hollow":
+        status = "REVIEW"
+    elif "FAIL" in {transverse_status, longitudinal_status, detailing_status}:
+        status = "FAIL"
+    elif longitudinal_status in {"LAYOUT REQUIRED", "NOT CHECKED", "NOT READY"}:
+        status = "REVIEW"
+    elif transverse_status == "PASS" and longitudinal_status == "PASS" and detailing_status == "PASS":
+        status = "PASS"
+    else:
+        status = "REVIEW"
+    if at_status == "FAIL":
+        notes.append("Provided At/s is less than the AASHTO torsion transverse reinforcement demand.")
+    if spacing_status == "FAIL":
+        notes.append("Closed tie/hoop spacing exceeds the AASHTO torsion spacing screen s <= min(ph/8, 12 in).")
+    notes.append(str(longitudinal_review.get("description") or ""))
+    return {
+        "Check": "Torsion",
+        "Status": status,
+        "Transverse status": transverse_status,
+        "Longitudinal status": longitudinal_status,
+        "Detailing status": detailing_status,
+        "Threshold status": torsion.threshold_status,
+        "Case": case,
+        "Demand": _format_beam_uls_demand(tu_kNm, "kN-m"),
+        "Capacity": f"phiTn = {torsion.phi_tn_Nmm / 1.0e6:,.2f} kN-m",
+        "Utilization": _format_beam_uls_ratio(torsion.tu_over_phi_tn),
+        "Demand kN-m": float(tu_kNm),
+        "Abs demand kN-m": abs(float(tu_kNm)),
+        "phiTn kN-m": torsion.phi_tn_Nmm / 1.0e6,
+        "phiTcr kN-m": phi_tcr_kNm,
+        "Tn kN-m": torsion.tn_Nmm / 1.0e6,
+        "Strength D/C value": torsion.tu_over_phi_tn,
+        "Detailing D/C value": max(value for value in [torsion.at_dc, torsion.spacing_dc] if math.isfinite(value)),
+        "Governing D/C value": governing_dc,
+        "Acp mm2": acp,
+        "Pcp mm": pcp,
+        "Aoh mm2": aoh,
+        "Ao mm2": ao,
+        "ph mm": ph,
+        "Hoop offset mm": _beam_uls_float(geometry.get("offset mm")),
+        "At mm2": at_mm2,
+        "At/s mm2/mm": at_per_s,
+        "At/s req mm2/mm": torsion.at_required_mm2_per_mm,
+        "Al req mm2": torsion.al_required_mm2,
+        "Al provided mm2": longitudinal_review.get("provided_mm2", float("nan")),
+        "Al D/C value": longitudinal_review.get("utilization", float("nan")),
+        "s max mm": torsion.s_max_mm,
+        "Spacing D/C": torsion.spacing_dc,
+        "Zone": str(zone.get("Zone") or "Column/Pier transverse region"),
+        "Tie/hoop": f"{zone.get('Bar Size') or '-'} @ {float(spacing):.0f} mm",
+        "phi": torsion.phi,
+        "Code basis": "AASHTO LRFD 9th Column/Pier torsion",
+        "Method": torsion.method,
+        "Notes": "; ".join(part for part in notes if part),
+    }
+
 def _column_pier_torsion_result_for_case(
     state: Mapping[str, object],
     demand_row: Mapping[str, object],
@@ -4414,6 +4683,8 @@ def _column_pier_torsion_result_for_case(
     case = str(demand_row.get("Case Name") or "-")
     tu_kNm = _beam_uls_float(demand_row.get("Tu"))
     code = workflow_project_design_code_from_session(state)
+    if code == PROJECT_CODE_AASHTO_LRFD:
+        return _column_pier_aashto_torsion_result_for_case(state, demand_row, analysis_input=analysis_input)
     if code != PROJECT_CODE_ACI318:
         return {
             "Check": "Torsion",
@@ -4425,7 +4696,7 @@ def _column_pier_torsion_result_for_case(
             "Demand kN-m": tu_kNm if math.isfinite(tu_kNm) else float("nan"),
             "phiTn kN-m": float("nan"),
             "Governing D/C value": float("nan"),
-            "Notes": "AASHTO LRFD Column/Pier torsion is not implemented in ULS.COL.TORSION.ACI1.",
+            "Notes": "Column/Pier torsion is not implemented for the selected project design code.",
         }
     if not math.isfinite(tu_kNm) or abs(float(tu_kNm)) <= _COLUMN_PIER_SHEAR_DEMAND_TOL:
         return {
@@ -10810,7 +11081,7 @@ def _project_design_code_status_cards(*, workflow: str) -> list[dict[str, object
     code_detail = "Source of truth from Setup"
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
         capability = "Available / review"
-        detail = "AASHTO LRFD 9th PMM route is active for Column/Pier B-region axial-flexure; AASHTO.COL.SHEAR1 simplified nonprestressed B-region shear is active; torsion, slenderness, final seismic certification, and hollow-wall local-buckling remain guarded; AASHTO.COL.SEISMIC1 advisor is available."
+        detail = "AASHTO LRFD 9th PMM, AASHTO.COL.SHEAR1 simplified shear, and AASHTO.COL.TORSION1 nonprestressed closed-transverse torsion routes are active; V+T, prestressed/general-procedure torsion, slenderness, final seismic certification, and hollow-wall local-buckling remain guarded."
         status = "ready"
     elif workflow == "pmm":
         capability = "Available"
@@ -10844,7 +11115,7 @@ def _render_project_design_code_guard(*, workflow: str) -> None:
     if workflow == "pmm" and code == PROJECT_CODE_AASHTO_LRFD:
         st.info(
             "Project Design Code is AASHTO LRFD. The Column/Pier/Wall/Pylon PMM route now uses the AASHTO LRFD 9th "
-            "B-region axial-flexure basis; shear, torsion, slenderness/second-order, final seismic certification, and hollow-wall local-buckling checks remain separate guarded milestones; AASHTO.COL.SHEAR1 adds a simplified nonprestressed B-region shear route and AASHTO.COL.SEISMIC1 adds a Section 5.11.4 transverse detailing advisor."
+            "B-region axial-flexure basis; AASHTO.COL.SHEAR1 and AASHTO.COL.TORSION1 add simplified nonprestressed Section 5.7 routes; V+T, prestressed/general-procedure torsion, slenderness/second-order, final seismic certification, and hollow-wall local-buckling remain guarded."
         )
 
 
@@ -10861,13 +11132,13 @@ def _column_pier_analysis_scope_cards() -> list[dict[str, object]]:
     shear_detail = (
         "ACI 318 RC Column/Pier scoped shear gate reads Vux/Vuy and active transverse reinforcement; PSC and seismic/detailing certification remain guarded"
         if code == PROJECT_CODE_ACI318
-        else "AASHTO LRFD 9th Section 5.7 simplified sectional shear route is active for nonprestressed B-regions; PSC/general procedure and torsion remain guarded; seismic transverse detailing has an AASHTO 5.11.4 advisor"
+        else "AASHTO LRFD 9th Section 5.7 simplified sectional shear route is active for nonprestressed B-regions; PSC/general procedure remains guarded; seismic transverse detailing has an AASHTO 5.11.4 advisor"
     )
-    torsion_status = "ACI RC V+T gate" if code == PROJECT_CODE_ACI318 else "REVIEW / planned"
+    torsion_status = "ACI RC V+T gate" if code == PROJECT_CODE_ACI318 else "AASHTO torsion"
     torsion_detail = (
         "ACI 318 RC torsion and combined V+T read Tu, closed transverse reinforcement, and ordinary rebar Al; PSC and AASHTO remain guarded"
         if code == PROJECT_CODE_ACI318
-        else "AASHTO LRFD Column/Pier torsion is not implemented; no Tn or PASS/FAIL is issued"
+        else "AASHTO LRFD 9th Section 5.7.3.6 nonprestressed closed-transverse torsion route is active; V+T and prestressed torsion remain guarded"
     )
     return [
         {
@@ -10912,7 +11183,7 @@ def _column_pier_decision_caption_for_code(code: object) -> str:
     if normalized == PROJECT_CODE_AASHTO_LRFD:
         return (
             "Commercial workflow focus: run AASHTO LRFD 9th PMM interaction for Pu-Mux-Muy strength, "
-            "then review AASHTO Section 5.7 simplified shear for nonprestressed B-regions while torsion, V+T, slenderness, final seismic certification, and hollow-wall local-buckling items remain guarded while AASHTO seismic transverse advisor is available."
+            "then review AASHTO Section 5.7 simplified shear and 5.7.3.6 torsion for nonprestressed B-regions while V+T, prestressed/general-procedure torsion, slenderness, final seismic certification, and hollow-wall local-buckling items remain guarded; AASHTO seismic transverse advisor is available."
         )
     return (
         "Commercial workflow focus: run PMM interaction for Pu-Mux-Muy strength, then review scoped ACI RC shear, "
@@ -11006,7 +11277,7 @@ def _column_pier_check_decision_rows(
             "Demand": "Pu, Mux, Muy",
             "D/C": pmm_dc,
             "Route / Scope": (
-                "AASHTO LRFD 9th PMM engineering-review route; shear uses AASHTO Section 5.7 simplified nonprestressed B-region route; torsion/slenderness/final seismic certification remain REVIEW; AASHTO 5.11.4 transverse advisor is available"
+                "AASHTO LRFD 9th PMM engineering-review route; shear and torsion use scoped AASHTO Section 5.7 nonprestressed B-region routes; V+T/slenderness/final seismic certification remain REVIEW; AASHTO 5.11.4 transverse advisor is available"
                 if code == PROJECT_CODE_AASHTO_LRFD
                 else "ACI RC/PSC PMM production-preview route"
             ),
@@ -11032,7 +11303,7 @@ def _column_pier_check_decision_rows(
             "Demand": "Tu",
             "D/C": "-" if torsion is None else _column_pier_dc_text(torsion.get("Governing D/C value")),
             "Route / Scope": (
-                "AASHTO LRFD Column/Pier torsion not implemented; REVIEW only, no Tn or PASS/FAIL issued"
+                "AASHTO LRFD 9th Section 5.7.3.6 scoped torsion gate; nonprestressed closed transverse route only"
                 if code == PROJECT_CODE_AASHTO_LRFD
                 else "ACI 318 RC scoped torsion gate; closed ties/hoops plus ordinary longitudinal Al only"
             ),
@@ -11098,7 +11369,7 @@ def _column_pier_uls_decision_summary_cards(
             "title": "Code route",
             "value": code,
             "detail": (
-                "AASHTO PMM is active; Column/Pier shear/torsion/V+T stay REVIEW until validated"
+                "AASHTO PMM, simplified shear, and scoped torsion are active; V+T/prestressed routes stay REVIEW until validated"
                 if code == PROJECT_CODE_AASHTO_LRFD
                 else "ACI RC shear/torsion/V+T is scoped; unsupported routes stay REVIEW until validated"
             ),
@@ -11355,7 +11626,7 @@ def _column_pier_shear_summary_cards(
         {
             "title": "Code route",
             "value": "ACI 318 RC" if code == PROJECT_CODE_ACI318 else "AASHTO 5.7 simplified",
-            "detail": f"{edition}; PSC/general procedure and torsion remain guarded; seismic transverse detailing has an AASHTO 5.11.4 advisor",
+            "detail": f"{edition}; PSC/general shear procedure remains guarded; seismic transverse detailing has an AASHTO 5.11.4 advisor",
             "status": "info",
         },
         {
@@ -11451,14 +11722,14 @@ def _render_column_pier_shear_guarded_workspace() -> None:
             "- Transverse source: Sections -> Rebar -> Transverse Rebar, active Column/Pier regions. With no station owner, the lowest active `Av/s` region is used conservatively.\n"
             "- Section basis: `bw` is measured from concrete breadth through the centroid line, so holes/voids are not counted as concrete. Auto `d` is `0.80` times the gross dimension in the checked direction.\n"
             "- Formula basis: `Vc = 0.17 sqrt(fc) bw d`, `Vs = Av fy d / s`, `phi = 0.75`, with ACI minimum `Av/s`, maximum spacing, and `Vs` maximum screen.\n"
-            "- Exclusions from this PASS scope: AASHTO LRFD, prestressed shear `Vci/Vcw/Vp`, seismic special detailing, slenderness/second-order effects, anchorage/hooks, lap splices, and shop-drawing detailing."
+            "- Exclusions from this PASS scope: prestressed shear `Vci/Vcw/Vp`, AASHTO general shear procedure, seismic special detailing, slenderness/second-order effects, anchorage/hooks, lap splices, and shop-drawing detailing."
         )
     with st.expander("Future shear code-check scope", expanded=False):
         st.markdown(
             "- Add explicit direction-specific effective depth owner instead of the current auto `0.80h` preview basis.\n"
             "- Add station/height assignment for transverse regions so end confinement and typical shaft regions can be checked at their actual demand locations.\n"
             "- Add axial load and prestress effects only after validated code-specific equations and benchmarks are introduced.\n"
-            "- Required validation before expanding scope: AASHTO LRFD, prestressed shear, seismic/detailing, and direction-specific station benchmarks."
+            "- Required validation before expanding scope: prestressed shear, AASHTO general shear procedure, seismic/detailing, and direction-specific station benchmarks."
         )
 
 
@@ -11476,11 +11747,8 @@ def _column_pier_torsion_summary_cards(
     active_tu_count = 0
     if not active_demands.empty and "Tu" in active_demands.columns:
         active_tu_count = int(pd.to_numeric(active_demands["Tu"], errors="coerce").abs().gt(_COLUMN_PIER_SHEAR_DEMAND_TOL).sum())
-    if code != PROJECT_CODE_ACI318:
-        status_value = "REVIEW"
-        status_detail = "AASHTO LRFD Column/Pier torsion is not implemented in this milestone"
-        status_color = "warning"
-    elif torsion_df.empty:
+    route_label = "ACI 318 RC" if code == PROJECT_CODE_ACI318 else "AASHTO 5.7.3.6"
+    if torsion_df.empty:
         status_value = "NOT READY"
         status_detail = "Needs nonzero Tu, closed transverse reinforcement, torsion core basis, and ordinary longitudinal bars"
         status_color = "warning"
@@ -11490,15 +11758,16 @@ def _column_pier_torsion_summary_cards(
         status_color = "danger"
     elif any(str(value) == "REVIEW" for value in torsion_df["Status"].tolist()):
         status_value = "REVIEW"
-        status_detail = "Calculation has guarded inputs such as active prestress, AASHTO route, or incomplete layout"
+        status_detail = "Calculation has guarded inputs such as active prestress, hollow/multi-cell torsion, or incomplete layout"
         status_color = "warning"
     elif all(str(value) == "BELOW THRESHOLD" for value in torsion_df["Status"].tolist()):
         status_value = "BELOW THRESHOLD"
-        status_detail = "All active Tu rows are below the implemented ACI torsion threshold screen"
+        threshold_name = "AASHTO 0.25φTcr" if code == PROJECT_CODE_AASHTO_LRFD else "implemented ACI torsion threshold"
+        status_detail = f"All active Tu rows are below the {threshold_name} screen"
         status_color = "ready"
     else:
         status_value = "PASS"
-        status_detail = "ACI RC scoped torsion gates are below 1.0 within the implemented nonprestressed route"
+        status_detail = f"{route_label} scoped torsion gates are below 1.0 within the implemented nonprestressed route"
         status_color = "ready"
     capacity_detail = "-"
     demand_detail = "-"
@@ -11515,13 +11784,18 @@ def _column_pier_torsion_summary_cards(
     if str(settings.get("closed_tie_layout") or "") == "Open ties - shear only review":
         core_detail = "Open ties cannot be used for torsion capacity"
     prestress_value = "No"
-    prestress_detail = "ACI RC torsion route"
+    prestress_detail = "Nonprestressed torsion route"
     if _column_pier_has_active_prestress(analysis_input):
         prestress_value = "Present"
         prestress_detail = "PSC torsion contribution is not implemented; result remains REVIEW"
+    code_detail = (
+        f"{edition}; nonprestressed closed-transverse torsion active; V+T/PSC remain guarded"
+        if code == PROJECT_CODE_AASHTO_LRFD
+        else f"{edition}; ACI RC scoped torsion route"
+    )
     return [
         {"title": "Torsion status", "value": status_value, "detail": status_detail, "status": status_color, "strong": True},
-        {"title": "Code route", "value": "ACI 318 RC" if code == PROJECT_CODE_ACI318 else "Not implemented", "detail": f"{edition}; AASHTO/PSC routes remain future milestones", "status": "info" if code == PROJECT_CODE_ACI318 else "warning"},
+        {"title": "Code route", "value": route_label, "detail": code_detail, "status": "info"},
         {"title": "Active Tu demands", "value": f"{active_tu_count:,}", "detail": demand_detail if active_tu_count else "No nonzero Tu in active ULS rows", "status": "info" if active_tu_count else "warning"},
         {"title": "Governing capacity", "value": capacity_detail, "detail": "Highest governing D/C among active Tu rows" if governing is not None else "No calculated row", "status": "info"},
         {"title": "Transverse source", "value": zone_value, "detail": zone_detail, "status": "ready" if zone is not None else "warning"},
@@ -11529,10 +11803,9 @@ def _column_pier_torsion_summary_cards(
         {"title": "Prestress effects", "value": prestress_value, "detail": prestress_detail, "status": "warning" if prestress_value == "Present" else "neutral"},
     ]
 
-
 def _render_column_pier_torsion_guarded_workspace() -> None:
     st.markdown("#### Torsion")
-    st.caption("ACI 318 RC scoped torsion gate for column, pier, wall, and pylon case-based ULS rows.")
+    st.caption("Column/Pier/Wall/Pylon case-based torsion gate. ACI and AASHTO routes are selected from the Project Design Code.")
     active_demands = _active_column_pier_uls_demand_dataframe_from_state(st.session_state)
     analysis_input = _serviceability_analysis_input_from_session()
     torsion_df = _column_pier_torsion_check_dataframe(st.session_state, analysis_input)
@@ -11545,18 +11818,18 @@ def _render_column_pier_torsion_guarded_workspace() -> None:
         columns=4,
     )
     code = workflow_project_design_code_from_session(st.session_state)
-    if code != PROJECT_CODE_ACI318:
-        st.warning("Column/Pier AASHTO LRFD torsion is not implemented. This tab does not issue Tn or PASS/FAIL for AASHTO projects.")
-    elif torsion_df.empty:
-        st.warning("No Column/Pier ACI torsion rows are ready. Enter nonzero Tu, activate closed transverse reinforcement, define torsion core basis, and provide ordinary longitudinal rebar.")
+    route_label = "AASHTO LRFD" if code == PROJECT_CODE_AASHTO_LRFD else "ACI RC"
+    if torsion_df.empty:
+        st.warning(f"No Column/Pier {route_label} torsion rows are ready. Enter nonzero Tu, activate closed transverse reinforcement, define torsion core basis, and provide ordinary longitudinal rebar.")
     elif any(str(value) in {"FAIL", "Preview FAIL"} for value in torsion_df["Status"].tolist()):
-        st.error("One or more ACI RC torsion gates exceed 1.0. Review Tu, closed tie/hoop layout, torsion core geometry, and longitudinal rebar Al.")
+        st.error(f"One or more {route_label} torsion gates exceed 1.0. Review Tu, closed tie/hoop layout, torsion core geometry, transverse At/s, and longitudinal rebar Al.")
     elif any(str(value) == "REVIEW" for value in torsion_df["Status"].tolist()):
-        st.warning("ACI torsion values are calculated or partially screened, but the result remains REVIEW because one or more guarded assumptions apply.")
+        st.warning(f"{route_label} torsion values are calculated or partially screened, but the result remains REVIEW because one or more guarded assumptions apply.")
     elif all(str(value) == "BELOW THRESHOLD" for value in torsion_df["Status"].tolist()):
-        st.success("All active torsion demands are below the implemented ACI threshold screen; torsion reinforcement is not required for those rows within this scoped route.")
+        threshold_label = "AASHTO 0.25φTcr" if code == PROJECT_CODE_AASHTO_LRFD else "implemented ACI threshold"
+        st.success(f"All active torsion demands are below the {threshold_label} screen; torsion reinforcement is not required for those rows within this scoped route.")
     else:
-        st.success("ACI RC scoped torsion gates PASS for the current visible rows. Seismic/detailing and anchorage items remain separate engineering review items.")
+        st.success(f"{route_label} scoped torsion gates PASS for the current visible rows. Seismic/detailing, anchorage, and V+T items remain separate engineering review items.")
     if not torsion_df.empty:
         display_columns = [
             "Status", "Case", "Demand", "Capacity", "Utilization", "Threshold status",
@@ -11565,25 +11838,25 @@ def _render_column_pier_torsion_guarded_workspace() -> None:
             "Governing D/C value",
         ]
         st.dataframe(torsion_df[display_columns], use_container_width=True, hide_index=True)
-    with st.expander("ACI torsion audit / method details", expanded=False):
+    with st.expander("Torsion audit / method details", expanded=False):
         if torsion_df.empty:
             st.info("Audit rows are not available until section, material, active Tu demand, closed transverse reinforcement, and torsion core geometry are ready.")
         else:
             st.dataframe(torsion_df, use_container_width=True, hide_index=True)
         st.markdown(
-            "- Scope: ACI 318 RC Column/Pier scoped torsion gate.\n"
+            "- Scope: code-routed Column/Pier scoped torsion gate. AASHTO route uses Section 5.7.3.6 for nonprestressed closed transverse torsion; ACI route preserves the prior ACI RC gate.\n"
             "- Demand source: Loads -> Column/Pier ULS table, active `Tu` rows.\n"
             "- Transverse source: Sections -> Rebar -> Transverse Rebar, active Column/Pier closed ties/hoops or spiral. With no station owner, the lowest active `At/s` region is used conservatively.\n"
             "- Longitudinal source: ordinary active rebar only. Prestress strands, tendons, and PT bars are not counted as torsion `Al` in this milestone.\n"
-            "- Formula basis: threshold screen uses `0.083 sqrt(fc) Acp^2/Pcp`; strength preview uses `Tn = 2 Ao At fy cot(theta) / s`, `theta = 45 deg`, `phi = 0.75`, plus `Al` and `s <= min(ph/8, 300 mm)` gates.\n"
-            "- Exclusions: AASHTO LRFD, prestressed torsion, multi-cell hollow torsion, seismic special detailing, anchorage/hooks, and shop-drawing detailing. Use the Shear + Torsion tab for the scoped ACI RC V+T interaction gate."
+            "- Formula basis: AASHTO route uses `Tu > 0.25φTcr` investigation threshold and `Tn = 2 Ao At fy cot(theta) / s`, `theta = 45 deg`, `φ = 0.90`; ACI route preserves its existing threshold/φ basis. Both routes include `Al` and closed-hoop spacing gates.\n"
+            "- Exclusions: prestressed torsion, AASHTO general-procedure V+T, multi-cell hollow torsion, seismic special detailing, anchorage/hooks, and shop-drawing detailing. Use the Shear + Torsion tab for the scoped interaction gate."
         )
     with st.expander("Future torsion code-check scope", expanded=False):
         st.markdown(
             "- Add station/height assignment for torsion transverse regions so confinement and shaft/core regions can be checked at actual demand locations.\n"
             "- Add explicit engineer-controlled Ao/Aoh visualization and validation for custom/hollow sections.\n"
             "- Expand the Shear + Torsion tab beyond the current ACI RC nonprestressed scope only after code-specific benchmarks exist.\n"
-            "- Required validation: AASHTO LRFD, prestressed V+T, seismic detailing, anchorage/hooks, and multi-cell hollow benchmarks before those routes can issue final PASS/FAIL."
+            "- Required validation: AASHTO combined V+T, prestressed V+T, seismic detailing, anchorage/hooks, and multi-cell hollow benchmarks before those routes can issue final PASS/FAIL."
         )
 
 
@@ -11785,7 +12058,7 @@ def _pmm_traceability_context_for_code(
         phi_basis = "AASHTO strain-controlled φ transition"
         units_basis = "SI solver units; AASHTO ksi/kips constants converted before use"
         units_basis_short = "SI-safe"
-        scope_note = "PMM route is AASHTO-based; shear, torsion, V+T, slenderness, and final detailing certification remain guarded; AASHTO 5.11.4 seismic transverse advisor is available."
+        scope_note = "PMM, simplified shear, and scoped torsion routes are AASHTO-based; V+T, prestressed/general-procedure torsion, slenderness, and final detailing certification remain guarded; AASHTO 5.11.4 seismic transverse advisor is available."
     else:
         pmm_route = "ACI-oriented Column/Pier PMM"
         pmm_route_short = "Column/Pier PMM"

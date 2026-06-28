@@ -13,6 +13,7 @@ from concrete_pmm_pro.code_checks.aashto_lrfd import (
     AASHTO_ECU_STRENGTH,
     AASHTO_SHEAR_PHI,
     AashtoShearResult,
+    AashtoTorsionResult,
     AashtoSeismicConfinementResult,
     aashto_alpha1,
     aashto_beta1,
@@ -27,6 +28,8 @@ from concrete_pmm_pro.code_checks.aashto_lrfd import (
     aashto_seismic_rectangular_ash_required_mm2,
     aashto_seismic_circular_spiral_required,
     aashto_simplified_shear_result,
+    aashto_simplified_torsion_result,
+    aashto_torsional_cracking_moment_nmm,
     aashto_tension_controlled_strain_limit,
 )
 
@@ -39,6 +42,7 @@ __all__ = [
     "AASHTO_ECU_STRENGTH",
     "AASHTO_SHEAR_PHI",
     "AashtoShearResult",
+    "AashtoTorsionResult",
     "AashtoSeismicConfinementResult",
     "aashto_alpha1",
     "aashto_beta1",
@@ -53,6 +57,8 @@ __all__ = [
     "aashto_seismic_rectangular_ash_required_mm2",
     "aashto_seismic_circular_spiral_required",
     "aashto_simplified_shear_result",
+    "aashto_simplified_torsion_result",
+    "aashto_torsional_cracking_moment_nmm",
     "aashto_tension_controlled_strain_limit",
     "nominal_po_rc",
     "nominal_po_rc_prestressed",

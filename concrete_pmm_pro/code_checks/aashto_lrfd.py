@@ -346,6 +346,154 @@ def aashto_max_phiPn(
 
 
 @dataclass(frozen=True)
+class AashtoTorsionResult:
+    phi: float
+    theta_deg: float
+    cot_theta: float
+    lambda_concrete: float
+    lambda_duct: float
+    tcr_Nmm: float
+    phi_tcr_Nmm: float
+    threshold_Nmm: float
+    threshold_status: str
+    tn_Nmm: float
+    phi_tn_Nmm: float
+    tu_over_phi_tn: float
+    at_provided_mm2_per_mm: float
+    at_required_mm2_per_mm: float
+    at_dc: float
+    al_required_mm2: float
+    s_max_mm: float
+    spacing_dc: float
+    method: str
+    basis: str
+
+
+def aashto_torsional_cracking_moment_nmm(
+    *,
+    fc_MPa: float,
+    Acp_mm2: float,
+    Pcp_mm: float,
+    Ao_mm2: float | None = None,
+    be_mm: float | None = None,
+    shape: str = "solid",
+    lambda_concrete: float = 1.0,
+    fpc_MPa: float = 0.0,
+) -> float:
+    """Return AASHTO LRFD Article 5.7.2.1 torsional cracking moment in N-mm.
+
+    AASHTO writes the expressions with ``f'c`` in ksi and dimensions in inches.
+    This helper keeps the app in SI by converting the ``0.126*K*lambda*sqrt(fc)``
+    stress term to MPa before multiplying by SI geometry.  ``fpc`` is optional;
+    the current Column/Pier torsion route uses ``fpc=0`` for nonprestressed
+    members and keeps prestressed torsion in REVIEW.
+    """
+
+    if fc_MPa <= 0 or Acp_mm2 <= 0 or Pcp_mm <= 0 or lambda_concrete <= 0:
+        raise ValueError("fc_MPa, Acp_mm2, Pcp_mm, and lambda_concrete must be positive.")
+    base_stress = aashto_sqrt_fc_stress_mpa(0.126 * float(lambda_concrete), float(fc_MPa))
+    fpc = max(0.0, float(fpc_MPa))
+    k = math.sqrt(1.0 + fpc / base_stress) if base_stress > 0.0 else 1.0
+    k = min(2.0, max(1.0, k))
+    cracking_stress = aashto_sqrt_fc_stress_mpa(0.126 * k * float(lambda_concrete), float(fc_MPa))
+    shape_norm = str(shape or "solid").strip().lower()
+    if shape_norm == "hollow":
+        ao = float(Ao_mm2) if Ao_mm2 is not None else float("nan")
+        be = float(be_mm) if be_mm is not None else float("nan")
+        if not all(math.isfinite(value) and value > 0.0 for value in [ao, be]):
+            raise ValueError("Ao_mm2 and be_mm must be positive for hollow torsion cracking moment.")
+        return cracking_stress * 2.0 * ao * be
+    return cracking_stress * float(Acp_mm2) * float(Acp_mm2) / float(Pcp_mm)
+
+
+def aashto_simplified_torsion_result(
+    *,
+    fc_MPa: float,
+    Acp_mm2: float,
+    Pcp_mm: float,
+    Ao_mm2: float,
+    ph_mm: float,
+    tu_Nmm: float,
+    at_mm2_per_mm: float,
+    fy_MPa: float,
+    spacing_mm: float,
+    shape: str = "solid",
+    be_mm: float | None = None,
+    lambda_concrete: float = 1.0,
+    lambda_duct: float = 1.0,
+    theta_deg: float = AASHTO_SHEAR_SIMPLIFIED_THETA_DEG,
+    phi: float = AASHTO_SHEAR_PHI,
+) -> AashtoTorsionResult:
+    """Return AASHTO LRFD Section 5.7 closed-transverse torsion result in SI.
+
+    Scope: nonprestressed B-region Column/Pier torsion using the same simplified
+    ``theta=45 deg`` route as AASHTO.COL.SHEAR1.  Combined shear + torsion
+    interaction, prestressed torsion contribution, multi-cell hollow torsion,
+    and seismic overstrength torsion remain separate guarded milestones.
+    """
+
+    values = [fc_MPa, Acp_mm2, Pcp_mm, Ao_mm2, ph_mm, fy_MPa, spacing_mm, phi, lambda_concrete, lambda_duct]
+    if not all(math.isfinite(float(v)) and float(v) > 0.0 for v in values):
+        raise ValueError("fc, Acp, Pcp, Ao, ph, fy, spacing, phi, lambda_concrete, and lambda_duct must be positive.")
+    if not math.isfinite(float(at_mm2_per_mm)) or float(at_mm2_per_mm) < 0.0:
+        raise ValueError("at_mm2_per_mm must be finite and nonnegative.")
+    theta = math.radians(float(theta_deg))
+    tan_theta = math.tan(theta)
+    if abs(tan_theta) <= 1.0e-12:
+        raise ValueError("theta_deg must have nonzero tangent.")
+    cot_theta = 1.0 / tan_theta
+
+    shape_norm = "hollow" if str(shape or "solid").strip().lower() == "hollow" else "solid"
+    be = float(be_mm) if be_mm is not None and math.isfinite(float(be_mm)) and float(be_mm) > 0.0 else float(Acp_mm2) / float(Pcp_mm)
+    tcr = aashto_torsional_cracking_moment_nmm(
+        fc_MPa=float(fc_MPa),
+        Acp_mm2=float(Acp_mm2),
+        Pcp_mm=float(Pcp_mm),
+        Ao_mm2=float(Ao_mm2),
+        be_mm=be,
+        shape=shape_norm,
+        lambda_concrete=float(lambda_concrete),
+    )
+    phi_tcr = float(phi) * tcr
+    threshold = 0.25 * phi_tcr
+    threshold_status = "BELOW THRESHOLD" if abs(float(tu_Nmm)) <= threshold + 1.0e-9 else "DESIGN REQUIRED"
+
+    tn = 2.0 * float(Ao_mm2) * float(at_mm2_per_mm) * float(fy_MPa) * cot_theta * float(lambda_duct)
+    phi_tn = float(phi) * tn
+    dc = abs(float(tu_Nmm)) / phi_tn if phi_tn > 0.0 else float("inf")
+    at_req = abs(float(tu_Nmm)) / (float(phi) * 2.0 * float(Ao_mm2) * float(fy_MPa) * cot_theta * float(lambda_duct))
+    at_dc = at_req / float(at_mm2_per_mm) if float(at_mm2_per_mm) > 0.0 else float("inf")
+    # Article 5.7.3.6.3 box-section torsion-only relationship.  For solid
+    # members the full combined longitudinal force equation is a future V+T
+    # milestone; this value remains a transparent torsion-only Al preview.
+    al_req = tn * float(ph_mm) / (2.0 * float(Ao_mm2) * float(fy_MPa)) if tn > 0.0 else 0.0
+    smax = min(float(ph_mm) / 8.0, 12.0 * 25.4)
+    spacing_dc = float(spacing_mm) / smax if smax > 0.0 else float("inf")
+    return AashtoTorsionResult(
+        phi=float(phi),
+        theta_deg=float(theta_deg),
+        cot_theta=cot_theta,
+        lambda_concrete=float(lambda_concrete),
+        lambda_duct=float(lambda_duct),
+        tcr_Nmm=tcr,
+        phi_tcr_Nmm=phi_tcr,
+        threshold_Nmm=threshold,
+        threshold_status=threshold_status,
+        tn_Nmm=tn,
+        phi_tn_Nmm=phi_tn,
+        tu_over_phi_tn=dc,
+        at_provided_mm2_per_mm=float(at_mm2_per_mm),
+        at_required_mm2_per_mm=at_req,
+        at_dc=at_dc,
+        al_required_mm2=al_req,
+        s_max_mm=smax,
+        spacing_dc=spacing_dc,
+        method="AASHTO LRFD 5.7.3.6 closed-transverse torsion, theta=45 deg",
+        basis="Article 5.7.2.1 threshold Tu > 0.25phiTcr; Article 5.7.3.6.2 Tn=2AoAtfy cot(theta)/s; Article 5.7.3.6.3 Al torsion preview",
+    )
+
+
+@dataclass(frozen=True)
 class AashtoShearResult:
     phi: float
     beta: float
