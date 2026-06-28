@@ -917,6 +917,117 @@ def _message_list_html(messages: list[str]) -> str:
     return f'<div class="cpmm-rebar-message-list">{items}</div>'
 
 
+def _fmt_detail_value(value: float | None, unit: str, digits: int = 0) -> str:
+    if value is None:
+        return "-"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    if not math.isfinite(number):
+        return "-"
+    return f"{number:,.{digits}f} {unit}"
+
+
+def _aashto_seismic_governing_ash_requirement(
+    result: SeismicSpacingAdvisorResult,
+) -> tuple[float | None, str]:
+    candidates: list[tuple[str, float]] = []
+    if result.required_transverse_area_mm2 is not None and math.isfinite(float(result.required_transverse_area_mm2)):
+        candidates.append(("x/core width", float(result.required_transverse_area_mm2)))
+    if result.required_transverse_area_y_mm2 is not None and math.isfinite(float(result.required_transverse_area_y_mm2)):
+        candidates.append(("y/core depth", float(result.required_transverse_area_y_mm2)))
+    if not candidates:
+        return None, "Unavailable"
+    axis, value = max(candidates, key=lambda item: item[1])
+    return value, axis
+
+
+def _aashto_seismic_detailing_summary_metrics(
+    result: SeismicSpacingAdvisorResult,
+    *,
+    current_spacing_mm: float | None,
+) -> list[RebarMetric]:
+    spacing_status = "Input required"
+    spacing_detail = "Enter/provide the control-section hoop spacing"
+    spacing_kind = "warning"
+    if current_spacing_mm is not None and result.s_max_mm is not None:
+        if result.spacing_dc is not None and result.spacing_dc <= 1.0 + 1.0e-9:
+            spacing_status = "OK"
+            spacing_detail = f"Current {_fmt_detail_value(current_spacing_mm, 'mm')} ≤ limit {_fmt_detail_value(result.s_max_mm, 'mm')}"
+            spacing_kind = "ready"
+        else:
+            spacing_status = f"Reduce to ≤ {result.s_max_mm:.0f} mm"
+            spacing_detail = f"Current {_fmt_detail_value(current_spacing_mm, 'mm')} exceeds the AASHTO spacing limit"
+            spacing_kind = "danger"
+
+    governing_required, governing_axis = _aashto_seismic_governing_ash_requirement(result)
+    provided = result.provided_transverse_area_mm2
+    area_status = "Input required"
+    area_detail = "Define hoop/cross-tie bar size, effective legs, fyh, and spacing"
+    area_kind = "warning"
+    if provided is not None and governing_required is not None and result.area_dc is not None:
+        if result.area_dc <= 1.0 + 1.0e-9:
+            area_status = "OK"
+            area_detail = f"Provided {_fmt_detail_value(provided, 'mm²', 1)} ≥ required {_fmt_detail_value(governing_required, 'mm²', 1)}"
+            area_kind = "ready"
+        else:
+            area_status = f"Increase Ash ×{result.area_dc:.2f}"
+            area_detail = f"Provided {_fmt_detail_value(provided, 'mm²', 1)} < required {_fmt_detail_value(governing_required, 'mm²', 1)} about {governing_axis}"
+            area_kind = "danger"
+
+    length_status = "Input required" if result.clear_height_mm is None else _fmt_detail_value(result.confinement_length_mm, "mm")
+    length_detail = (
+        "Enter clear height for the 1/6 clear-height criterion"
+        if result.clear_height_mm is None
+        else f"Governing: {result.confinement_length_governing or 'AASHTO 5.11.4.1.5'}"
+    )
+
+    action_value = "Review"
+    action_detail = "Complete missing inputs before treating the seismic detail as final"
+    action_kind = "warning"
+    if result.status == "PASS":
+        action_value = "Detailing OK"
+        action_detail = "Spacing and confinement area checks pass; still verify hooks/splices/drawings"
+        action_kind = "ready"
+    elif result.area_dc is not None and result.area_dc > 1.0 + 1.0e-9:
+        action_value = "Add confinement steel"
+        action_detail = "Increase effective legs/cross-ties, bar size, or reduce spacing"
+        action_kind = "danger"
+    elif result.spacing_dc is not None and result.spacing_dc > 1.0 + 1.0e-9:
+        action_value = "Reduce spacing"
+        action_detail = "Use a spacing not greater than the AASHTO limit"
+        action_kind = "danger"
+
+    return [
+        RebarMetric("Current spacing", _fmt_detail_value(current_spacing_mm, "mm"), "Provided control-section row", "neutral"),
+        RebarMetric("Spacing action", spacing_status, spacing_detail, spacing_kind, strong=spacing_kind in {"danger", "warning"}),
+        RebarMetric("Provided Ash", _fmt_detail_value(provided, "mm²", 1), "From selected hoop/cross-tie row", "neutral"),
+        RebarMetric("Required Ash", _fmt_detail_value(governing_required, "mm²", 1), f"Governing {governing_axis}", "neutral"),
+        RebarMetric("Confinement length", length_status, length_detail, "warning" if result.clear_height_mm is None else "info"),
+        RebarMetric("Required action", action_value, action_detail, action_kind, strong=True),
+    ]
+
+
+def _aashto_seismic_fail_reason_messages(
+    result: SeismicSpacingAdvisorResult,
+    *,
+    current_spacing_mm: float | None,
+) -> list[str]:
+    messages: list[str] = []
+    if current_spacing_mm is not None and result.s_max_mm is not None and result.spacing_dc is not None and result.spacing_dc > 1.0 + 1.0e-9:
+        messages.append(
+            f"Spacing FAIL: current spacing = {_fmt_detail_value(current_spacing_mm, 'mm')} > AASHTO limit = {_fmt_detail_value(result.s_max_mm, 'mm')} (D/C = {result.spacing_dc:.2f})."
+        )
+    governing_required, governing_axis = _aashto_seismic_governing_ash_requirement(result)
+    provided = result.provided_transverse_area_mm2
+    if provided is not None and governing_required is not None and result.area_dc is not None and result.area_dc > 1.0 + 1.0e-9:
+        messages.append(
+            f"Ash/rho FAIL: provided Ash = {_fmt_detail_value(provided, 'mm²', 1)} < required Ash = {_fmt_detail_value(governing_required, 'mm²', 1)} about {governing_axis} (D/C = {result.area_dc:.2f}). Increase effective hoop/cross-tie legs, increase bar size, or reduce spacing."
+        )
+    return messages
+
+
 def _total_as_mm2(rebars: list[Rebar]) -> float:
     return sum(rebar.area_mm2 for rebar in rebars)
 
@@ -2034,6 +2145,11 @@ def _render_column_pier_seismic_spacing_advisor(
             status_cols[0].metric("Seismic spacing check", spacing_status)
             status_cols[1].metric("Ash / rho check", area_status)
             status_cols[2].metric("Overall seismic detailing", result.status)
+            normalized = _ensure_shear_reinforcement_columns(pd.DataFrame(table))
+            current_spacing = None
+            if not normalized.empty:
+                current_spacing = _to_float(normalized.iloc[0].get("Spacing_mm"))
+
             if result.status == "FAIL":
                 st.error(
                     "Overall seismic transverse detailing is FAIL / REVIEW for the selected control-section row. "
@@ -2046,6 +2162,21 @@ def _render_column_pier_seismic_spacing_advisor(
             else:
                 st.success(
                     "AASHTO seismic advisor checks pass for the current control-section row. Final seismic zone, hooks, splices, and drawing details still require engineering review."
+                )
+
+            st.markdown("##### Recommended seismic detailing summary")
+            st.markdown(
+                _strip_html(_aashto_seismic_detailing_summary_metrics(result, current_spacing_mm=current_spacing)),
+                unsafe_allow_html=True,
+            )
+            fail_reasons = _aashto_seismic_fail_reason_messages(result, current_spacing_mm=current_spacing)
+            if fail_reasons:
+                for message in fail_reasons:
+                    st.error(message)
+            elif result.status == "PASS":
+                st.info(
+                    "Spacing and Ash/rho area checks pass for the current control-section row. "
+                    "Use the confinement length below for expected plastic-hinge regions and verify hooks, cross-ties, splices, and drawing details separately."
                 )
 
             st.markdown("##### Plastic-hinge confinement length assistant")
@@ -2081,7 +2212,10 @@ def _render_column_pier_seismic_spacing_advisor(
                     f"at expected plastic-hinge regions; governing criterion: {result.confinement_length_governing or 'AASHTO 5.11.4.1.5'}."
                 )
             if result.criteria:
-                st.dataframe(pd.DataFrame(result.criteria), use_container_width=True, hide_index=True)
+                criteria_df = pd.DataFrame(result.criteria)
+                if "Limit (mm)" in criteria_df.columns:
+                    criteria_df = criteria_df.rename(columns={"Limit (mm)": "Value"})
+                st.dataframe(criteria_df, use_container_width=True, hide_index=True)
             for warning in result.warnings:
                 st.warning(warning)
             for note in result.notes:
