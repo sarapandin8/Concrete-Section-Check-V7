@@ -369,6 +369,104 @@ class AashtoTorsionResult:
     basis: str
 
 
+@dataclass(frozen=True)
+class AashtoCombinedShearTorsionResult:
+    phi: float
+    theta_deg: float
+    cot_theta: float
+    vu_N: float
+    tu_Nmm: float
+    shear_required_mm2_per_mm: float
+    torsion_required_mm2_per_mm: float
+    minimum_transverse_mm2_per_mm: float
+    combined_transverse_required_mm2_per_mm: float
+    governing_transverse_required_mm2_per_mm: float
+    provided_av_plus_2at_mm2_per_mm: float
+    transverse_dc: float
+    shear_strength_dc: float
+    torsion_strength_dc: float
+    source_strength_dc: float
+    al_required_mm2: float
+    method: str
+    basis: str
+
+
+def aashto_combined_shear_torsion_result(
+    *,
+    vu_N: float,
+    tu_Nmm: float,
+    phi: float,
+    vc_N: float,
+    phi_vn_N: float,
+    phi_tn_Nmm: float,
+    bv_mm: float,
+    dv_mm: float,
+    Ao_mm2: float,
+    ph_mm: float,
+    fy_MPa: float,
+    avs_provided_mm2_per_mm: float,
+    at_provided_mm2_per_mm: float,
+    avs_minimum_mm2_per_mm: float,
+    theta_deg: float = AASHTO_SHEAR_SIMPLIFIED_THETA_DEG,
+) -> AashtoCombinedShearTorsionResult:
+    """Return AASHTO LRFD Section 5.7.3.6 scoped V+T result in SI.
+
+    Scope: nonprestressed Column/Pier B-region review using the validated
+    AASHTO.COL.SHEAR1 and AASHTO.COL.TORSION1 source routes.  Article
+    5.7.3.6.1 requires transverse reinforcement for concurrent V+T to be at
+    least the sum of shear reinforcement and torsion reinforcement.  Concrete
+    Section Pro stores ``Av/s`` as the active shear leg area per spacing and
+    ``At/s`` as one closed torsion leg per spacing for solid members; therefore
+    the display gate uses ``Av/s + 2At/s`` to compare the available closed-tie
+    source against the combined transverse demand.
+
+    This helper intentionally does not implement prestressed V+T, general
+    procedure beta/theta iteration, multi-cell torsion certification, or final
+    hook/anchorage/lap-splice detailing.
+    """
+
+    values = [phi, vc_N, phi_vn_N, phi_tn_Nmm, bv_mm, dv_mm, Ao_mm2, ph_mm, fy_MPa]
+    if not all(math.isfinite(float(v)) and float(v) > 0.0 for v in values):
+        raise ValueError("phi, Vc, phiVn, phiTn, bv, dv, Ao, ph, and fy must be positive finite values.")
+    if not all(math.isfinite(float(v)) and float(v) >= 0.0 for v in [vu_N, tu_Nmm, avs_provided_mm2_per_mm, at_provided_mm2_per_mm, avs_minimum_mm2_per_mm]):
+        raise ValueError("Vu, Tu, provided Av/s, provided At/s, and minimum Av/s must be finite nonnegative values.")
+    theta = math.radians(float(theta_deg))
+    tan_theta = math.tan(theta)
+    if abs(tan_theta) <= 1.0e-12:
+        raise ValueError("theta_deg must have nonzero tangent.")
+    cot_theta = 1.0 / tan_theta
+
+    shear_required = max(0.0, (abs(float(vu_N)) / float(phi) - float(vc_N)) / (float(fy_MPa) * float(dv_mm) * cot_theta))
+    torsion_required = abs(float(tu_Nmm)) / (float(phi) * 2.0 * float(Ao_mm2) * float(fy_MPa) * cot_theta)
+    combined_required = shear_required + 2.0 * torsion_required
+    governing_required = max(combined_required, float(avs_minimum_mm2_per_mm))
+    provided_total = float(avs_provided_mm2_per_mm) + 2.0 * float(at_provided_mm2_per_mm)
+    transverse_dc = governing_required / provided_total if provided_total > 0.0 else float("inf")
+    shear_dc = abs(float(vu_N)) / float(phi_vn_N) if float(phi_vn_N) > 0.0 else float("inf")
+    torsion_dc = abs(float(tu_Nmm)) / float(phi_tn_Nmm) if float(phi_tn_Nmm) > 0.0 else float("inf")
+    al_required = torsion_required * float(ph_mm) * cot_theta * cot_theta
+    return AashtoCombinedShearTorsionResult(
+        phi=float(phi),
+        theta_deg=float(theta_deg),
+        cot_theta=cot_theta,
+        vu_N=abs(float(vu_N)),
+        tu_Nmm=abs(float(tu_Nmm)),
+        shear_required_mm2_per_mm=shear_required,
+        torsion_required_mm2_per_mm=torsion_required,
+        minimum_transverse_mm2_per_mm=float(avs_minimum_mm2_per_mm),
+        combined_transverse_required_mm2_per_mm=combined_required,
+        governing_transverse_required_mm2_per_mm=governing_required,
+        provided_av_plus_2at_mm2_per_mm=provided_total,
+        transverse_dc=transverse_dc,
+        shear_strength_dc=shear_dc,
+        torsion_strength_dc=torsion_dc,
+        source_strength_dc=max(shear_dc, torsion_dc),
+        al_required_mm2=al_required,
+        method="AASHTO LRFD 5.7.3.6 combined shear + torsion transverse sum, theta=45 deg",
+        basis="Article 5.7.3.6.1 transverse reinforcement sum; Article 5.7.3.6.2 torsional resistance; Article 5.7.3.6.3 longitudinal torsion reinforcement preview",
+    )
+
+
 def aashto_torsional_cracking_moment_nmm(
     *,
     fc_MPa: float,

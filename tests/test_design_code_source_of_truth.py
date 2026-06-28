@@ -220,7 +220,8 @@ def test_design_code_route2_column_pier_preserves_selected_aashto_in_analysis_gu
     assert "code = workflow_project_design_code_from_session(st.session_state)" in ANALYSIS_SOURCE
     assert "AASHTO LRFD 9th Section 5.7 simplified shear route" in ANALYSIS_SOURCE
     assert "PMM, simplified shear, and scoped torsion routes are AASHTO-based" in ANALYSIS_SOURCE
-    assert "Column/Pier AASHTO LRFD V+T interaction is not implemented" in ANALYSIS_SOURCE
+    assert "AASHTO.COL.VT1" in ANALYSIS_SOURCE
+    assert "AASHTO LRFD 9th Section 5.7.3.6 scoped nonprestressed V+T gate" in ANALYSIS_SOURCE
 
 
 def test_design_code_route2_analysis_page_no_longer_reads_raw_project_code_for_column_pier_cards() -> None:

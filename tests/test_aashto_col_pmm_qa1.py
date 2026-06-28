@@ -162,11 +162,11 @@ def test_aashto_col_pmm_qa1_decision_view_does_not_label_guarded_checks_as_aci_r
     assert "AASHTO LRFD 9th PMM" in route_text
     assert "AASHTO LRFD 9th Section 5.7 simplified shear route" in route_text
     assert "AASHTO LRFD 9th Section 5.7.3.6 scoped torsion gate" in route_text
-    assert "AASHTO LRFD Column/Pier combined shear + torsion not implemented" in route_text
+    assert "AASHTO LRFD 9th Section 5.7.3.6 scoped nonprestressed V+T gate" in route_text
     assert "ACI 318 RC scoped shear gate" not in route_text
     assert cards[1]["value"] == PROJECT_CODE_AASHTO_LRFD
     assert "AASHTO PMM" in str(cards[1]["detail"])
-    assert "AASHTO V+T is not implemented" in str(cards[2]["detail"])
+    assert "AASHTO V+T" in str(cards[2]["detail"])
 
 
 def test_aashto_col_pmm_qa1_caption_is_code_specific() -> None:
@@ -175,5 +175,5 @@ def test_aashto_col_pmm_qa1_caption_is_code_specific() -> None:
 
     assert "AASHTO LRFD 9th PMM interaction" in aashto_caption
     assert "AASHTO Section 5.7 simplified shear" in aashto_caption
-    assert "5.7.3.6 torsion" in aashto_caption
+    assert "torsion, and combined V+T" in aashto_caption
     assert "scoped ACI RC shear" in aci_caption
