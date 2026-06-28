@@ -408,9 +408,10 @@ def test_aci_special_seismic_spacing_advisor_remains_review_when_inputs_are_miss
     assert result.warnings
 
 
-def test_column_pier_seismic_options_keep_aashto_as_manual_review_route() -> None:
+def test_column_pier_seismic_options_keep_aashto_as_advisor_route() -> None:
     assert "ACI 318 special seismic confinement advisor" in COLUMN_PIER_SEISMIC_DETAILING_OPTIONS
-    assert "AASHTO LRFD seismic bridge column - manual review" in COLUMN_PIER_SEISMIC_DETAILING_OPTIONS
+    assert "AASHTO LRFD seismic bridge-column advisor" in COLUMN_PIER_SEISMIC_DETAILING_OPTIONS
+    assert "AASHTO LRFD seismic bridge column - manual review" not in COLUMN_PIER_SEISMIC_DETAILING_OPTIONS
 
 
 def test_column_pier_preview_keeps_seismic_advisor_row_display_only() -> None:

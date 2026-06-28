@@ -130,3 +130,69 @@ def test_analysis_page_exposes_aashto_seismic_summary_row() -> None:
     assert not df.empty
     assert df.iloc[0]["Recommendation"] == "AASHTO 5.11.4 seismic confinement"
     assert "100 mm" in df.iloc[0]["Suggested spacing"]
+
+
+def test_aashto_seismic_advisor_exposes_confinement_length_inputs() -> None:
+    rebar_db = load_rebar_database()
+    table = _default_column_pier_transverse_reinforcement_table()
+    table.loc[0, "Active"] = True
+    table.loc[0, "Bar Size"] = "DB12"
+    table.loc[0, "Diameter_mm"] = 12.0
+    table.loc[0, "Legs"] = 2
+    table.loc[0, "Spacing_mm"] = 100.0
+    table.loc[0, "fy_MPa"] = 390.0
+    result = _aashto_lrfd_seismic_bridge_column_advisor(
+        section_geometry=rectangle(width_mm=600.0, height_mm=900.0),
+        settings={"closed_tie_layout": "Closed ties / hoops", "tie_center_offset_mm": 50.0, "seismic_clear_height_mm": 6000.0},
+        table=table,
+        rebar_db=rebar_db,
+        fc_MPa=35.0,
+    )
+
+    assert result.clear_height_mm == pytest.approx(6000.0)
+    assert result.one_sixth_clear_height_mm == pytest.approx(1000.0)
+    assert result.max_member_dimension_mm == pytest.approx(900.0)
+    assert result.confinement_min_length_mm == pytest.approx(457.2)
+    assert result.confinement_length_mm == pytest.approx(1000.0)
+    assert result.confinement_length_governing == "1/6 clear height"
+    assert result.area_dc is not None and result.area_dc > 1.0
+
+
+def test_aashto_seismic_analysis_summary_flags_clear_height_and_overall_status() -> None:
+    analysis_input = AnalysisInput(
+        section_geometry=rectangle(width_mm=600.0, height_mm=900.0),
+        concrete_material=ConcreteMaterial(name="C35", fc_MPa=35.0, ecu=0.003),
+        rebar_materials=[RebarMaterial(name="SD40", fy_MPa=420.0, Es_MPa=200000.0)],
+        rebars=[Rebar(x_mm=0.0, y_mm=0.0, diameter_mm=20.0, material_name="SD40")],
+        load_cases=[],
+        settings=AnalysisSettings(code=PROJECT_CODE_AASHTO_LRFD),
+    )
+    state = {
+        "column_pier_transverse_reinforcement_settings": {
+            "seismic_detailing": "AASHTO LRFD seismic bridge-column advisor",
+            "closed_tie_layout": "Closed ties / hoops",
+            "tie_center_offset_mm": 50.0,
+            "seismic_clear_height_mm": 6000.0,
+        },
+        "column_pier_transverse_reinforcement_table": [
+            {
+                "Active": True,
+                "Zone": "Control",
+                "x_start_m": 0.0,
+                "x_end_m": 0.0,
+                "Bar Size": "DB12",
+                "Diameter_mm": 12.0,
+                "Legs": 2.0,
+                "Spacing_mm": 100.0,
+                "fy_MPa": 390.0,
+                "Note": "",
+            }
+        ],
+    }
+
+    df = _column_pier_aashto_seismic_spacing_summary_dataframe(state, analysis_input)
+
+    assert df.iloc[0]["Clear height input"] == "6000 mm"
+    assert df.iloc[0]["1/6 clear height"] == "1000 mm"
+    assert df.iloc[0]["Confinement length"] == "1000 mm"
+    assert df.iloc[0]["Overall seismic detailing"] == "FAIL / REVIEW"

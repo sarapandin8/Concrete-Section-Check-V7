@@ -286,8 +286,17 @@ COLUMN_PIER_TRANSVERSE_COLUMNS_ANALYSIS = [
 _BEAM_ULS_DEMAND_TOL = 1.0e-9
 _COLUMN_PIER_SHEAR_DEMAND_TOL = 1.0e-9
 _COLUMN_PIER_ACI_SEISMIC_ADVISOR_LABEL = "ACI 318 special seismic confinement advisor"
-_COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LABEL = "AASHTO LRFD seismic bridge column - manual review"
+_COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LABEL = "AASHTO LRFD seismic bridge-column advisor"
+_COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LEGACY_LABEL = "AASHTO LRFD seismic bridge column - manual review"
 _COLUMN_PIER_SEISMIC_SPACING_INCREMENT_MM = 25.0
+
+
+def _column_pier_normalize_seismic_detailing_label(value: object) -> str:
+    text = str(value or "").strip()
+    if text == _COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LEGACY_LABEL:
+        return _COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LABEL
+    return text
+
 _BEAM_ULS_FLEXURE_PREVIEW_MAX_ROWS = 24
 _GIRDER_STRAND_FPU_MPA_DEFAULT = 1860.0
 _GIRDER_STRAND_FPY_MPA_DEFAULT = 1670.0
@@ -3769,7 +3778,7 @@ def _column_pier_aashto_seismic_spacing_summary_dataframe(
     analysis_input: AnalysisInput | None,
 ) -> pd.DataFrame:
     settings = _column_pier_transverse_settings_from_state(state)
-    if str(settings.get("seismic_detailing") or "") != _COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LABEL:
+    if _column_pier_normalize_seismic_detailing_label(settings.get("seismic_detailing")) != _COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LABEL:
         return pd.DataFrame()
     if analysis_input is None:
         return pd.DataFrame(
@@ -3813,10 +3822,12 @@ def _column_pier_aashto_seismic_spacing_summary_dataframe(
     except Exception:
         s_max, governing = float("nan"), "Unavailable"
     clear_height = _beam_uls_float(settings.get("seismic_clear_height_mm"))
+    clear_height_input = clear_height if math.isfinite(clear_height) and clear_height > 0.0 else float("nan")
+    one_sixth_clear_height = clear_height_input / 6.0 if math.isfinite(clear_height_input) else float("nan")
     try:
         l_conf, _ = aashto_seismic_confinement_length_mm(
             max_member_dimension_mm=float(dims["max_dim_mm"]),
-            clear_height_mm=clear_height if math.isfinite(clear_height) and clear_height > 0.0 else None,
+            clear_height_mm=clear_height_input if math.isfinite(clear_height_input) and clear_height_input > 0.0 else None,
         )
     except Exception:
         l_conf = float("nan")
@@ -3883,10 +3894,13 @@ def _column_pier_aashto_seismic_spacing_summary_dataframe(
                 "Tie / hoop": f"{bar_size} x {legs_text}",
                 "Suggested spacing": "-" if not math.isfinite(suggested) else f"{suggested:.0f} mm",
                 "Current spacing": f"{current_spacing} ({spacing_status})",
+                "Clear height input": "Input required" if not math.isfinite(clear_height_input) else f"{clear_height_input:.0f} mm",
+                "1/6 clear height": "-" if not math.isfinite(one_sixth_clear_height) else f"{one_sixth_clear_height:.0f} mm",
                 "Confinement length": "-" if not math.isfinite(l_conf) else f"{l_conf:.0f} mm",
                 "Area check": area_status,
+                "Overall seismic detailing": "FAIL / REVIEW" if str(area_status).startswith("FAIL") or str(spacing_status).startswith("FAIL") else ("REVIEW" if "REVIEW" in str(area_status) or "-" == spacing_status else "PASS / REVIEW"),
                 "Governing criterion": governing,
-                "Analysis use": "Advisor only / details must be verified on drawings",
+                "Analysis use": "Advisor only / special confinement length and detailing must be verified on drawings",
             }
         ]
     )
@@ -11416,6 +11430,16 @@ def _render_column_pier_shear_guarded_workspace() -> None:
             st.info("Seismic spacing advisor is not selected in Sections -> Rebar -> Transverse Rebar. Activate it there to show the recommended seismic tie/hoop spacing here.")
         else:
             st.dataframe(seismic_advisor_df, use_container_width=True, hide_index=True)
+            joined_status = " | ".join(str(value) for value in seismic_advisor_df.astype(str).to_numpy().flatten())
+            if "FAIL" in joined_status:
+                st.error(
+                    "Overall transverse reinforcement remains FAIL / REVIEW because the seismic confinement advisor has a failing spacing or Ash/rho item. "
+                    "A shear-strength PASS does not certify the AASHTO seismic confinement detail."
+                )
+            elif "Input required" in joined_status or "REVIEW" in joined_status:
+                st.warning(
+                    "Overall transverse reinforcement remains REVIEW until the seismic advisor inputs, confinement length, hooks, splices, and drawing details are verified."
+                )
     with st.expander("Shear audit / method details", expanded=False):
         if shear_df.empty:
             st.info("Audit rows are not available until the section, material, active Vux/Vuy demand, and active transverse reinforcement are ready.")

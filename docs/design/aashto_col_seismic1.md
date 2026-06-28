@@ -43,7 +43,7 @@ explicit inch limits, such as `4 in`, `18 in`, and `3 in`, into mm.
 
 ## UI behavior
 
-When the user selects `AASHTO LRFD seismic bridge column - manual review`, the
+When the user selects `AASHTO LRFD seismic bridge-column advisor`, the
 old warning is replaced by an expanded advisor panel showing:
 
 - advisor status,
