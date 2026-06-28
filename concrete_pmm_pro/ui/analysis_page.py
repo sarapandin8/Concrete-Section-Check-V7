@@ -11657,14 +11657,17 @@ def _append_pmm_traceability_to_figure_title(fig: go.Figure, context: Mapping[st
     fig.update_layout(
         title=f"{base_title}<br><sup>{escape(trace_line)}</sup>",
         margin=dict(
-            l=int(getattr(fig.layout.margin, "l", None) or 20),
-            r=int(getattr(fig.layout.margin, "r", None) or 20),
-            t=max(int(getattr(fig.layout.margin, "t", None) or 86), 82),
-            b=max(int(getattr(fig.layout.margin, "b", None) or 20), 96),
+            l=max(int(getattr(fig.layout.margin, "l", None) or 20), 28),
+            r=max(int(getattr(fig.layout.margin, "r", None) or 20), 28),
+            t=max(int(getattr(fig.layout.margin, "t", None) or 86), 88),
+            b=max(int(getattr(fig.layout.margin, "b", None) or 20), 154),
         ),
-        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.20, yanchor="top", font=dict(size=10)),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.34, yanchor="top", font=dict(size=10)),
+        height=max(int(getattr(fig.layout, "height", None) or 0), 580),
         meta={**(dict(fig.layout.meta) if isinstance(fig.layout.meta, dict) else {}), "pmm_code_trace": dict(context)},
     )
+    fig.update_xaxes(automargin=True, title_standoff=24)
+    fig.update_yaxes(automargin=True, title_standoff=18)
     return fig
 
 

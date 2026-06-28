@@ -105,7 +105,7 @@ def test_aashto_col_pmm_trace1_plotly_title_gets_code_basis_subtitle_and_meta() 
     assert "Code basis:" not in traced.layout.title.text
     assert "Route:" not in traced.layout.title.text
     assert traced.layout.legend.y < 0
-    assert traced.layout.margin.b >= 96
+    assert traced.layout.margin.b >= 154
     assert traced.layout.meta["pmm_code_trace"]["code_basis"] == "AASHTO LRFD"
 
 
@@ -134,4 +134,24 @@ def test_aashto_col_pmm_trace2_plotly_title_replaces_verbose_trace_line() -> Non
     assert "Demand ray intersects" not in traced.layout.title.text
     assert "Code basis:" not in traced.layout.title.text
     assert "AASHTO LRFD 9th · Column/Pier PMM · SI-safe" in traced.layout.title.text
-    assert traced.layout.margin.b >= 96
+    assert traced.layout.margin.b >= 154
+
+
+def test_aashto_col_pmm_trace3_plot_layout_keeps_legend_below_axis() -> None:
+    context = _pmm_traceability_context_for_code(
+        "AASHTO LRFD",
+        "AASHTO LRFD 9th Edition",
+        mode_label="RC PMM",
+        prestress_included=False,
+        bonded_prestress_included=False,
+    )
+    fig = go.Figure()
+    fig.update_layout(title="PMM Mux-Muy Slice", margin=dict(l=20, r=20, t=86, b=20))
+
+    traced = _append_pmm_traceability_to_figure_title(fig, context)
+
+    assert traced.layout.height >= 580
+    assert traced.layout.legend.y <= -0.34
+    assert traced.layout.margin.b >= 154
+    assert traced.layout.xaxis.automargin is True
+    assert traced.layout.xaxis.title.standoff >= 24

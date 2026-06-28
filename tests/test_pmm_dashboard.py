@@ -347,6 +347,21 @@ def test_make_mux_muy_slice_figure_annotations_are_optional() -> None:
     selected_trace = next(trace for trace in fig.data if trace.name == "Selected demand")
     assert selected_trace.mode == "markers+text"
 
+def test_make_mux_muy_slice_figure_hides_technical_legend_items_and_reserves_bottom_space() -> None:
+    load_case = LoadCase(name="ULS-PASS", Pu_N=1_000_000.0, Mux_Nmm=70_000_000.0, Muy_Nmm=0.0)
+
+    fig = make_mux_muy_slice_figure(_synthetic_pmm_df(), load_case, _dc_summary())
+    by_name = {trace.name: trace for trace in fig.data}
+
+    assert by_name["Raw Pu slice points"].showlegend is False
+    assert by_name["Capacity ray"].showlegend is False
+    assert fig.layout.legend.y <= -0.34
+    assert fig.layout.margin.b >= 154
+    assert fig.layout.height >= 580
+    assert fig.layout.xaxis.automargin is True
+    assert fig.layout.xaxis.title.standoff >= 24
+
+
 def test_make_pmm_3d_dashboard_figure_returns_plotly_figure() -> None:
     load_case = LoadCase(name="ULS-PASS", Pu_N=1_000_000.0, Mux_Nmm=70_000_000.0, Muy_Nmm=0.0)
     demand_df = demand_load_cases_to_display_dataframe([load_case])

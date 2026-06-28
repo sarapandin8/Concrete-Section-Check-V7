@@ -676,6 +676,7 @@ def make_mux_muy_slice_figure(
                 mode="markers",
                 marker=dict(size=5, color="#60a5fa", opacity=0.35),
                 name="Raw Pu slice points",
+                showlegend=False,
                 hovertemplate="phiMnx=%{x:.2f} kN-m<br>phiMny=%{y:.2f} kN-m<extra></extra>",
             )
         )
@@ -713,6 +714,7 @@ def make_mux_muy_slice_figure(
                 mode="lines",
                 line=dict(color="#0f766e", width=2, dash="dash"),
                 name="Capacity ray",
+                showlegend=False,
                 hoverinfo="skip",
             )
         )
@@ -820,10 +822,12 @@ def make_mux_muy_slice_figure(
         title=f"PMM Mux-Muy Slice at Pu = {Pu_kN:,.1f} kN ({method_label})<br><sup>{subtitle}</sup>",
         xaxis_title="phiMnx capacity / Mux demand (kN-m)",
         yaxis_title="phiMny capacity / Muy demand (kN-m)",
-        legend=dict(orientation="h"),
-        margin=dict(l=20, r=20, t=86, b=20),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.34, yanchor="top", font=dict(size=10)),
+        margin=dict(l=28, r=28, t=86, b=154),
+        height=580,
     )
-    fig.update_yaxes(scaleanchor="x", scaleratio=1)
+    fig.update_xaxes(automargin=True, title_standoff=24)
+    fig.update_yaxes(scaleanchor="x", scaleratio=1, automargin=True, title_standoff=18)
     return fig
 
 
