@@ -45,7 +45,7 @@ def test_aashto_col_pmm_trace1_prestress_branch_is_not_confused_with_aci() -> No
     assert "ACI" not in context["pmm_route"]
 
 
-def test_aashto_col_pmm_trace1_summary_cards_include_code_route_phi_units() -> None:
+def test_aashto_col_pmm_trace2_summary_cards_are_compact() -> None:
     cards = _pmm_traceability_summary_cards(
         _pmm_traceability_context_for_code(
             "AASHTO LRFD",
@@ -57,10 +57,10 @@ def test_aashto_col_pmm_trace1_summary_cards_include_code_route_phi_units() -> N
     )
     by_title = {card["title"]: card for card in cards}
 
-    assert by_title["Code Basis"]["value"] == "AASHTO LRFD"
-    assert by_title["PMM Route"]["value"] == "AASHTO LRFD Column/Pier PMM"
-    assert by_title["φ / Units Trace"]["value"] == "AASHTO strain-controlled φ transition"
-    assert "ksi/kips" in by_title["φ / Units Trace"]["detail"]
+    assert by_title["Code Basis"]["value"] == "AASHTO LRFD 9th"
+    assert by_title["PMM Route"]["value"] == "Column/Pier PMM"
+    assert by_title["Prestress"]["value"] == "Ordinary rebar only"
+    assert "φ / Units Trace" not in by_title
 
 
 def test_aashto_col_pmm_trace1_selected_case_detail_fields_are_enriched() -> None:
@@ -81,8 +81,10 @@ def test_aashto_col_pmm_trace1_selected_case_detail_fields_are_enriched() -> Non
     assert enriched["code_basis"] == "AASHTO LRFD"
     assert enriched["code_edition"] == "AASHTO LRFD 9th Edition"
     assert enriched["pmm_route"] == "AASHTO LRFD Column/Pier PMM"
+    assert enriched["pmm_route_short"] == "Column/Pier PMM"
     assert enriched["phi_basis"] == "AASHTO strain-controlled φ transition"
     assert enriched["units_basis"].startswith("SI solver units")
+    assert enriched["compact_trace"] == "AASHTO LRFD 9th · Column/Pier PMM · SI-safe"
     assert base_summary.get("code_basis") is None
 
 
@@ -99,6 +101,37 @@ def test_aashto_col_pmm_trace1_plotly_title_gets_code_basis_subtitle_and_meta() 
 
     traced = _append_pmm_traceability_to_figure_title(fig, context)
 
-    assert "Code basis: AASHTO LRFD 9th Edition" in traced.layout.title.text
-    assert "Route: AASHTO LRFD Column/Pier PMM" in traced.layout.title.text
+    assert "AASHTO LRFD 9th · Column/Pier PMM · SI-safe" in traced.layout.title.text
+    assert "Code basis:" not in traced.layout.title.text
+    assert "Route:" not in traced.layout.title.text
+    assert traced.layout.legend.y < 0
+    assert traced.layout.margin.b >= 96
     assert traced.layout.meta["pmm_code_trace"]["code_basis"] == "AASHTO LRFD"
+
+
+def test_aashto_col_pmm_trace2_plotly_title_replaces_verbose_trace_line() -> None:
+    context = _pmm_traceability_context_for_code(
+        "AASHTO LRFD",
+        "AASHTO LRFD 9th Edition",
+        mode_label="RC PMM",
+        prestress_included=False,
+        bonded_prestress_included=False,
+    )
+    fig = go.Figure()
+    fig.update_layout(
+        title=(
+            "PMM Mux-Muy Slice at Pu = 1,200.0 kN (Interpolated Slice)"
+            "<br><sup>Demand ray intersects the cleaned slice envelope to obtain available φMn.</sup>"
+            "<br><sup>Code basis: AASHTO LRFD 9th Edition · Route: AASHTO LRFD Column/Pier PMM · "
+            "φ: AASHTO strain-controlled φ transition</sup>"
+        ),
+        margin=dict(l=20, r=20, t=86, b=20),
+    )
+
+    traced = _append_pmm_traceability_to_figure_title(fig, context)
+
+    assert traced.layout.title.text.count("<br><sup>") == 1
+    assert "Demand ray intersects" not in traced.layout.title.text
+    assert "Code basis:" not in traced.layout.title.text
+    assert "AASHTO LRFD 9th · Column/Pier PMM · SI-safe" in traced.layout.title.text
+    assert traced.layout.margin.b >= 96

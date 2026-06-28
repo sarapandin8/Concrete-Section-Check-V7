@@ -11529,15 +11529,19 @@ def _pmm_traceability_context_for_code(
     has_prestress = bool(prestress_included and bonded_prestress_included)
     if canonical_code == PROJECT_CODE_AASHTO_LRFD:
         pmm_route = "AASHTO LRFD Column/Pier PMM"
+        pmm_route_short = "Column/Pier PMM"
         flexural_basis = "AASHTO Section 5 B-region axial-flexure"
         phi_basis = "AASHTO strain-controlled φ transition"
         units_basis = "SI solver units; AASHTO ksi/kips constants converted before use"
-        scope_note = "PMM only; shear, torsion, V+T, slenderness, seismic, and detailing remain guarded."
+        units_basis_short = "SI-safe"
+        scope_note = "PMM route is AASHTO-based; shear, torsion, V+T, slenderness, seismic, and detailing remain guarded."
     else:
         pmm_route = "ACI-oriented Column/Pier PMM"
+        pmm_route_short = "Column/Pier PMM"
         flexural_basis = "ACI-oriented strain-compatible axial-flexure"
         phi_basis = "ACI-oriented φ transition"
         units_basis = "SI solver units"
+        units_basis_short = "SI"
         scope_note = "PMM route follows the current ACI-oriented Column/Pier implementation."
     if has_prestress:
         prestress_branch = "Bonded prestress included"
@@ -11547,16 +11551,22 @@ def _pmm_traceability_context_for_code(
         prestress_branch = "Ordinary rebar only"
     if unbonded_ignored_count > 0:
         prestress_branch = f"{prestress_branch}; unbonded ignored {unbonded_ignored_count:,}"
+    code_edition_short = "AASHTO LRFD 9th" if canonical_code == PROJECT_CODE_AASHTO_LRFD else code_edition
+    compact_trace = f"{code_edition_short} · {pmm_route_short} · {units_basis_short}"
     return {
         "code_basis": canonical_code,
         "code_edition": code_edition,
+        "code_edition_short": code_edition_short,
         "pmm_route": pmm_route,
+        "pmm_route_short": pmm_route_short,
         "flexural_basis": flexural_basis,
         "phi_basis": phi_basis,
         "units_basis": units_basis,
+        "units_basis_short": units_basis_short,
         "prestress_branch": prestress_branch,
         "analysis_mode": mode_label,
         "scope_note": scope_note,
+        "compact_trace": compact_trace,
     }
 
 
@@ -11581,33 +11591,31 @@ def _pmm_traceability_context_from_session(
 
 
 def _pmm_traceability_summary_cards(context: Mapping[str, str]) -> list[dict[str, object]]:
-    """Return compact code-basis cards for PMM Visual Review."""
+    """Return compact code-basis cards for PMM Visual Review.
+
+    Keep first-screen cards intentionally short; detailed AASHTO/ACI method
+    wording stays in the collapsed trace panel so the chart area remains clean.
+    """
 
     return [
         {
             "title": "Code Basis",
-            "value": context["code_basis"],
-            "detail": context["code_edition"],
+            "value": context.get("code_edition_short", context["code_basis"]),
+            "detail": "Project design code",
             "status": "info",
             "strong": True,
         },
         {
             "title": "PMM Route",
-            "value": context["pmm_route"],
-            "detail": context["flexural_basis"],
+            "value": context.get("pmm_route_short", context["pmm_route"]),
+            "detail": "Axial-flexure envelope",
             "status": "ready" if context["code_basis"] == PROJECT_CODE_AASHTO_LRFD else "info",
         },
         {
-            "title": "Prestress Branch",
+            "title": "Prestress",
             "value": context["prestress_branch"],
             "detail": context["analysis_mode"],
             "status": "warning" if "unbonded ignored" in context["prestress_branch"] else "neutral",
-        },
-        {
-            "title": "φ / Units Trace",
-            "value": context["phi_basis"],
-            "detail": context["units_basis"],
-            "status": "ready",
         },
     ]
 
@@ -11620,27 +11628,43 @@ def _apply_pmm_traceability_to_summary(summary: dict, context: Mapping[str, str]
         {
             "code_basis": context["code_basis"],
             "code_edition": context["code_edition"],
+            "code_edition_short": context.get("code_edition_short", context["code_edition"]),
             "pmm_route": context["pmm_route"],
+            "pmm_route_short": context.get("pmm_route_short", context["pmm_route"]),
             "flexural_basis": context["flexural_basis"],
             "phi_basis": context["phi_basis"],
             "units_basis": context["units_basis"],
+            "units_basis_short": context.get("units_basis_short", context["units_basis"]),
             "prestress_branch": context["prestress_branch"],
+            "compact_trace": context.get("compact_trace", ""),
         }
     )
     return enriched
 
 
 def _append_pmm_traceability_to_figure_title(fig: go.Figure, context: Mapping[str, str]) -> go.Figure:
-    """Add a compact code-basis subtitle to PMM Plotly figures."""
+    """Add a concise code-basis subtitle to PMM Plotly figures.
 
-    title = fig.layout.title.text or "PMM Interaction"
-    trace_line = (
-        f"Code basis: {context['code_edition']} · Route: {context['pmm_route']} · "
-        f"φ: {context['phi_basis']}"
+    TRACE1 added a very explicit AASHTO line, but it was too long for the
+    two-column PMM dashboard and could overlap chart content.  TRACE2 keeps
+    the chart title to one compact method line and stores full details in
+    figure metadata / collapsed UI panels.
+    """
+
+    raw_title = str(fig.layout.title.text or "PMM Interaction")
+    base_title = raw_title.split("<br><sup>", 1)[0]
+    trace_line = str(context.get("compact_trace") or f"{context['code_edition']} · {context['pmm_route']}")
+    fig.update_layout(
+        title=f"{base_title}<br><sup>{escape(trace_line)}</sup>",
+        margin=dict(
+            l=int(getattr(fig.layout.margin, "l", None) or 20),
+            r=int(getattr(fig.layout.margin, "r", None) or 20),
+            t=max(int(getattr(fig.layout.margin, "t", None) or 86), 82),
+            b=max(int(getattr(fig.layout.margin, "b", None) or 20), 96),
+        ),
+        legend=dict(orientation="h", x=0.5, xanchor="center", y=-0.20, yanchor="top", font=dict(size=10)),
+        meta={**(dict(fig.layout.meta) if isinstance(fig.layout.meta, dict) else {}), "pmm_code_trace": dict(context)},
     )
-    if trace_line not in str(title):
-        fig.update_layout(title=f"{title}<br><sup>{escape(trace_line)}</sup>")
-    fig.update_layout(meta={**(dict(fig.layout.meta) if isinstance(fig.layout.meta, dict) else {}), "pmm_code_trace": dict(context)})
     return fig
 
 
@@ -11694,20 +11718,26 @@ def _render_selected_case_detail_panel(summary: dict, unbonded_ignored_count: in
         ("Capacity margin", _capacity_margin_text(summary.get("dcr"))),
         ("Reserve ratio", _reserve_ratio_text(summary.get("dcr"))),
         ("Analysis mode", str(summary["analysis_mode"])),
-        ("Code basis", str(summary.get("code_basis", "N/A"))),
-        ("Code edition", str(summary.get("code_edition", "N/A"))),
-        ("PMM route", str(summary.get("pmm_route", "N/A"))),
-        ("Flexural basis", str(summary.get("flexural_basis", "N/A"))),
-        ("Phi basis", str(summary.get("phi_basis", "N/A"))),
-        ("Units trace", str(summary.get("units_basis", "N/A"))),
-        ("Prestress included", "Yes" if summary["prestress_included"] else "No"),
-        ("Prestress branch", str(summary.get("prestress_branch", "N/A"))),
-        ("Unbonded ignored", f"{unbonded_ignored_count:,}"),
+        ("Code basis", str(summary.get("code_edition_short", summary.get("code_basis", "N/A")))),
+        ("PMM route", str(summary.get("pmm_route_short", summary.get("pmm_route", "N/A")))),
+        ("Prestress", str(summary.get("prestress_branch", "N/A"))),
         ("Slice method", str(summary.get("slice_method", "N/A"))),
         ("Capacity method", str(summary.get("capacity_method", summary.get("dcr_method", "N/A")))),
         ("Fallback used", "Yes" if summary.get("used_fallback") else "No"),
     ]
     st.markdown(_analysis_kv_panel_html(rows), unsafe_allow_html=True)
+    with st.expander("Code / solver trace details", expanded=False):
+        trace_rows = [
+            ("Code basis", str(summary.get("code_basis", "N/A"))),
+            ("Code edition", str(summary.get("code_edition", "N/A"))),
+            ("PMM route", str(summary.get("pmm_route", "N/A"))),
+            ("Flexural basis", str(summary.get("flexural_basis", "N/A"))),
+            ("Phi basis", str(summary.get("phi_basis", "N/A"))),
+            ("Units trace", str(summary.get("units_basis", "N/A"))),
+            ("Prestress included", "Yes" if summary["prestress_included"] else "No"),
+            ("Unbonded ignored", f"{unbonded_ignored_count:,}"),
+        ]
+        st.markdown(_analysis_kv_panel_html(trace_rows), unsafe_allow_html=True)
     if summary.get("message"):
         st.caption(f"Message: {summary['message']}")
 
