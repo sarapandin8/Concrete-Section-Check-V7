@@ -287,6 +287,7 @@ COLUMN_PIER_TRANSVERSE_COLUMNS_ANALYSIS = [
 ]
 _BEAM_ULS_DEMAND_TOL = 1.0e-9
 _COLUMN_PIER_SHEAR_DEMAND_TOL = 1.0e-9
+_COLUMN_PIER_VT_GOVERNING_TIE_TOL = 1.0e-9
 _COLUMN_PIER_ACI_SEISMIC_ADVISOR_LABEL = "ACI 318 special seismic confinement advisor"
 _COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LABEL = "AASHTO LRFD seismic bridge-column advisor"
 _COLUMN_PIER_AASHTO_SEISMIC_ADVISOR_LEGACY_LABEL = "AASHTO LRFD seismic bridge column - manual review"
@@ -311,8 +312,12 @@ _ANALYSIS_DASHBOARD_CSS = """
   border: 1px solid #d9dee7;
   border-radius: 8px;
   background: #ffffff;
-  padding: 0.72rem 0.82rem;
-  min-height: 98px;
+  padding: 0.76rem 0.86rem;
+  min-height: 126px;
+  height: auto;
+  overflow: visible;
+  box-sizing: border-box;
+  margin-bottom: 0.72rem;
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.035);
 }
 .cpmm-analysis-card {
@@ -339,8 +344,9 @@ _ANALYSIS_DASHBOARD_CSS = """
 .cpmm-analysis-detail {
   color: #667085;
   font-size: 0.76rem;
-  line-height: 1.28;
-  margin-top: 0.22rem;
+  line-height: 1.32;
+  margin-top: 0.24rem;
+  overflow-wrap: anywhere;
 }
 .cpmm-analysis-path {
   border: 1px solid #d9dee7;
@@ -5382,20 +5388,59 @@ def _column_pier_combined_vt_check_dataframe(state: Mapping[str, object], analys
     return pd.DataFrame(rows, columns=columns)
 
 
-def _column_pier_governing_combined_vt_row(vt_df: pd.DataFrame | None) -> dict[str, object] | None:
+def _column_pier_combined_vt_ranked_dataframe(vt_df: pd.DataFrame | None) -> pd.DataFrame:
+    """Return active Column/Pier V+T rows with explicit ranking fields for governing/tie display."""
+
     if vt_df is None or vt_df.empty:
-        return None
+        return pd.DataFrame()
     df = vt_df.copy()
-    df = df[~df.get("Status", pd.Series(index=df.index, dtype=object)).astype(str).isin(["NOT APPLICABLE"])].copy()
+    status_series = df.get("Status", pd.Series(index=df.index, dtype=object)).astype(str)
+    df = df[~status_series.isin(["NOT APPLICABLE"])].copy()
     if df.empty:
-        return None
+        return pd.DataFrame()
     df["__dc"] = pd.to_numeric(df.get("Overall D/C value"), errors="coerce")
     df["__tu"] = pd.to_numeric(df.get("Tu kN-m"), errors="coerce").abs()
     df["__vu"] = pd.to_numeric(df.get("Vu kN"), errors="coerce").abs()
     status_priority = {"FAIL": 5, "DATA REQUIRED": 4, "REVIEW": 3, "PASS": 2}
     df["__status_priority"] = df.get("Status", pd.Series(index=df.index, dtype=object)).map(lambda value: status_priority.get(str(value), 1))
-    idx = df.sort_values(["__status_priority", "__dc", "__tu", "__vu"], ascending=[False, False, False, False]).index[0]
-    return vt_df.loc[idx].drop(labels=["__dc", "__tu", "__vu", "__status_priority"], errors="ignore").to_dict()
+    return df.sort_values(["__status_priority", "__dc", "__tu", "__vu"], ascending=[False, False, False, False], kind="stable")
+
+
+def _column_pier_combined_vt_governing_tie_info(vt_df: pd.DataFrame | None) -> dict[str, object]:
+    """Return display-safe governing tie metadata for Column/Pier V+T rows.
+
+    The screen table may contain multiple active rows with the same governing
+    status and governing D/C.  This helper prevents the summary card from
+    implying a single controlling row when the result is actually tied.
+    """
+
+    ranked = _column_pier_combined_vt_ranked_dataframe(vt_df)
+    if ranked.empty:
+        return {"count": 0, "dc": float("nan"), "rows": [], "label": "No governing combined V+T row"}
+    top = ranked.iloc[0]
+    top_dc = _beam_uls_float(top.get("__dc"))
+    top_priority = _beam_uls_float(top.get("__status_priority"))
+    if math.isfinite(top_dc):
+        tie_mask = (
+            pd.to_numeric(ranked.get("__status_priority"), errors="coerce").eq(top_priority)
+            & (pd.to_numeric(ranked.get("__dc"), errors="coerce") - top_dc).abs().le(_COLUMN_PIER_VT_GOVERNING_TIE_TOL)
+        )
+    else:
+        tie_mask = pd.to_numeric(ranked.get("__status_priority"), errors="coerce").eq(top_priority)
+    tied = ranked[tie_mask].copy()
+    labels = [f"{row.get('Case', '-')} / {row.get('Direction', '-')}" for _, row in tied.iterrows()]
+    if len(labels) > 1:
+        label = f"Tied governing rows: {len(labels):,} rows at D/C {_format_beam_uls_ratio(top_dc)}; first = {labels[0]}"
+    else:
+        label = labels[0] if labels else "No governing combined V+T row"
+    return {"count": int(len(labels)), "dc": top_dc, "rows": labels, "label": label}
+
+
+def _column_pier_governing_combined_vt_row(vt_df: pd.DataFrame | None) -> dict[str, object] | None:
+    ranked = _column_pier_combined_vt_ranked_dataframe(vt_df)
+    if ranked.empty:
+        return None
+    return ranked.iloc[0].drop(labels=["__dc", "__tu", "__vu", "__status_priority"], errors="ignore").to_dict()
 
 
 def _beam_uls_governing_action(active_df: pd.DataFrame, column: str) -> dict[str, object] | None:
@@ -11980,55 +12025,96 @@ def _column_pier_combined_vt_summary_cards(
     code = workflow_project_design_code_from_session(st.session_state)
     edition = workflow_project_code_edition_from_session(st.session_state)
     governing = _column_pier_governing_combined_vt_row(vt_df)
+    tie_info = _column_pier_combined_vt_governing_tie_info(vt_df)
     active_tu_count = 0
     if not active_demands.empty and "Tu" in active_demands.columns:
         active_tu_count = int(pd.to_numeric(active_demands["Tu"], errors="coerce").abs().gt(_COLUMN_PIER_SHEAR_DEMAND_TOL).sum())
     is_aashto = code == PROJECT_CODE_AASHTO_LRFD
     if vt_df.empty:
         status_value = "NOT READY"
-        status_detail = "Needs active ULS rows, nonzero Tu, Vux/Vuy source data, closed transverse reinforcement, and ordinary Al"
+        status_detail = "Needs active ULS rows, nonzero Tu, Vux/Vuy source data, closed transverse reinforcement, and ordinary Al."
         status_color = "warning"
     elif any(str(value) == "FAIL" for value in vt_df["Status"].tolist()):
         status_value = "FAIL"
-        status_detail = "At least one combined stress, transverse reinforcement, longitudinal Al, or source gate exceeds 1.0"
+        status_detail = "Strength gate failed: at least one stress, transverse, longitudinal, or source check exceeds 1.0."
         status_color = "danger"
     elif any(str(value) == "DATA REQUIRED" for value in vt_df["Status"].tolist()):
         status_value = "DATA REQUIRED"
-        status_detail = "One or more source inputs are incomplete for the final scoped V+T gate"
+        status_detail = "Strength gate incomplete: one or more source inputs are missing for the scoped V+T route."
         status_color = "warning"
     elif any(str(value) == "REVIEW" for value in vt_df["Status"].tolist()):
         status_value = "REVIEW"
-        status_detail = "Guarded inputs such as active prestress or unsupported code route prevent final acceptance"
+        status_detail = "Strength values are screened, but guarded inputs prevent final acceptance."
         status_color = "warning"
     elif all(str(value) == "NOT APPLICABLE" for value in vt_df["Status"].tolist()):
         status_value = "NOT APPLICABLE"
-        status_detail = "No active Tu demand in the current Column/Pier ULS rows"
+        status_detail = "No active Tu demand in the current Column/Pier ULS rows."
         status_color = "neutral"
     else:
         status_value = "PASS"
-        status_detail = "Scoped AASHTO V+T gates pass for nonprestressed Column/Pier rows" if is_aashto else "Scoped ACI RC V+T interaction gates pass for nonprestressed Column/Pier rows"
+        status_detail = "Strength gate only; seismic confinement, anchorage, lap splices, and shop detailing remain separate."
         status_color = "ready"
+
     governing_detail = "No governing combined V+T row"
     governing_value = "-"
-    interaction_value = "-"
     if governing is not None:
         governing_value = f"D/C {_format_beam_uls_ratio(governing.get('Overall D/C value'))}"
-        governing_detail = f"{governing.get('Case', '-')} / {governing.get('Direction', '-')}"
-        interaction_value = str(governing.get("Interaction form") or "-")
-    prestress_value = "No"
-    prestress_detail = "AASHTO nonprestressed V+T route" if is_aashto else "ACI RC nonprestressed V+T route"
+        governing_detail = str(tie_info.get("label") or f"{governing.get('Case', '-')} / {governing.get('Direction', '-')}")
+
+    prestress_value = "NOT INCLUDED"
+    prestress_detail = "AASHTO PSC/general V+T guarded" if is_aashto else "PSC V+T route guarded"
+    prestress_status = "neutral"
     if _column_pier_has_active_prestress(analysis_input):
-        prestress_value = "Present"
-        prestress_detail = "PSC V+T interaction is not implemented; result remains REVIEW"
+        prestress_value = "REVIEW"
+        prestress_detail = "Active prestress present; PSC V+T interaction is not certified here."
+        prestress_status = "warning"
+
     return [
-        {"title": "V+T status", "value": status_value, "detail": status_detail, "status": status_color, "strong": True},
-        {"title": "Code route", "value": "AASHTO 5.7.3.6" if is_aashto else "ACI 318 RC", "detail": f"{edition}; PSC/general-procedure V+T remains guarded" if is_aashto else f"{edition}; PSC routes remain guarded", "status": "info"},
-        {"title": "Active Tu cases", "value": f"{active_tu_count:,}", "detail": "Each active Tu is checked for Vux and Vuy directions" if active_tu_count else "No nonzero Tu in active ULS rows", "status": "info" if active_tu_count else "neutral"},
+        {"title": "Strength gate", "value": status_value, "detail": status_detail, "status": status_color, "strong": True},
+        {"title": "Code route", "value": "AASHTO 5.7.3.6" if is_aashto else "ACI 318 RC", "detail": f"{edition}; scoped nonprestressed Column/Pier V+T route.", "status": "info"},
+        {"title": "Active Tu cases", "value": f"{active_tu_count:,}", "detail": "Each active Tu is checked in Vux and Vuy directions." if active_tu_count else "No nonzero Tu in active ULS rows.", "status": "info" if active_tu_count else "neutral"},
         {"title": "Governing row", "value": governing_value, "detail": governing_detail, "status": "info"},
-        {"title": "Interaction form", "value": interaction_value, "detail": "AASHTO uses source strength + combined transverse sum" if is_aashto else "Solid uses root-sum-square; hollow uses linear stress sum", "status": "info"},
-        {"title": "Prestress effects", "value": prestress_value, "detail": prestress_detail, "status": "warning" if prestress_value == "Present" else "neutral"},
+        {"title": "Seismic detailing", "value": "REVIEW REQUIRED", "detail": "Confinement, hoop anchorage, lap-splice confinement, and plastic-hinge detailing are not certified by this gate.", "status": "warning"},
+        {"title": "Prestress route", "value": prestress_value, "detail": prestress_detail, "status": prestress_status},
     ]
 
+
+def _column_pier_combined_vt_screen_dataframe(vt_df: pd.DataFrame | None) -> pd.DataFrame:
+    """Return a compact screen table; keep method/code details in the audit expander."""
+
+    columns = [
+        "Status",
+        "Case",
+        "Dir",
+        "Vu",
+        "Tu",
+        "Stress",
+        "Transv.",
+        "Long. Al",
+        "Source",
+        "D/C",
+    ]
+    if vt_df is None or vt_df.empty:
+        return pd.DataFrame(columns=columns)
+    rows: list[dict[str, object]] = []
+    for _, row in vt_df.iterrows():
+        source_shear = str(row.get("Source shear status") or "-")
+        source_torsion = str(row.get("Source torsion status") or "-")
+        rows.append(
+            {
+                "Status": str(row.get("Status") or "-"),
+                "Case": str(row.get("Case") or "-"),
+                "Dir": str(row.get("Direction") or "-"),
+                "Vu": _format_beam_uls_audit_number(row.get("Vu kN"), unit="kN"),
+                "Tu": _format_beam_uls_audit_number(row.get("Tu kN-m"), unit="kN-m"),
+                "Stress": str(row.get("Stress status") or "-"),
+                "Transv.": str(row.get("Transverse status") or "-"),
+                "Long. Al": str(row.get("Longitudinal status") or "-"),
+                "Source": f"V {source_shear} / T {source_torsion}",
+                "D/C": _format_beam_uls_ratio(row.get("Overall D/C value")),
+            }
+        )
+    return pd.DataFrame(rows, columns=columns)
 
 def _render_column_pier_combined_vt_workspace() -> None:
     st.markdown("#### Shear + Torsion")
@@ -12046,6 +12132,7 @@ def _render_column_pier_combined_vt_workspace() -> None:
         ),
         columns=3,
     )
+    st.markdown('<div style="height:0.25rem"></div>', unsafe_allow_html=True)
     route_label = "AASHTO LRFD V+T" if is_aashto else "ACI RC V+T"
     if vt_df.empty:
         st.warning(f"No Column/Pier {route_label} rows are ready. Enter nonzero Tu, confirm Vux/Vuy rows, activate closed transverse reinforcement, and provide ordinary longitudinal rebar.")
@@ -12058,17 +12145,10 @@ def _render_column_pier_combined_vt_workspace() -> None:
     elif all(str(value) == "NOT APPLICABLE" for value in vt_df["Status"].tolist()):
         st.info("No active Tu demand is present. Use the Shear tab for shear-only review.")
     else:
-        st.success(f"{route_label} combined shear-torsion gates pass for the current nonprestressed Column/Pier rows.")
+        st.success(f"{route_label} strength gate passes for the current nonprestressed Column/Pier rows; seismic/detailing review remains separate.")
 
     if not vt_df.empty:
-        display_columns = [
-            "Status", "Direction", "Case", "Vu kN", "Tu kN-m", "Shape",
-            "Stress status", "Transverse status", "Longitudinal status",
-            "Source shear status", "Source torsion status",
-            "Stress D/C value", "Transverse D/C value", "Longitudinal D/C value", "Overall D/C value",
-            "Interaction form",
-        ]
-        st.dataframe(vt_df[display_columns], use_container_width=True, hide_index=True)
+        st.dataframe(_column_pier_combined_vt_screen_dataframe(vt_df), use_container_width=True, hide_index=True)
         st.error(
             "Seismic confinement/detailing review remains separate: this V+T gate uses the Control section transverse row only "
             "and does not certify plastic-hinge confinement, hoop anchorage, lap-splice confinement, or seismic detailing."

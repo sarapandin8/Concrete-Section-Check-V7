@@ -12,6 +12,8 @@ from concrete_pmm_pro.geometry.generators import rectangle
 from concrete_pmm_pro.ui.analysis_page import (
     _column_pier_check_decision_rows,
     _column_pier_combined_vt_check_dataframe,
+    _column_pier_combined_vt_governing_tie_info,
+    _column_pier_combined_vt_screen_dataframe,
 )
 
 
@@ -112,6 +114,64 @@ def test_aashto_vt1_dataframe_routes_to_aashto_not_aci() -> None:
     assert active["Interaction form"].str.contains("AASHTO 5.7.3.6.1", regex=False).all()
     assert set(active["Status"]).issubset({"PASS", "FAIL", "REVIEW", "DATA REQUIRED"})
     assert active["Provided Av+2At per s mm2/mm"].astype(float).gt(0.0).all()
+
+
+def test_aashto_vt1_directional_mapping_uses_vux_and_vuy_independently() -> None:
+    state = _state(spacing_mm=300.0)
+    state["column_uls_loads_table"][0]["Vux"] = 20.0
+    state["column_uls_loads_table"][0]["Vuy"] = 400.0
+    vt_df = _column_pier_combined_vt_check_dataframe(state, _analysis_input())
+    active = vt_df[vt_df["Status"].astype(str) != "NOT APPLICABLE"]
+    by_direction = {row["Direction"]: row for _, row in active.iterrows()}
+
+    assert by_direction["Vux"]["Vu kN"] == pytest.approx(20.0)
+    assert by_direction["Vuy"]["Vu kN"] == pytest.approx(400.0)
+    assert float(by_direction["Vuy"]["Stress D/C value"]) > float(by_direction["Vux"]["Stress D/C value"])
+    assert float(by_direction["Vuy"]["Overall D/C value"]) > float(by_direction["Vux"]["Overall D/C value"])
+
+
+def test_aashto_vt1_governing_tie_info_reports_tied_rows_for_summary_card() -> None:
+    state = _state()
+    state["column_uls_loads_table"] = [
+        {
+            "Active": True,
+            "Case Name": "ULS-01",
+            "Pu": 1_200.0,
+            "Mux": 120.0,
+            "Muy": 60.0,
+            "Vux": 50.0,
+            "Vuy": 50.0,
+            "Tu": 50.0,
+            "Note": "tie row 1",
+        },
+        {
+            "Active": True,
+            "Case Name": "ULS-02",
+            "Pu": 1_200.0,
+            "Mux": 120.0,
+            "Muy": 60.0,
+            "Vux": 50.0,
+            "Vuy": 50.0,
+            "Tu": 50.0,
+            "Note": "tie row 2",
+        },
+    ]
+    vt_df = _column_pier_combined_vt_check_dataframe(state, _analysis_input())
+    tie_info = _column_pier_combined_vt_governing_tie_info(vt_df)
+
+    assert tie_info["count"] == 4
+    assert "Tied governing rows: 4" in str(tie_info["label"])
+    assert "ULS-01 / Vux" in tie_info["rows"]
+    assert "ULS-02 / Vuy" in tie_info["rows"]
+
+
+def test_aashto_vt1_screen_dataframe_keeps_method_details_out_of_main_table() -> None:
+    vt_df = _column_pier_combined_vt_check_dataframe(_state(), _analysis_input())
+    screen = _column_pier_combined_vt_screen_dataframe(vt_df)
+
+    assert list(screen.columns) == ["Status", "Case", "Dir", "Vu", "Tu", "Stress", "Transv.", "Long. Al", "Source", "D/C"]
+    assert "Interaction form" not in screen.columns
+    assert screen["D/C"].ne("-").all()
 
 
 def test_aashto_vt1_decision_view_no_longer_says_not_implemented() -> None:
