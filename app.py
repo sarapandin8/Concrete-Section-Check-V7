@@ -21,6 +21,7 @@ from concrete_pmm_pro.io.project_io import (
     project_to_json,
 )
 from concrete_pmm_pro.ui.analysis_page import render_analysis_page, render_report_qa_page
+from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
 from concrete_pmm_pro.ui.loads_page import render_loads_page
 from concrete_pmm_pro.ui.materials_page import render_materials_page
 from concrete_pmm_pro.ui.prestress_page import render_prestress_page
@@ -1623,8 +1624,167 @@ def _results_best_row(df: pd.DataFrame | None) -> dict[str, object] | None:
 
 
 
+def _results_design_code_label(state: object) -> str:
+    """Return the workflow-compatible design code shown on Result Summary dashboards."""
+
+    try:
+        return workflow_project_code_label_from_session(state)
+    except Exception:
+        return "Project design code not resolved"
+
+
+def _results_beam_sls_stage_summary_df(state: object) -> pd.DataFrame | None:
+    """Return stored Beam/Girder full-length SLS stage rows from Analysis, if any.
+
+    The Beam/Girder SLS workspace can show stage stress graphs without creating
+    the legacy ``serviceability_summary`` object.  Result Summary must therefore
+    read this normalized, read-only handoff package before declaring SLS as not
+    calculated.
+    """
+
+    for key in (
+        "result_summary_beam_girder_sls_stage_summary_df",
+        "beam_girder_sls_stage_summary_df",
+        "railway_u_girder_sls_stage_summary_df",
+    ):
+        df = _results_dataframe(state.get(key)) if hasattr(state, "get") else None
+        if df is not None and not df.empty:
+            return df.copy()
+    raw_rows = state.get("result_summary_beam_girder_sls_stage_summary_rows") if hasattr(state, "get") else None
+    if isinstance(raw_rows, list) and raw_rows:
+        df = pd.DataFrame(raw_rows)
+        return df if not df.empty else None
+    return None
+
+
+def _results_sls_stress_available(state: object) -> bool:
+    serviceability = state.get("serviceability_summary") if hasattr(state, "get") else None
+    if serviceability is not None and bool(getattr(serviceability, "stress_results", [object()])):
+        return True
+    if bool(state.get("railway_u_girder_sls_report_package_available")) if hasattr(state, "get") else False:
+        return True
+    try:
+        if _results_railway_u_girder_sls_decision_dataframe(state) is not None:
+            return True
+    except NameError:
+        pass
+    return _results_beam_sls_stage_summary_df(state) is not None
+
+
+def _results_sls_complete_for_report(state: object) -> bool:
+    """Return whether SLS is complete enough for Report / QA handoff.
+
+    Stage stress diagrams alone are useful stored results, but they remain a
+    partial serviceability package until a formal SLS summary/report package is
+    available.
+    """
+
+    if not hasattr(state, "get"):
+        return False
+    serviceability = state.get("serviceability_summary")
+    if serviceability is not None and bool(getattr(serviceability, "stress_results", [object()])):
+        return True
+    if bool(state.get("railway_u_girder_sls_report_package_available")):
+        return True
+    try:
+        return _results_railway_u_girder_sls_decision_dataframe(state) is not None
+    except NameError:
+        return False
+
+
+def _results_sls_stage_governing_row(state: object) -> dict[str, object] | None:
+    df = _results_beam_sls_stage_summary_df(state)
+    if df is None or df.empty:
+        return None
+    work = df.copy()
+    if "Utilization" in work.columns:
+        numeric = pd.to_numeric(work["Utilization"], errors="coerce")
+        if numeric.notna().any():
+            return dict(work.loc[numeric.idxmax()].to_dict())
+    return dict(work.iloc[0].to_dict())
+
+
+
+def _results_railway_u_girder_sls_decision_dataframe(state: object) -> pd.DataFrame | None:
+    """Return stored/normalized Railway U-Girder staged SLS decision rows.
+
+    The Result Summary dashboard prefers data cached by the SLS preview page.  A
+    guarded report-package fallback keeps the dashboard from incorrectly saying
+    ``Not calculated`` when the Railway U-Girder staged SLS workflow has enough
+    current model data to expose the same report-ready decision table.  This
+    function does not add UI buttons and does not trigger PMM/ULS/SLS solver
+    actions from Result Summary.
+    """
+
+    for key in (
+        "railway_u_girder_sls_decision_summary_df",
+        "railway_u_girder_sls_decision_summary",
+        "railway_u_girder_sls_report_decision_summary",
+    ):
+        df = _results_dataframe(state.get(key) if hasattr(state, "get") else None)
+        if df is not None and not df.empty:
+            return df.copy()
+    try:
+        package = build_railway_u_girder_sls_report_package(state)
+    except Exception:
+        return None
+    decision = _results_dataframe(getattr(package, "decision_summary", None))
+    if bool(getattr(package, "available", False)) and decision is not None and not decision.empty:
+        return decision.copy()
+    return None
+
+
+def _results_railway_sls_status(decision_df: pd.DataFrame | None) -> str:
+    if decision_df is None or decision_df.empty or "Decision" not in decision_df.columns:
+        return "NOT CALCULATED"
+    statuses = {str(value).strip().upper() for value in decision_df["Decision"].tolist()}
+    if any("FAIL" in status or "EXCEED" in status for status in statuses):
+        return "FAIL"
+    if any("REVIEW" in status or "WARNING" in status for status in statuses):
+        return "REVIEW"
+    if any("PASS" in status for status in statuses):
+        return "PREVIEW PASS"
+    return "AVAILABLE"
+
+
+def _results_railway_sls_governing_row(decision_df: pd.DataFrame | None) -> dict[str, object] | None:
+    if decision_df is None or decision_df.empty:
+        return None
+    work = decision_df.copy()
+    if "Max utilization" in work.columns:
+        util = pd.to_numeric(work["Max utilization"], errors="coerce")
+        if util.notna().any():
+            return dict(work.loc[util.idxmax()].to_dict())
+    if "Decision" in work.columns:
+        review_rows = work[work["Decision"].astype(str).str.upper().str.contains("REVIEW|FAIL|EXCEED", regex=True, na=False)]
+        if not review_rows.empty:
+            return dict(review_rows.iloc[0].to_dict())
+    return dict(work.iloc[0].to_dict())
+
+
+def _results_railway_sls_max_utilization(decision_df: pd.DataFrame | None) -> str:
+    if decision_df is None or decision_df.empty or "Max utilization" not in decision_df.columns:
+        return "-"
+    values = pd.to_numeric(decision_df["Max utilization"], errors="coerce").dropna()
+    if values.empty:
+        return "-"
+    return f"{float(values.max()):.3f}"
+
+
+def _results_railway_sls_review_action(decision_df: pd.DataFrame | None) -> str:
+    governing = _results_railway_sls_governing_row(decision_df) or {}
+    action = str(governing.get("Review action") or "").strip()
+    if action:
+        return action
+    status = _results_railway_sls_status(decision_df)
+    if "REVIEW" in status:
+        return "Review governing staged SLS stress, stress-limit profile, load attribution, and project-specific limits."
+    if "PASS" in status:
+        return "Review guarded SLS preview assumptions before final report issue."
+    return "Run or refresh staged SLS stress checks before Report / QA."
+
 def _results_sls_available(state: object) -> bool:
-    return state.get("serviceability_summary") is not None or bool(state.get("railway_u_girder_sls_report_package_available"))
+    return _results_sls_stress_available(state)
 
 
 def _results_beam_uls_completion(state: object) -> tuple[int, int, list[str]]:
@@ -1659,11 +1819,20 @@ def _results_report_handoff_state(state: object, rows: list[dict[str, object]] |
             "value": "Review required",
             "detail": "Resolve failed checks or document engineering acceptance before report issue.",
         }
-    if not _results_has_stored_uls_rows(result_rows) or not _results_sls_available(state):
+    if not _results_has_stored_uls_rows(result_rows):
         return {
             "status": "warning",
             "value": "Not ready",
-            "detail": "Complete stored ULS and SLS summaries before Report / QA handoff.",
+            "detail": "Complete stored ULS summaries before Report / QA handoff.",
+        }
+    if not _results_sls_complete_for_report(state):
+        detail = "Complete stored SLS summaries before Report / QA handoff."
+        if _results_sls_stress_available(state):
+            detail = "SLS stage stress results are stored, but formal SLS/report handoff summary is still partial."
+        return {
+            "status": "warning",
+            "value": "Not ready",
+            "detail": detail,
         }
     if "warning" in styles:
         return {
@@ -1701,11 +1870,17 @@ def _results_next_engineering_action(state: object, rows: list[dict[str, object]
             "value": "Run ULS analysis",
             "detail": "No stored ULS result set is available for the active workflow.",
         }
-    if not _results_sls_available(state):
+    if not _results_sls_stress_available(state):
         return {
             "status": "warning",
             "value": "Run SLS Stress & Cracking",
             "detail": "ULS results may be available, but SLS serviceability is still not calculated.",
+        }
+    if not _results_sls_complete_for_report(state):
+        return {
+            "status": "warning",
+            "value": "Complete SLS handoff",
+            "detail": "SLS stage stress results are stored; complete formal SLS summary/report handoff before Report / QA.",
         }
     return {
         "status": "ready",
@@ -1746,13 +1921,22 @@ def _results_required_action_rows(state: object, rows: list[dict[str, object]]) 
                 "Required Action": "Run missing checks in Analysis: " + ", ".join(missing),
             }
         )
-    if not _results_sls_available(state):
+    if not _results_sls_stress_available(state):
         actions.append(
             {
                 "Priority": "High" if actions == [] else "Medium",
                 "Module": "SLS",
                 "Issue": "SLS not calculated",
                 "Required Action": "Run SLS Stress & Cracking before Report / QA.",
+            }
+        )
+    elif not _results_sls_complete_for_report(state):
+        actions.append(
+            {
+                "Priority": "Medium",
+                "Module": "SLS",
+                "Issue": "SLS stress stored; report summary partial",
+                "Required Action": "Review stored SLS stage stress results and complete SLS report/cracking handoff before Report / QA.",
             }
         )
     if not actions:
@@ -1795,8 +1979,18 @@ def _render_results_required_actions(state: object, rows: list[dict[str, object]
 
 def _results_sls_summary_cards(state: object) -> list[dict[str, object]]:
     serviceability = state.get("serviceability_summary")
-    if serviceability is None and not bool(state.get("railway_u_girder_sls_report_package_available")):
+    stage_df = _results_beam_sls_stage_summary_df(state)
+    stage_governing = _results_sls_stage_governing_row(state)
+    railway_decision = _results_railway_u_girder_sls_decision_dataframe(state)
+    code_label = _results_design_code_label(state)
+    if serviceability is None and stage_df is None and railway_decision is None and not bool(state.get("railway_u_girder_sls_report_package_available")):
         return [
+            {
+                "title": "Design code",
+                "value": code_label,
+                "detail": "workflow-compatible project code basis",
+                "status": "info",
+            },
             {
                 "title": "SLS status",
                 "value": "Not calculated",
@@ -1810,21 +2004,83 @@ def _results_sls_summary_cards(state: object) -> list[dict[str, object]]:
                 "status": "neutral",
             },
             {
-                "title": "Max utilization",
-                "value": "-",
-                "detail": "service stress utilization unavailable",
-                "status": "neutral",
-            },
-            {
                 "title": "Required action",
                 "value": "Run SLS",
                 "detail": "SLS is required before Report / QA readiness",
                 "status": "warning",
             },
         ]
+    if serviceability is None and railway_decision is not None:
+        status = _results_railway_sls_status(railway_decision)
+        governing = _results_railway_sls_governing_row(railway_decision) or {}
+        return [
+            {
+                "title": "Design code",
+                "value": code_label,
+                "detail": "Railway U-Girder staged SLS preview basis",
+                "status": "info",
+            },
+            {
+                "title": "SLS status",
+                "value": status,
+                "detail": f"{len(railway_decision):,} Railway U-Girder staged SLS decision row(s)",
+                "status": _results_style_for_status(status),
+            },
+            {
+                "title": "Governing stage",
+                "value": _results_scalar(governing.get("Check stage")),
+                "detail": _results_scalar(governing.get("Governing x / case")),
+                "status": _results_style_for_status(status),
+            },
+            {
+                "title": "Max utilization",
+                "value": _results_railway_sls_max_utilization(railway_decision),
+                "detail": _results_railway_sls_review_action(railway_decision),
+                "status": _results_style_for_status(status),
+            },
+        ]
+    if serviceability is None and stage_df is not None:
+        util = None if stage_governing is None else stage_governing.get("Utilization")
+        try:
+            util_text = "-" if util is None else f"{float(util):.3f}"
+        except (TypeError, ValueError):
+            util_text = "-"
+        stage_status = str(stage_governing.get("Status", "PARTIAL") if stage_governing else "PARTIAL")
+        return [
+            {
+                "title": "Design code",
+                "value": code_label,
+                "detail": str(stage_governing.get("Limit profile", "stage stress limit profile") if stage_governing else "stage stress limit profile"),
+                "status": "info",
+            },
+            {
+                "title": "SLS status",
+                "value": "Partial / stress stored",
+                "detail": f"{len(stage_df):,} stored stage stress summary row(s); formal SLS/report handoff still pending",
+                "status": "warning" if _results_style_for_status(stage_status) != "danger" else "danger",
+            },
+            {
+                "title": "Governing stage",
+                "value": str(stage_governing.get("Stage", "-") if stage_governing else "-"),
+                "detail": str(stage_governing.get("Case Name", "stored full-length stage stress") if stage_governing else "stored full-length stage stress"),
+                "status": _results_style_for_status(stage_status),
+            },
+            {
+                "title": "Max utilization",
+                "value": util_text,
+                "detail": str(stage_governing.get("Controls", "stress utilization") if stage_governing else "stress utilization"),
+                "status": _results_style_for_status(stage_status),
+            },
+        ]
     status = str(getattr(serviceability, "overall_status", "AVAILABLE")) if serviceability is not None else "AVAILABLE"
     util = getattr(serviceability, "max_utilization", None) if serviceability is not None else None
     return [
+        {
+            "title": "Design code",
+            "value": code_label,
+            "detail": "workflow-compatible project code basis",
+            "status": "info",
+        },
         {
             "title": "SLS status",
             "value": status,
@@ -1835,12 +2091,6 @@ def _results_sls_summary_cards(state: object) -> list[dict[str, object]]:
             "title": "Governing case",
             "value": str(getattr(serviceability, "governing_combo", "-")) if serviceability is not None else "-",
             "detail": "critical stored SLS case",
-            "status": "info",
-        },
-        {
-            "title": "Governing point",
-            "value": str(getattr(serviceability, "governing_point", "-")) if serviceability is not None else "-",
-            "detail": "critical section/station",
             "status": "info",
         },
         {
@@ -1861,7 +2111,7 @@ def _render_results_sls_dashboard(state: object) -> None:
             _RESULTS_DASHBOARD_CSS
             + _results_html_table(
                 rows,
-                ["Module", "Check", "Status", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Source"],
+                ["Module", "Check", "Status", "Code Basis", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Source"],
             ),
             unsafe_allow_html=True,
         )
@@ -1897,13 +2147,14 @@ def _results_critical_row(rows: list[dict[str, object]]) -> dict[str, object] | 
 
 def _results_availability_cards(state: object) -> list[dict[str, object]]:
     beam_cache = state.get("_beam_girder_uls_manual_calculation_cache") if isinstance(state.get("_beam_girder_uls_manual_calculation_cache"), dict) else {}
-    serviceability = state.get("serviceability_summary")
     pmm_available = state.get("rc_demand_capacity_result") is not None or state.get("rc_pmm_result") is not None
+    code_label = _results_design_code_label(state)
     rows = _results_governing_rows(state)
     uls_rows = [row for row in rows if str(row.get("Module", "")).upper().startswith("ULS")]
     uls_count = sum(1 for entry in beam_cache.values() if isinstance(entry, dict))
     column_vt_available = _results_column_pier_vt_dataframe(state) is not None
-    sls_available = serviceability is not None or bool(state.get("railway_u_girder_sls_report_package_available"))
+    sls_available = _results_sls_stress_available(state)
+    sls_complete = _results_sls_complete_for_report(state)
     executive = _results_executive_status(rows, state)
     critical = _results_critical_row(rows)
     handoff = _results_report_handoff_state(state, rows)
@@ -1915,6 +2166,12 @@ def _results_availability_cards(state: object) -> list[dict[str, object]]:
             "status": executive["status"],
         },
         {
+            "title": "Design code",
+            "value": code_label,
+            "detail": "workflow-compatible project code basis used by stored Analysis results",
+            "status": "info",
+        },
+        {
             "title": "Critical check",
             "value": "-" if critical is None else str(critical.get("Module", "-")),
             "detail": "No stored governing row" if critical is None else f"{critical.get('Status', '-')} · {critical.get('D/C / Util.', '-')} · {critical.get('Governing Case', '-')}",
@@ -1922,9 +2179,9 @@ def _results_availability_cards(state: object) -> list[dict[str, object]]:
         },
         {
             "title": "ULS/SLS completeness",
-            "value": f"ULS {len(uls_rows)} · SLS {'yes' if sls_available else 'no'}",
-            "detail": ("Column/Pier V+T stored; " if column_vt_available else "") + (f"Beam/Girder ULS checks: {uls_count}" if uls_count else ("PMM stored" if pmm_available else "Run ULS analysis")) + ("; SLS available" if sls_available else "; SLS pending"),
-            "status": "ready" if uls_rows and sls_available else "warning",
+            "value": f"ULS {len(uls_rows)} · SLS {'complete' if sls_complete else ('partial' if sls_available else 'no')}",
+            "detail": ("Column/Pier V+T stored; " if column_vt_available else "") + (f"Beam/Girder ULS checks: {uls_count}" if uls_count else ("PMM stored" if pmm_available else "Run ULS analysis")) + ("; SLS complete" if sls_complete else ("; SLS stage stress stored" if sls_available else "; SLS pending")),
+            "status": "ready" if uls_rows and sls_complete else "warning",
         },
         {
             "title": "Report handoff",
@@ -1949,6 +2206,7 @@ def _results_add_pmm_rows(state: object, rows: list[dict[str, object]]) -> None:
                 "Capacity / Limit": "PMM envelope",
                 "D/C / Util.": "-" if getattr(dc_summary, "max_dcr", None) is None else f"{float(getattr(dc_summary, 'max_dcr')):.3f}",
                 "Source": "Analysis → ULS Strength → Flexural (PMM)",
+                "Code Basis": _results_design_code_label(state),
             }
         )
         return
@@ -1964,6 +2222,7 @@ def _results_add_pmm_rows(state: object, rows: list[dict[str, object]]) -> None:
                 "Capacity / Limit": "PMM point cloud",
                 "D/C / Util.": "-",
                 "Source": "Analysis → ULS Strength → Flexural (PMM)",
+                "Code Basis": _results_design_code_label(state),
             }
         )
 
@@ -2113,6 +2372,7 @@ def _results_beam_uls_summary_rows(state: object) -> list[dict[str, object]]:
                 "D/C / Util.": _results_beam_uls_utilization(check_name, row),
                 "Required Action": _results_beam_uls_action(check_name, status),
                 "Source": f"Analysis → ULS Strength → {check_name}",
+                "Code Basis": _results_design_code_label(state),
                 "__calculated": bool(row),
             }
         )
@@ -2156,6 +2416,7 @@ def _render_results_beam_uls_dashboard(state: object) -> None:
             "Demand": row["Demand"],
             "Capacity / Limit": row["Capacity / Limit"],
             "D/C / Util.": row["D/C / Util."],
+            "Code Basis": row.get("Code Basis", _results_design_code_label(state)),
             "Required Action": row["Required Action"],
         }
         for row in rows
@@ -2165,7 +2426,7 @@ def _render_results_beam_uls_dashboard(state: object) -> None:
         _RESULTS_DASHBOARD_CSS
         + _results_html_table(
             display_rows,
-            ["Check", "Status", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Required Action"],
+            ["Check", "Status", "Code Basis", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Required Action"],
         ),
         unsafe_allow_html=True,
     )
@@ -2185,6 +2446,7 @@ def _results_add_beam_uls_rows(state: object, rows: list[dict[str, object]]) -> 
                     "Capacity / Limit": row["Capacity / Limit"],
                     "D/C / Util.": row["D/C / Util."],
                     "Source": row["Source"],
+                    "Code Basis": row.get("Code Basis", _results_design_code_label(state)),
                 }
             )
 
@@ -2282,6 +2544,7 @@ def _results_add_column_pier_vt_rows(state: object, rows: list[dict[str, object]
             "D/C / Util.": _results_column_pier_vt_max_dc(df),
             "Required Action": _results_column_pier_vt_action(status, cause),
             "Source": "Analysis → ULS Strength → Shear + Torsion",
+            "Code Basis": _results_design_code_label(state),
         }
     )
 
@@ -2320,7 +2583,7 @@ def _render_results_column_pier_vt_dashboard(state: object) -> bool:
         _RESULTS_DASHBOARD_CSS
         + _results_html_table(
             rows,
-            ["Module", "Check", "Status", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Required Action"],
+            ["Module", "Check", "Status", "Code Basis", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Required Action"],
         ),
         unsafe_allow_html=True,
     )
@@ -2333,29 +2596,89 @@ def _render_results_column_pier_vt_dashboard(state: object) -> bool:
 
 def _results_add_sls_rows(state: object, rows: list[dict[str, object]]) -> None:
     serviceability = state.get("serviceability_summary")
-    if serviceability is None:
+    if serviceability is not None:
+        rows.append(
+            {
+                "Module": "SLS Stress",
+                "Check": "Elastic stress",
+                "Status": getattr(serviceability, "overall_status", "AVAILABLE"),
+                "Governing Case": getattr(serviceability, "governing_combo", None) or "-",
+                "Station / Point": getattr(serviceability, "governing_point", None) or "-",
+                "Demand": (
+                    "N/A"
+                    if getattr(serviceability, "max_tension_MPa", None) is None
+                    else f"Max tension {float(getattr(serviceability, 'max_tension_MPa')):.3f} MPa"
+                ),
+                "Capacity / Limit": "Project SLS stress limits",
+                "D/C / Util.": (
+                    "-"
+                    if getattr(serviceability, "max_utilization", None) is None
+                    else f"{float(getattr(serviceability, 'max_utilization')):.3f}"
+                ),
+                "Source": "Analysis → SLS / Stress & Cracking",
+                "Code Basis": _results_design_code_label(state),
+            }
+        )
         return
-    rows.append(
-        {
-            "Module": "SLS Stress",
-            "Check": "Elastic stress",
-            "Status": getattr(serviceability, "overall_status", "AVAILABLE"),
-            "Governing Case": getattr(serviceability, "governing_combo", None) or "-",
-            "Station / Point": getattr(serviceability, "governing_point", None) or "-",
-            "Demand": (
-                "N/A"
-                if getattr(serviceability, "max_tension_MPa", None) is None
-                else f"Max tension {float(getattr(serviceability, 'max_tension_MPa')):.3f} MPa"
-            ),
-            "Capacity / Limit": "Project SLS stress limits",
-            "D/C / Util.": (
-                "-"
-                if getattr(serviceability, "max_utilization", None) is None
-                else f"{float(getattr(serviceability, 'max_utilization')):.3f}"
-            ),
-            "Source": "Analysis → SLS / Stress & Cracking",
-        }
-    )
+
+    stage_df = _results_beam_sls_stage_summary_df(state)
+    if stage_df is not None and not stage_df.empty:
+        governing = _results_sls_stage_governing_row(state) or {}
+        rows.append(
+            {
+                "Module": "SLS Stress",
+                "Check": "Beam/Girder stage stress",
+                "Status": str(governing.get("Status", "PARTIAL")),
+                "Governing Case": str(governing.get("Case Name", "-")),
+                "Station / Point": "-" if governing.get("Station x (m)") is None else f"{float(governing.get('Station x (m)')):.3f} m / {governing.get('Fiber', '-')}",
+                "Demand": "-" if governing.get("Actual stress (MPa)") is None else f"{governing.get('Controls', 'Stress')} {float(governing.get('Actual stress (MPa)')):.3f} MPa",
+                "Capacity / Limit": str(governing.get("Limit profile", "Stored SLS stage stress limit")),
+                "D/C / Util.": "-" if governing.get("Utilization") is None else f"{float(governing.get('Utilization')):.3f}",
+                "Source": "Analysis → SLS / Stress & Cracking → staged stress diagram",
+                "Code Basis": _results_design_code_label(state),
+            }
+        )
+        return
+
+    stage_df = _results_beam_sls_stage_summary_df(state)
+    stage_governing = _results_sls_stage_governing_row(state)
+    if serviceability is None and stage_df is not None and stage_governing is not None:
+        rows.append(
+            {
+                "Module": "SLS Stress",
+                "Check": "Beam/Girder stage stress",
+                "Status": _results_scalar(stage_governing.get("Status")),
+                "Governing Case": _results_scalar(stage_governing.get("Case Name")),
+                "Station / Point": _results_scalar(stage_governing.get("Station x (m)")),
+                "Demand": f"{_results_scalar(stage_governing.get('Actual stress (MPa)'))} MPa",
+                "Capacity / Limit": _results_scalar(stage_governing.get("Limit stress (MPa)")),
+                "D/C / Util.": _results_scalar(stage_governing.get("Utilization")),
+                "Source": "Analysis → SLS / Stress & Cracking → staged stress diagram",
+                "Code Basis": _results_design_code_label(state),
+            }
+        )
+
+    railway_decision = _results_railway_u_girder_sls_decision_dataframe(state)
+    if railway_decision is None or railway_decision.empty:
+        return
+    for _, item in railway_decision.iterrows():
+        status = str(item.get("Decision") or "REVIEW")
+        compression = _results_scalar(item.get("Compression (MPa)"))
+        tension = _results_scalar(item.get("Tension (MPa)"))
+        rows.append(
+            {
+                "Module": "SLS Railway U-Girder",
+                "Check": _results_scalar(item.get("Check stage")),
+                "Status": status,
+                "Governing Case": _results_scalar(item.get("Governing source")),
+                "Station / Point": _results_scalar(item.get("Governing x / case")),
+                "Demand": f"Compression {compression} MPa; tension {tension} MPa",
+                "Capacity / Limit": _results_scalar(item.get("Section basis")),
+                "D/C / Util.": _results_scalar(item.get("Max utilization")),
+                "Source": "Analysis → Railway U-Girder staged SLS stress preview",
+                "Code Basis": _results_design_code_label(state),
+            }
+        )
 
 
 def _results_governing_rows(state: object) -> list[dict[str, object]]:
@@ -2399,17 +2722,23 @@ def _results_executive_status(rows: list[dict[str, object]], state: object | Non
             "title": "Overall Status: REVIEW",
             "detail": "Some checks are calculated but still require engineering review, detailing confirmation, or missing companion checks.",
         }
-    if beam_total > 0 and beam_calculated == beam_total and state is not None and not _results_sls_available(state):
+    if beam_total > 0 and beam_calculated == beam_total and state is not None and not _results_sls_stress_available(state):
         return {
             "status": "warning",
             "title": "Overall Status: INCOMPLETE",
             "detail": "All Beam/Girder ULS checks have stored results. SLS serviceability is not calculated yet.",
         }
-    if state is not None and not _results_sls_available(state):
+    if state is not None and not _results_sls_stress_available(state):
         return {
             "status": "warning",
             "title": "Overall Status: INCOMPLETE",
             "detail": "Stored ULS summary is available, but SLS serviceability is not calculated yet.",
+        }
+    if state is not None and _results_sls_stress_available(state) and not _results_sls_complete_for_report(state):
+        return {
+            "status": "warning",
+            "title": "Overall Status: INCOMPLETE",
+            "detail": "Stored ULS summary and SLS stage stress results are available, but formal SLS/report readiness remains partial.",
         }
     return {
         "status": "ready",
@@ -2429,7 +2758,7 @@ def _render_results_executive_summary(rows: list[dict[str, object]], state: obje
 """
     table_html = _results_html_table(
         rows,
-        ["Module", "Check", "Status", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Source"],
+        ["Module", "Check", "Status", "Code Basis", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Source"],
     )
     st.markdown(
         _RESULTS_DASHBOARD_CSS
@@ -2465,6 +2794,14 @@ def _render_results_module_tables(state: object) -> None:
                     "warning_count": len(getattr(serviceability, "warnings", []) or []),
                 }
             )
+    stage_df = _results_beam_sls_stage_summary_df(state)
+    if stage_df is not None and not stage_df.empty:
+        with st.expander("Beam/Girder stored SLS stage stress summary", expanded=False):
+            st.dataframe(stage_df, use_container_width=True, hide_index=True)
+        demand_df = _results_dataframe(state.get("result_summary_beam_girder_sls_demand_detail_df"))
+        if demand_df is not None and not demand_df.empty:
+            with st.expander("Beam/Girder stored SLS compression/tension demand details", expanded=False):
+                st.dataframe(demand_df, use_container_width=True, hide_index=True)
 
 
 
@@ -2618,11 +2955,17 @@ def _render_results_diagram_review(state: object) -> None:
 
 
 def _render_results_traceability(state: object) -> None:
+    beam_calculated, beam_total, _missing = _results_beam_uls_completion(state)
+    railway_sls_available = _results_railway_u_girder_sls_decision_dataframe(state) is not None
     trace_rows = [
         {"Item": "Workflow", "Value": analysis_mode_label(_analysis_mode_from_session_for_chrome())},
+        {"Item": "Design code", "Value": _results_design_code_label(state)},
         {"Item": "Project input hash", "Value": str(state.get("project_input_hash") or state.get("analysis_input_hash") or "-")},
         {"Item": "PMM cache hash", "Value": str(state.get("pmm_last_analysis_hash") or "-")},
-        {"Item": "SLS cache hash", "Value": str(state.get("serviceability_summary_hash") or "-")},
+        {"Item": "Beam/Girder ULS stored checks", "Value": f"{beam_calculated}/{beam_total}"},
+        {"Item": "Column/Pier V+T stored", "Value": "Yes" if _results_column_pier_vt_dataframe(state) is not None else "No"},
+        {"Item": "Elastic SLS cache hash", "Value": str(state.get("serviceability_summary_hash") or "-")},
+        {"Item": "Railway U-Girder staged SLS stored", "Value": "Yes" if railway_sls_available else "No"},
         {"Item": "Runtime status", "Value": str(state.get("analysis_runtime_last_status") or "-")},
         {"Item": "Runtime last run", "Value": str(state.get("analysis_runtime_last_run_at") or "-")},
     ]

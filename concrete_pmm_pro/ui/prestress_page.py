@@ -6922,6 +6922,16 @@ def _render_railway_u_girder_stage_model_ui(geometry: SectionGeometry | None, *,
             final_service_limit_df=final_limit_df,
             active_sls_count=active_sls_count,
         )
+        # RESULT.SUMMARY2: cache normalized staged SLS decision tables so the
+        # Result Summary dashboard can remain read-only while still reflecting
+        # the Railway U-Girder SLS graphs/tables already produced here.
+        st.session_state["railway_u_girder_sls_decision_summary_df"] = decision_df.copy()
+        st.session_state["railway_u_girder_sls_stage_governing_df"] = governing.copy()
+        if not limit_df.empty:
+            st.session_state["railway_u_girder_sls_limit_governing_df"] = limit_governing.copy()
+        if not final_df.empty:
+            st.session_state["railway_u_girder_sls_final_service_governing_df"] = final_governing.copy()
+        st.session_state["railway_u_girder_sls_report_package_available"] = bool(not decision_df.empty)
         st.markdown("**Railway U-Girder SLS decision summary**")
         st.caption(
             "SLS.RAIL.UGIRDER6 condenses Transfer, Lifting, Wet slab casting, and Final service into a guarded decision view. "

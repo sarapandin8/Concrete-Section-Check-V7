@@ -14948,9 +14948,20 @@ def _render_girder_sls4b_combined_stage_result_table(
         for demand_row in _girder_sls4b_governing_demand_rows(df, stage_label):
             demand_detail_rows.append({"Stage": stage_label, **demand_row})
     if not summary_rows:
+        st.session_state["result_summary_beam_girder_sls_stage_summary_df"] = pd.DataFrame()
+        st.session_state["result_summary_beam_girder_sls_demand_detail_df"] = pd.DataFrame()
         st.info("No valid full-length stage result could be summarized. Check section geometry, auto-load settings, station inputs, and section basis availability.")
         return
     summary_df = pd.DataFrame(summary_rows)
+    demand_detail_df = pd.DataFrame(demand_detail_rows)
+    # RESULT.SUMMARY2: publish the staged Beam/Girder SLS stress dashboard rows
+    # for the downstream read-only Result Summary workspace.  This is a
+    # normalized handoff only; it does not rerun or alter the SLS preview solver.
+    st.session_state["result_summary_beam_girder_sls_stage_summary_df"] = summary_df.copy()
+    st.session_state["result_summary_beam_girder_sls_stage_summary_rows"] = summary_df.to_dict("records")
+    st.session_state["result_summary_beam_girder_sls_demand_detail_df"] = demand_detail_df.copy()
+    st.session_state["result_summary_beam_girder_sls_code_label"] = workflow_project_code_label_from_session(st.session_state)
+    st.session_state["result_summary_beam_girder_sls_cache_hash"] = str(st.session_state.get("analysis_input_hash") or st.session_state.get("project_input_hash") or "")
     _render_girder_sls4b_governing_summary_cards(summary_df)
     st.dataframe(_clean_girder_sls4b_decision_dataframe(summary_df), use_container_width=True, hide_index=True)
     with st.expander("Compression / tension demand details — all stages", expanded=False):
