@@ -20,7 +20,12 @@ from concrete_pmm_pro.io.project_io import (
     project_from_session_state,
     project_to_json,
 )
-from concrete_pmm_pro.ui.analysis_page import render_analysis_page, render_report_qa_page
+from concrete_pmm_pro.ui.analysis_page import (
+    _beam_uls_shear_decision_summary,
+    _beam_uls_shear_utilization_display,
+    render_analysis_page,
+    render_report_qa_page,
+)
 from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
 from concrete_pmm_pro.ui.loads_page import render_loads_page
 from concrete_pmm_pro.ui.materials_page import render_materials_page
@@ -2346,6 +2351,18 @@ def _results_beam_uls_best_row(entry: dict[str, object] | None, check_name: str)
     if df is None or df.empty:
         return {}
     work_df = df.copy()
+    if check_name == "Shear":
+        # Keep Result Summary aligned with Analysis > ULS compact table.  The
+        # compact Shear row is not simply the maximum strength D/C row: a
+        # separate detailing/minimum-reinforcement gate can control and fail the
+        # shear check even when strength D/C is below 1.0.
+        decision = _beam_uls_shear_decision_summary(work_df)
+        decision_row = decision.get("row") if isinstance(decision, dict) else None
+        if isinstance(decision_row, Mapping):
+            row = dict(decision_row)
+            row["__decision_status"] = str(decision.get("status") or row.get("Status") or "REVIEW")
+            row["__decision_reason"] = str(decision.get("reason") or "")
+            return row
     preferred_columns = {
         "Flexure": ["Utilization value", "D/C value", "Overall D/C value"],
         "Shear": ["Strength D/C value", "D/C value", "Utilization value"],
@@ -2361,10 +2378,12 @@ def _results_beam_uls_best_row(entry: dict[str, object] | None, check_name: str)
 
 
 def _results_beam_uls_row_status(check_name: str, row: Mapping[str, object], cache: dict[str, dict[str, object]]) -> str:
-    status = str(row.get("Status") or "").strip()
+    status = str(row.get("__decision_status") or row.get("Status") or "").strip()
     if check_name == "Shear + Torsion":
-        shear_status = str(_results_beam_uls_best_row(cache.get("Shear"), "Shear").get("Status") or "").upper()
-        torsion_status = str(_results_beam_uls_best_row(cache.get("Torsion"), "Torsion").get("Status") or "").upper()
+        shear_row = _results_beam_uls_best_row(cache.get("Shear"), "Shear")
+        torsion_row = _results_beam_uls_best_row(cache.get("Torsion"), "Torsion")
+        shear_status = str(shear_row.get("__decision_status") or shear_row.get("Status") or "").upper()
+        torsion_status = str(torsion_row.get("__decision_status") or torsion_row.get("Status") or "").upper()
         if "FAIL" in shear_status or "FAIL" in torsion_status:
             return "SOURCE BLOCKED"
         if status.upper() == "DATA REQUIRED":
@@ -2373,6 +2392,10 @@ def _results_beam_uls_row_status(check_name: str, row: Mapping[str, object], cac
 
 
 def _results_beam_uls_utilization(check_name: str, row: Mapping[str, object]) -> str:
+    if check_name == "Shear" and row:
+        # Mirror the Analysis compact table wording so a detailing-controlled
+        # shear failure does not appear as a PASS-looking strength D/C only.
+        return _beam_uls_shear_utilization_display(row)
     value = _results_first_existing(
         row,
         {
