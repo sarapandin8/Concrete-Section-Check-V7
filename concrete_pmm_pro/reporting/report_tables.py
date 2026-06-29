@@ -16,6 +16,7 @@ from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_g
 from concrete_pmm_pro.reporting.generic_precast_lifting_report import build_generic_precast_lifting_report_package
 from concrete_pmm_pro.reporting.railway_u_girder_release import build_railway_u_girder_release_package
 from concrete_pmm_pro.reporting.railway_u_girder_final import build_railway_u_girder_final_design_check_package
+from concrete_pmm_pro.reporting.column_pier_vt_report import build_column_pier_vt_report_package
 from concrete_pmm_pro.analysis.railway_u_girder_uls import build_railway_u_girder_uls_framework_package
 from concrete_pmm_pro.verification.column_pier_vt_benchmarks import benchmark_cases
 from concrete_pmm_pro.verification.pmm_published_benchmark_inventory import (
@@ -67,6 +68,7 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
     railway_uls_report = build_railway_u_girder_uls_framework_package(session_state)
     railway_release = build_railway_u_girder_release_package(session_state)
     railway_final = build_railway_u_girder_final_design_check_package(session_state)
+    column_pier_vt_report = build_column_pier_vt_report_package(session_state)
 
     standard_tables = [
         ReportTableInfo(
@@ -158,13 +160,33 @@ def collect_available_report_tables(session_state: Any) -> list[ReportTableInfo]
                 "Column/Pier V+T QA1 Benchmarks",
                 column_pier_vt_qa_available,
                 "verification.column_pier_vt_benchmarks",
-                "Independent hand-check reference cases for the scoped ACI RC Column/Pier shear-torsion interaction gate.",
+                "Independent hand-check reference cases for the scoped Column/Pier shear-torsion interaction gate.",
                 row_count=len(benchmark_cases()) if column_pier_vt_qa_available else None,
-                warning="Static validation evidence only; AASHTO LRFD, prestressed V+T, seismic detailing, and anchorage remain excluded routes.",
+                warning="Static validation evidence only; AASHTO LRFD prestressed/general-procedure V+T, seismic detailing, and anchorage remain excluded routes.",
             ),
             ReportTableInfo("sls_visualization_selected_combo", "Selected SLS Visualization Data", _has_any(session_state, ["sls_visualization_dataframe", "sls_stress_visualization_selected_combo"]), "sls_visualization_dataframe", "Selected-combo SLS stress visualization source data.", row_count=_row_count(_get(session_state, "sls_visualization_dataframe"))),
         ]
     )
+    if column_pier_vt_report.available:
+        column_pier_vt_titles = {
+            "column_pier_vt_report_summary": "Column/Pier V+T Report Summary",
+            "column_pier_vt_report_results": "Column/Pier V+T Compact Results",
+            "column_pier_vt_report_audit": "Column/Pier V+T Audit Details",
+            "column_pier_vt_report_scope_guard": "Column/Pier V+T Scope Guard",
+        }
+        for table_key, dataframe in column_pier_vt_report.tables().items():
+            standard_tables.append(
+                ReportTableInfo(
+                    table_key,
+                    column_pier_vt_titles.get(table_key, table_key.replace("_", " ").title()),
+                    not dataframe.empty,
+                    "reporting.column_pier_vt_report",
+                    "Column/Pier Shear + Torsion report-preview table from stored Analysis results; no solver rerun in Report / QA.",
+                    row_count=len(dataframe),
+                    warning="Column/Pier V+T report preview is a guarded strength-gate summary; seismic/detailing and prestressed/general-procedure V+T remain outside scope.",
+                )
+            )
+
     if railway_report.available:
         railway_table_titles = {
             "railway_u_girder_closeout_status": "Railway U-Girder Closeout Status",

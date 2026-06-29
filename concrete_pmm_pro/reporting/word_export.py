@@ -27,6 +27,7 @@ from concrete_pmm_pro.reporting.generic_precast_lifting_report import build_gene
 from concrete_pmm_pro.analysis.railway_u_girder_uls import build_railway_u_girder_uls_framework_package
 from concrete_pmm_pro.reporting.railway_u_girder_release import build_railway_u_girder_release_package
 from concrete_pmm_pro.reporting.railway_u_girder_final import build_railway_u_girder_final_design_check_package
+from concrete_pmm_pro.reporting.column_pier_vt_report import build_column_pier_vt_report_package
 
 
 @dataclass(frozen=True)
@@ -370,6 +371,37 @@ def _add_generic_precast_lifting_report_section(
     for title, dataframe in table_sequence:
         dataframe_to_word_table(document, dataframe, title=title, max_rows=options.max_table_rows)
 
+def _add_column_pier_vt_report_section(
+    document: DocumentObject,
+    session_state: Any | None,
+    options: ReportExportOptions,
+) -> None:
+    """Add stored Column/Pier Shear + Torsion report-preview tables when available."""
+
+    package = build_column_pier_vt_report_package(session_state or {})
+    if not package.available:
+        return
+    add_report_heading(document, "Column/Pier Shear + Torsion Strength Gate", level=1)
+    document.add_paragraph(
+        "This section mirrors the stored Analysis > ULS Strength > Shear + Torsion result. "
+        "It reports the strength gate, controlling cause, compact results, audit detail, and scope guard without rerunning solvers during report export."
+    )
+    document.add_paragraph(
+        "Seismic confinement/detailing is a separate review item and is intentionally reported as warning / amber semantics, not as a V+T strength failure. "
+        "Prestressed/general-procedure V+T, hoop anchorage/hooks, lap splices, shop-drawing detailing, and final code certification remain outside this report-preview gate."
+    )
+    for warning in package.warnings:
+        document.add_paragraph(str(warning), style="List Bullet")
+    table_sequence = [
+        ("Column/Pier V+T Summary", package.summary),
+        ("Column/Pier V+T Compact Results", package.results),
+        ("Column/Pier V+T Audit Details", package.audit),
+        ("Column/Pier V+T Scope Guard", package.scope_guard),
+    ]
+    for title, dataframe in table_sequence:
+        dataframe_to_word_table(document, dataframe, title=title, max_rows=options.max_table_rows)
+
+
 def _add_railway_u_girder_uls_framework_section(
     document: DocumentObject,
     session_state: Any | None,
@@ -497,6 +529,7 @@ def build_draft_word_report(
     _add_analysis_scope(document, manifest)
     _add_railway_u_girder_sls_report_section(document, session_state, options)
     _add_generic_precast_lifting_report_section(document, session_state, options)
+    _add_column_pier_vt_report_section(document, session_state, options)
     _add_railway_u_girder_uls_framework_section(document, session_state, options)
     _add_railway_u_girder_release_closeout_section(document, session_state, options)
     _add_railway_u_girder_final_design_check_section(document, session_state, options)

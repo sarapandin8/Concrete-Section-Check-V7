@@ -140,9 +140,9 @@ def get_engineering_limitations() -> list[EngineeringLimitation]:
             "GUARDED_SCOPE",
             "MEDIUM",
             "Column/Pier",
-            "ACI RC nonprestressed Column/Pier shear, torsion, and V+T gates are available under Analysis, but unsupported routes remain REVIEW.",
-            "AASHTO LRFD, prestressed V+T, seismic special detailing, anchorage/hooks, lap splices, and shop-drawing detailing are not certified by the current Column/Pier V+T gate.",
-            "Use the Analysis > ULS Strength > Shear + Torsion audit table for ACI RC nonprestressed checks and perform independent review for excluded routes.",
+            "AASHTO LRFD and ACI RC nonprestressed Column/Pier shear, torsion, and V+T gates are available under Analysis, but unsupported routes remain REVIEW.",
+            "AASHTO LRFD prestressed/general-procedure V+T, seismic special detailing, anchorage/hooks, lap splices, and shop-drawing detailing are not certified by the current Column/Pier V+T gate.",
+            "Use the Analysis > ULS Strength > Shear + Torsion audit table for scoped nonprestressed checks and perform independent review for excluded routes.",
         ),
         EngineeringLimitation(
             "lightweight_concrete_ec",

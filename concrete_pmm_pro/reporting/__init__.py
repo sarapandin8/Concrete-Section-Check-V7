@@ -162,6 +162,17 @@ from concrete_pmm_pro.reporting.railway_u_girder_report import (
     railway_u_girder_report_tables_to_dataframe,
 )
 
+from concrete_pmm_pro.reporting.column_pier_vt_report import (
+    COLUMN_PIER_VT_REPORT_STATUS,
+    COLUMN_PIER_VT_REPORT_WARNING,
+    COLUMN_PIER_VT_SCOPE_GUARD,
+    COLUMN_PIER_VT_TABLE_KEYS,
+    ColumnPierVTReportPackage,
+    build_column_pier_vt_report_package,
+    column_pier_vt_report_tables_to_dataframe,
+    is_column_pier_vt_report_context,
+)
+
 __all__ = [
     "EngineeringTerm",
     "EngineeringLimitation",
@@ -179,6 +190,14 @@ __all__ = [
     "ReportTableInfo",
     "ResultTraceabilitySnapshot",
     "UnitConvention",
+    "COLUMN_PIER_VT_REPORT_STATUS",
+    "COLUMN_PIER_VT_REPORT_WARNING",
+    "COLUMN_PIER_VT_SCOPE_GUARD",
+    "COLUMN_PIER_VT_TABLE_KEYS",
+    "ColumnPierVTReportPackage",
+    "build_column_pier_vt_report_package",
+    "column_pier_vt_report_tables_to_dataframe",
+    "is_column_pier_vt_report_context",
     "RAILWAY_UGIRDER_FINAL_CERTIFICATION_BOUNDARY",
     "RAILWAY_UGIRDER_FINAL_MILESTONE",
     "RAILWAY_UGIRDER_FINAL_STATUS",

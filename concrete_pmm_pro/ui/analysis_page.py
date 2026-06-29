@@ -112,6 +112,9 @@ from concrete_pmm_pro.reporting import (
     build_exportable_figure,
     build_railway_u_girder_sls_report_package,
     build_generic_precast_lifting_report_package,
+    build_column_pier_vt_report_package,
+    column_pier_vt_report_tables_to_dataframe,
+    is_column_pier_vt_report_context,
     generic_precast_lifting_report_tables_to_dataframe,
     is_generic_precast_lifting_report_context,
     is_railway_u_girder_uls_context,
@@ -12166,14 +12169,24 @@ def _render_column_pier_combined_vt_workspace() -> None:
     active_demands = _active_column_pier_uls_demand_dataframe_from_state(st.session_state)
     analysis_input = _serviceability_analysis_input_from_session()
     vt_df = _column_pier_combined_vt_check_dataframe(st.session_state, analysis_input)
-    _render_analysis_summary_strip(
-        _column_pier_combined_vt_summary_cards(
-            vt_df=vt_df,
-            active_demands=active_demands,
-            analysis_input=analysis_input,
-        ),
-        columns=3,
+    vt_screen_df = _column_pier_combined_vt_screen_dataframe(vt_df)
+    vt_cards = _column_pier_combined_vt_summary_cards(
+        vt_df=vt_df,
+        active_demands=active_demands,
+        analysis_input=analysis_input,
     )
+    tie_info = _column_pier_combined_vt_governing_tie_info(vt_df)
+    st.session_state["column_pier_combined_vt_result_df"] = vt_df.copy()
+    st.session_state["column_pier_combined_vt_screen_df"] = vt_screen_df.copy()
+    st.session_state["column_pier_combined_vt_summary_cards"] = vt_cards
+    st.session_state["column_pier_combined_vt_governing_label"] = str(tie_info.get("label") or "")
+    st.session_state["column_pier_combined_vt_controlling_cause"] = _column_pier_combined_vt_controlling_cause(vt_df)
+    st.session_state["column_pier_combined_vt_route_label"] = "AASHTO LRFD V+T" if is_aashto else "ACI RC V+T"
+    st.session_state["column_pier_combined_vt_scope_guard"] = (
+        "Seismic confinement/detailing review remains separate: this V+T gate uses the Control section transverse row only "
+        "and does not certify plastic-hinge confinement, hoop anchorage, lap-splice confinement, or seismic detailing."
+    )
+    _render_analysis_summary_strip(vt_cards, columns=3)
     st.markdown('<div style="height:0.25rem"></div>', unsafe_allow_html=True)
     route_label = "AASHTO LRFD V+T" if is_aashto else "ACI RC V+T"
     if vt_df.empty:
@@ -12190,7 +12203,7 @@ def _render_column_pier_combined_vt_workspace() -> None:
         st.success(f"{route_label} strength gate passes for the current nonprestressed Column/Pier rows; seismic/detailing review remains separate.")
 
     if not vt_df.empty:
-        st.dataframe(_column_pier_combined_vt_screen_dataframe(vt_df), use_container_width=True, hide_index=True)
+        st.dataframe(vt_screen_df, use_container_width=True, hide_index=True)
         st.warning(
             "Seismic confinement/detailing review remains separate: this V+T gate uses the Control section transverse row only "
             "and does not certify plastic-hinge confinement, hoop anchorage, lap-splice confinement, or seismic detailing."
@@ -19042,6 +19055,53 @@ def _render_serviceability_expander() -> None:
 
 
 
+def _render_column_pier_vt_report_preview_panel() -> None:
+    """Render stored Column/Pier V+T report-preview tables in Report / QA."""
+
+    if not is_column_pier_vt_report_context(st.session_state):
+        return
+    st.markdown("**Column/Pier Shear + Torsion Strength Gate Report**")
+    st.caption(
+        "COLUMN_PIER.VT.REPORT1 mirrors the stored Analysis > ULS Strength > Shear + Torsion result. "
+        "It does not rerun solvers in Report / QA."
+    )
+    package = build_column_pier_vt_report_package(st.session_state)
+    st.session_state["column_pier_vt_report_package_available"] = bool(package.available)
+    registry_df = column_pier_vt_report_tables_to_dataframe(package)
+    cols = st.columns(4)
+    cols[0].metric("V+T report", "Available" if package.available else "Review")
+    cols[1].metric("Report tables", f"{len(registry_df):,}")
+    cols[2].metric("Warnings", f"{len(package.warnings):,}")
+    cols[3].metric("Certification", "Not certified")
+    for warning in package.warnings:
+        st.warning(warning)
+    st.dataframe(registry_df, use_container_width=True, hide_index=True)
+    st.download_button(
+        "Download Column/Pier V+T Report Table Registry CSV",
+        data=registry_df.to_csv(index=False),
+        file_name="column_pier_vt_report_table_registry.csv",
+        mime="text/csv",
+        use_container_width=True,
+        key="ui_keys1_analysis_page_download_button_column_pier_vt_report_registry_1",
+    )
+    if not package.available:
+        st.warning("Column/Pier V+T report package is not available. Run Analysis > ULS Strength > Shear + Torsion first.")
+        return
+    for key, dataframe in package.tables().items():
+        title = key.replace("column_pier_vt_report_", "").replace("_", " ").title()
+        expanded = key in {"column_pier_vt_report_summary", "column_pier_vt_report_results", "column_pier_vt_report_scope_guard"}
+        with st.expander(f"Column/Pier V+T · {title}", expanded=expanded):
+            st.dataframe(dataframe, use_container_width=True, hide_index=True)
+            st.download_button(
+                f"Download {title} CSV",
+                data=dataframe.to_csv(index=False),
+                file_name=f"{key}.csv",
+                mime="text/csv",
+                use_container_width=True,
+                key=f"ui_keys1_analysis_page_download_button_{key}",
+            )
+
+
 def _render_generic_precast_lifting_report_preview_panel() -> None:
     """Render GIRDER.LIFT.REPORT1 report/export tables in Report / QA."""
 
@@ -19271,6 +19331,7 @@ def _render_pre_report_qa_expander() -> None:
 
         st.markdown("**Report Export Foundation**")
         st.info("Report manifest, draft outline, draft Word export, and Word report QA are available. PDF export remains future work.")
+        _render_column_pier_vt_report_preview_panel()
         _render_generic_precast_lifting_report_preview_panel()
         _render_railway_u_girder_report_preview_panel()
         meta_cols = st.columns(2)

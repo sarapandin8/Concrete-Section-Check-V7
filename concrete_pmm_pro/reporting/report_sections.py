@@ -39,6 +39,7 @@ def default_report_section_plan(
         scope_limitation_keys.append("railway_u_girder_sls_report_scope")
     elif snapshot.member_type == "column_pier_pmm":
         scope_limitation_keys.append("column_pier_vt_scope")
+    column_pier_vt_status = "AVAILABLE" if snapshot.member_type == "column_pier_pmm" else "NOT_APPLICABLE"
     verification_table_keys = ["pmm_verification", "hand_check_results", "sls_verification_results", "pmm_published_benchmark_inventory"]
     verification_available = any([snapshot.pmm_verification_status, snapshot.hand_check_status, snapshot.sls_verification_status])
     if snapshot.member_type == "column_pier_pmm":
@@ -53,6 +54,19 @@ def default_report_section_plan(
         ReportSection("reinforcement_prestress", "Reinforcement and Prestress Layout", status="AVAILABLE" if snapshot.rebar_count or snapshot.prestress_count else "PARTIAL", table_keys=["custom_stress_check_points"], figure_keys=["custom_stress_points_layout"] if "custom_stress_points_layout" in figure_keys else []),
         ReportSection("uls_pmm_strength", "ULS PMM Strength Check", status=pmm_status, table_keys=["pmm_summary"], figure_keys=[key for key in ["pmm_interaction_surface", "pmm_mux_muy_slice"] if key in figure_keys], limitation_keys=["neutral_axis_sweep_resolution", "prestress_axial_cap"]),
         ReportSection("uls_dc_summary", "ULS Demand / Capacity Summary", status=dc_status, table_keys=["uls_demand_capacity_result", "pmm_slice", "pmm_slice_envelope"], figure_keys=["pmm_slice_envelope"] if "pmm_slice_envelope" in figure_keys else [], limitation_keys=["dc_directional_slice_envelope", "convex_hull_slice_envelope"]),
+        ReportSection(
+            "column_pier_vt_strength_gate",
+            "Column/Pier Shear + Torsion Strength Gate",
+            status=column_pier_vt_status,
+            summary="Stored Column/Pier V+T report preview mirrors the Analysis Shear + Torsion page: strength gate, controlling cause, compact results, audit detail, and amber seismic scope guard.",
+            table_keys=[
+                "column_pier_vt_report_summary",
+                "column_pier_vt_report_results",
+                "column_pier_vt_report_audit",
+                "column_pier_vt_report_scope_guard",
+            ],
+            limitation_keys=["column_pier_vt_scope"],
+        ),
         ReportSection("sls_stress_check", "SLS Stress Check", status=sls_status, table_keys=["sls_stress_results", "sls_prestress_contribution", "transformed_section_properties"], figure_keys=[key for key in ["sls_section_stress_points", "sls_stress_bar_diagram", "transformed_section_preview"] if key in figure_keys], limitation_keys=["ixy_coupling_sls", "cracked_section_sls", "unbonded_prestress"]),
         ReportSection(
             "generic_precast_lifting_stage_report",
