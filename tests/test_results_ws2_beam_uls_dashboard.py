@@ -7,7 +7,7 @@ SOURCE = Path("app.py").read_text(encoding="utf-8")
 
 
 def test_results_workspace_has_beam_girder_uls_dashboard_section() -> None:
-    assert "ULS Results Dashboard" in SOURCE
+    assert "ULS Summary Dashboard" in SOURCE
     assert "_render_results_beam_uls_dashboard(st.session_state)" in SOURCE
     assert "Read-only strength result summary from cached Analysis outputs." in SOURCE
 

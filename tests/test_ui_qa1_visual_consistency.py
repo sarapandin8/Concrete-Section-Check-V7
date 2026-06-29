@@ -16,7 +16,7 @@ def test_main_workspace_order_keeps_report_qa_after_results() -> None:
         "Sections",
         "Loads",
         "Analysis",
-        "Results",
+        "Result Summary",
         "Report / QA",
     ]
 
@@ -30,13 +30,13 @@ def test_results_workspace_uses_commercial_read_only_foundation() -> None:
     assert "render_metric_cards(" in body
     assert "render_section_bar(" in body
     assert "st.info(RESULTS_WORKSPACE_PLACEHOLDER)" not in body
-    assert "opening Results does not rerun PMM, ULS, or SLS" in body
+    assert "Opening Result Summary does not rerun PMM, ULS, or SLS" in body
     assert "Diagram Review" not in body
 
 
 def test_analysis_workspace_does_not_keep_report_qa_subpage() -> None:
     assert "Report / QA" not in app.WORKSPACE_NAVIGATION["Analysis"]
-    assert app.WORKSPACE_NAVIGATION["Results"] == ["Summary Dashboard", "ULS Results", "SLS Results", "Traceability"]
+    assert app.WORKSPACE_NAVIGATION["Result Summary"] == ["Overview", "ULS Summary", "SLS Summary", "Traceability"]
     assert app.WORKSPACE_NAVIGATION["Report / QA"] == ["Report / QA"]
 
 

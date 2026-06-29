@@ -17,7 +17,7 @@ def test_results_workspace_remains_read_only_dashboard() -> None:
     body = APP_SOURCE[start:end]
 
     assert "render_page_header(" in body
-    assert "Governing Results Dashboard" in body
+    assert "Result Summary Dashboard" in body
     assert "_render_results_traceability(st.session_state)" in body
     assert "Run / Recalculate" not in body
     assert "Run Elastic SLS Stress Check" not in body

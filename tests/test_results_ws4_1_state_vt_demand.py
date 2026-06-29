@@ -7,13 +7,13 @@ SOURCE = Path("app.py").read_text(encoding="utf-8")
 
 
 def test_results_overall_state_does_not_claim_full_results_when_sls_missing() -> None:
-    assert '"title": "ULS complete / SLS pending"' in SOURCE
-    assert "All Beam/Girder ULS checks have stored results. SLS serviceability is not calculated yet." in SOURCE
+    assert '"title": "Overall Status: INCOMPLETE"' in SOURCE
+    assert "SLS serviceability is not calculated yet." in SOURCE
     assert '"title": "Full stored results available"' not in SOURCE
 
 
 def test_results_ready_state_uses_stored_uls_sls_summaries_wording() -> None:
-    assert '"title": "Stored ULS/SLS summaries available"' in SOURCE
+    assert '"title": "Overall Status: PASS"' in SOURCE
 
 
 def test_results_shear_torsion_demand_display_includes_vu_tu_units() -> None:

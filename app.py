@@ -38,13 +38,13 @@ WORKSPACE_NAVIGATION = {
     "Sections": ["Section Builder", "Rebar", "Prestress"],
     "Loads": ["Loads"],
     "Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber"],
-    "Results": ["Summary Dashboard", "ULS Results", "SLS Results", "Traceability"],
+    "Result Summary": ["Overview", "ULS Summary", "SLS Summary", "Traceability"],
     "Report / QA": ["Report / QA"],
 }
 
 RESULTS_WORKSPACE_PLACEHOLDER = (
-    "Future Results Workspace. Current result outputs remain available under Analysis. "
-    "Future milestones will add Summary Table, Case Details, Interaction Diagram, Charts, and Report Preview."
+    "Future Result Summary workspace. Current detailed outputs remain available under Analysis. "
+    "The Result Summary dashboard shows stored decision summaries only and does not rerun solvers."
 )
 
 
@@ -1146,7 +1146,7 @@ def _commercial_workspace_icon(workspace: str) -> str:
         "Sections": "▦",
         "Loads": "⇩",
         "Analysis": "⌁",
-        "Results": "▤",
+        "Result Summary": "RS",
         "Report / QA": "QA",
     }.get(str(workspace), "•")
 
@@ -1260,6 +1260,8 @@ def _render_commercial_sidebar(active_workspace: str | None = None) -> None:
     compatibility, but adds a premium sidebar rail that writes to the same
     Streamlit session-state navigation keys when used.
     """
+    if st.session_state.get("_nav_active_workspace") == "Results":
+        st.session_state["_nav_active_workspace"] = "Result Summary"
     if st.session_state.get("_nav_active_workspace") not in WORKSPACE_NAVIGATION:
         st.session_state["_nav_active_workspace"] = "Setup"
     active = str(active_workspace or st.session_state.get("_nav_active_workspace", "Setup"))
@@ -1571,7 +1573,7 @@ def _results_style_for_status(status: object) -> str:
     label = str(status or "").strip().upper()
     if any(token in label for token in ["FAIL", "ERROR", "DANGER", "EXCEED", "BLOCKED"]):
         return "danger"
-    if any(token in label for token in ["REVIEW", "WARNING", "NOT READY", "NOT CALCULATED", "PLANNED", "PLACEHOLDER", "DATA REQUIRED"]):
+    if any(token in label for token in ["REVIEW", "WARNING", "NOT READY", "NOT CALCULATED", "NOT RUN", "INCOMPLETE", "STALE", "PLANNED", "PLACEHOLDER", "DATA REQUIRED"]):
         return "warning"
     if any(token in label for token in ["N/A", "NOT ACTIVE", "NONE", "NO RESULT"]):
         return "neutral"
@@ -1587,7 +1589,7 @@ def _results_status_pill(status: object) -> str:
 
 def _results_html_table(rows: list[dict[str, object]], columns: list[str]) -> str:
     if not rows:
-        return '<div class="cpmm-results-empty">No stored result rows are available yet. Run checks in Analysis, then return here to review the stored outputs.</div>'
+        return '<div class="cpmm-results-empty">No stored result rows are available yet. Run checks in Analysis, then return here to review the stored decision summary.</div>'
     header = "<thead><tr>" + "".join(f"<th>{escape(column)}</th>" for column in columns) + "</tr></thead>"
     body_rows: list[str] = []
     for row in rows:
@@ -1632,6 +1634,50 @@ def _results_beam_uls_completion(state: object) -> tuple[int, int, list[str]]:
     return calculated, len(rows), missing
 
 
+def _results_has_stored_uls_rows(rows: list[dict[str, object]]) -> bool:
+    return any(str(row.get("Module", "")).strip().upper().startswith("ULS") for row in rows)
+
+
+def _results_report_handoff_state(state: object, rows: list[dict[str, object]] | None = None) -> dict[str, str]:
+    """Return a read-only Report / QA readiness state for the summary dashboard.
+
+    Result Summary is a downstream decision dashboard; it must never make Report
+    / QA look ready when no ULS/SLS result has actually been stored by Analysis.
+    """
+
+    result_rows = rows if rows is not None else _results_governing_rows(state)
+    if not result_rows:
+        return {
+            "status": "warning",
+            "value": "Not ready",
+            "detail": "No stored Analysis result set is available for Report / QA.",
+        }
+    styles = [_results_style_for_status(row.get("Status")) for row in result_rows]
+    if "danger" in styles:
+        return {
+            "status": "danger",
+            "value": "Review required",
+            "detail": "Resolve failed checks or document engineering acceptance before report issue.",
+        }
+    if not _results_has_stored_uls_rows(result_rows) or not _results_sls_available(state):
+        return {
+            "status": "warning",
+            "value": "Not ready",
+            "detail": "Complete stored ULS and SLS summaries before Report / QA handoff.",
+        }
+    if "warning" in styles:
+        return {
+            "status": "warning",
+            "value": "Review required",
+            "detail": "Stored results contain review items or guarded scope notes.",
+        }
+    return {
+        "status": "ready",
+        "value": "Ready",
+        "detail": "Stored ULS and SLS summaries are available for Report / QA review.",
+    }
+
+
 def _results_next_engineering_action(state: object, rows: list[dict[str, object]] | None = None) -> dict[str, str]:
     result_rows = rows if rows is not None else _results_governing_rows(state)
     styles = [_results_style_for_status(row.get("Status")) for row in result_rows]
@@ -1649,7 +1695,7 @@ def _results_next_engineering_action(state: object, rows: list[dict[str, object]
             "value": "Complete ULS checks",
             "detail": "Run missing Beam/Girder ULS checks in Analysis: " + ", ".join(missing),
         }
-    if calculated == 0 and not any(str(row.get("Module", "")).startswith("ULS") for row in result_rows):
+    if not _results_has_stored_uls_rows(result_rows):
         return {
             "status": "warning",
             "value": "Run ULS analysis",
@@ -1681,6 +1727,15 @@ def _results_required_action_rows(state: object, rows: list[dict[str, object]]) 
                     "Required Action": row.get("Required Action", row.get("Source", "Review source Analysis check.")),
                 }
             )
+    if not _results_has_stored_uls_rows(rows):
+        actions.append(
+            {
+                "Priority": "High",
+                "Module": "ULS",
+                "Issue": "ULS not calculated",
+                "Required Action": "Run ULS Strength checks in Analysis before accepting this section or issuing Report / QA.",
+            }
+        )
     calculated, total, missing = _results_beam_uls_completion(state)
     if 0 < calculated < total:
         actions.append(
@@ -1818,36 +1873,64 @@ def _render_results_sls_dashboard(state: object) -> None:
         )
 
 
+def _results_parse_utilization(value: object) -> float | None:
+    try:
+        text = str(value).replace("D/C", "").replace("=", " ").strip().split()[0]
+        numeric = float(text)
+    except (IndexError, TypeError, ValueError):
+        return None
+    return numeric if pd.notna(numeric) else None
+
+
+def _results_critical_row(rows: list[dict[str, object]]) -> dict[str, object] | None:
+    if not rows:
+        return None
+    danger_rows = [row for row in rows if _results_style_for_status(row.get("Status")) == "danger"]
+    warning_rows = [row for row in rows if _results_style_for_status(row.get("Status")) == "warning"]
+    candidates = danger_rows or warning_rows or rows
+    ranked: list[tuple[float, int, dict[str, object]]] = []
+    for index, row in enumerate(candidates):
+        util = _results_parse_utilization(row.get("D/C / Util."))
+        ranked.append(((util if util is not None else -1.0), -index, row))
+    return sorted(ranked, key=lambda item: (item[0], item[1]), reverse=True)[0][2]
+
+
 def _results_availability_cards(state: object) -> list[dict[str, object]]:
     beam_cache = state.get("_beam_girder_uls_manual_calculation_cache") if isinstance(state.get("_beam_girder_uls_manual_calculation_cache"), dict) else {}
     serviceability = state.get("serviceability_summary")
     pmm_available = state.get("rc_demand_capacity_result") is not None or state.get("rc_pmm_result") is not None
+    rows = _results_governing_rows(state)
+    uls_rows = [row for row in rows if str(row.get("Module", "")).upper().startswith("ULS")]
     uls_count = sum(1 for entry in beam_cache.values() if isinstance(entry, dict))
+    column_vt_available = _results_column_pier_vt_dataframe(state) is not None
     sls_available = serviceability is not None or bool(state.get("railway_u_girder_sls_report_package_available"))
+    executive = _results_executive_status(rows, state)
+    critical = _results_critical_row(rows)
+    handoff = _results_report_handoff_state(state, rows)
     return [
         {
-            "title": "ULS stored results",
-            "value": f"{uls_count:,} Beam/Girder check(s)" if uls_count else ("PMM available" if pmm_available else "Not calculated"),
-            "detail": "read from cached Analysis results",
-            "status": "ready" if uls_count or pmm_available else "warning",
+            "title": "Overall status",
+            "value": executive["title"].replace("Overall Status: ", ""),
+            "detail": executive["detail"],
+            "status": executive["status"],
         },
         {
-            "title": "SLS stored results",
-            "value": "Available" if sls_available else "Not calculated",
-            "detail": "service stress / staged SLS summaries",
-            "status": "ready" if sls_available else "warning",
+            "title": "Critical check",
+            "value": "-" if critical is None else str(critical.get("Module", "-")),
+            "detail": "No stored governing row" if critical is None else f"{critical.get('Status', '-')} · {critical.get('D/C / Util.', '-')} · {critical.get('Governing Case', '-')}",
+            "status": "warning" if critical is None else _results_style_for_status(critical.get("Status")),
         },
         {
-            "title": "Next action",
-            "value": _results_next_engineering_action(state)["value"],
-            "detail": _results_next_engineering_action(state)["detail"],
-            "status": _results_next_engineering_action(state)["status"],
+            "title": "ULS/SLS completeness",
+            "value": f"ULS {len(uls_rows)} · SLS {'yes' if sls_available else 'no'}",
+            "detail": ("Column/Pier V+T stored; " if column_vt_available else "") + (f"Beam/Girder ULS checks: {uls_count}" if uls_count else ("PMM stored" if pmm_available else "Run ULS analysis")) + ("; SLS available" if sls_available else "; SLS pending"),
+            "status": "ready" if uls_rows and sls_available else "warning",
         },
         {
             "title": "Report handoff",
-            "value": "Review in Report / QA",
-            "detail": "traceability and limitations stay downstream",
-            "status": "info",
+            "value": handoff["value"],
+            "detail": handoff["detail"],
+            "status": handoff["status"],
         },
     ]
 
@@ -2106,6 +2189,148 @@ def _results_add_beam_uls_rows(state: object, rows: list[dict[str, object]]) -> 
             )
 
 
+def _results_column_pier_vt_dataframe(state: object) -> pd.DataFrame | None:
+    for key in ("column_pier_combined_vt_result_df", "column_pier_combined_vt_df"):
+        df = _results_dataframe(state.get(key))
+        if df is not None and not df.empty:
+            return df.copy()
+    return None
+
+
+def _results_column_pier_vt_governing_row(df: pd.DataFrame | None) -> dict[str, object] | None:
+    if df is None or df.empty:
+        return None
+    work = df.copy()
+    for column in ["Overall D/C value", "Stress D/C value", "Transverse D/C value", "Longitudinal D/C value"]:
+        if column not in work.columns:
+            work[column] = float("nan")
+        work[f"__{column}"] = pd.to_numeric(work[column], errors="coerce")
+    work["__Tu"] = pd.to_numeric(work.get("Tu kN-m"), errors="coerce").abs()
+    work["__Vu"] = pd.to_numeric(work.get("Vu kN"), errors="coerce").abs()
+    ranked = work[work["__Overall D/C value"].notna()].copy()
+    if ranked.empty:
+        return dict(work.iloc[0].to_dict())
+    ranked = ranked.sort_values(
+        ["__Overall D/C value", "__Tu", "__Vu"],
+        ascending=[False, False, False],
+        kind="stable",
+    )
+    return dict(ranked.iloc[0].to_dict())
+
+
+def _results_column_pier_vt_overall_status(df: pd.DataFrame | None) -> str:
+    if df is None or df.empty or "Status" not in df.columns:
+        return "NOT READY"
+    statuses = {str(value).strip().upper() for value in df["Status"].tolist()}
+    if "FAIL" in statuses:
+        return "FAIL"
+    if "DATA REQUIRED" in statuses:
+        return "DATA REQUIRED"
+    if "REVIEW" in statuses:
+        return "REVIEW"
+    if statuses == {"NOT APPLICABLE"}:
+        return "NOT APPLICABLE"
+    if "PASS" in statuses:
+        return "PASS"
+    return "REVIEW"
+
+
+def _results_column_pier_vt_max_dc(df: pd.DataFrame | None) -> str:
+    if df is None or df.empty or "Overall D/C value" not in df.columns:
+        return "-"
+    values = pd.to_numeric(df["Overall D/C value"], errors="coerce").dropna()
+    if values.empty:
+        return "-"
+    return f"{float(values.max()):.3f}"
+
+
+def _results_column_pier_vt_action(status: str, cause: str) -> str:
+    status_u = str(status or "").upper()
+    cause_l = str(cause or "").lower()
+    if "FAIL" in status_u:
+        if "torsion" in cause_l:
+            return "Review Tu demand, closed transverse torsion reinforcement, core geometry, and ordinary longitudinal torsion Al."
+        if "shear" in cause_l:
+            return "Review Vu demand, transverse reinforcement, effective shear area/core geometry, and source shear strength."
+        return "Open Analysis → ULS Strength → Shear + Torsion and resolve the controlling V+T strength gate."
+    if "DATA REQUIRED" in status_u or "NOT READY" in status_u:
+        return "Complete active Vux/Vuy/Tu demand, closed transverse reinforcement, ordinary longitudinal Al, and section/core geometry."
+    if "REVIEW" in status_u:
+        return "Review guarded V+T scope, assumptions, and downstream detailing before report issue."
+    return "Review seismic/detailing scope guard before Report / QA handoff."
+
+
+def _results_add_column_pier_vt_rows(state: object, rows: list[dict[str, object]]) -> None:
+    df = _results_column_pier_vt_dataframe(state)
+    if df is None or df.empty:
+        return
+    governing = _results_column_pier_vt_governing_row(df) or {}
+    status = _results_column_pier_vt_overall_status(df)
+    cause = str(state.get("column_pier_combined_vt_controlling_cause") or "-")
+    governing_label = str(state.get("column_pier_combined_vt_governing_label") or "").strip()
+    if not governing_label:
+        governing_label = f"{_results_scalar(governing.get('Case'))} / {_results_scalar(governing.get('Direction'))}"
+    rows.append(
+        {
+            "Module": "ULS Shear + Torsion",
+            "Check": "Column/Pier V+T",
+            "Status": status,
+            "Governing Case": governing_label,
+            "Station / Point": "Control section",
+            "Demand": f"Vu = {_results_scalar(governing.get('Vu kN'))} kN; Tu = {_results_scalar(governing.get('Tu kN-m'))} kN-m",
+            "Capacity / Limit": str(state.get("column_pier_combined_vt_route_label") or "AASHTO/ACI V+T gates"),
+            "D/C / Util.": _results_column_pier_vt_max_dc(df),
+            "Required Action": _results_column_pier_vt_action(status, cause),
+            "Source": "Analysis → ULS Strength → Shear + Torsion",
+        }
+    )
+
+
+def _render_results_column_pier_vt_dashboard(state: object) -> bool:
+    df = _results_column_pier_vt_dataframe(state)
+    if df is None or df.empty:
+        return False
+    rows: list[dict[str, object]] = []
+    _results_add_column_pier_vt_rows(state, rows)
+    if not rows:
+        return False
+    render_metric_cards(
+        [
+            {
+                "title": "Column/Pier V+T status",
+                "value": rows[0]["Status"],
+                "detail": str(state.get("column_pier_combined_vt_controlling_cause") or rows[0]["Required Action"]),
+                "status": _results_style_for_status(rows[0]["Status"]),
+            },
+            {
+                "title": "Max D/C",
+                "value": rows[0]["D/C / Util."],
+                "detail": str(rows[0]["Governing Case"]),
+                "status": _results_style_for_status(rows[0]["Status"]),
+            },
+            {
+                "title": "Scope guard",
+                "value": "Review required",
+                "detail": "Seismic confinement/detailing remains outside this strength gate.",
+                "status": "warning",
+            },
+        ]
+    )
+    st.markdown(
+        _RESULTS_DASHBOARD_CSS
+        + _results_html_table(
+            rows,
+            ["Module", "Check", "Status", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Required Action"],
+        ),
+        unsafe_allow_html=True,
+    )
+    screen_df = _results_dataframe(state.get("column_pier_combined_vt_screen_df"))
+    if screen_df is not None and not screen_df.empty:
+        with st.expander("Stored Column/Pier V+T compact result rows", expanded=False):
+            st.dataframe(screen_df, use_container_width=True, hide_index=True)
+    return True
+
+
 def _results_add_sls_rows(state: object, rows: list[dict[str, object]]) -> None:
     serviceability = state.get("serviceability_summary")
     if serviceability is None:
@@ -2136,6 +2361,7 @@ def _results_add_sls_rows(state: object, rows: list[dict[str, object]]) -> None:
 def _results_governing_rows(state: object) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     _results_add_pmm_rows(state, rows)
+    _results_add_column_pier_vt_rows(state, rows)
     _results_add_beam_uls_rows(state, rows)
     _results_add_sls_rows(state, rows)
     return rows
@@ -2145,14 +2371,14 @@ def _results_executive_status(rows: list[dict[str, object]], state: object | Non
     if not rows:
         return {
             "status": "warning",
-            "title": "No stored result set yet",
-            "detail": "Run checks in Analysis first. Results remains read-only and will not run solvers automatically.",
+            "title": "Overall Status: INCOMPLETE",
+            "detail": "No stored result set is available yet. Run ULS and SLS checks in Analysis first; Result Summary remains read-only and will not run solvers automatically.",
         }
     styles = [_results_style_for_status(row.get("Status")) for row in rows]
     if "danger" in styles:
         return {
             "status": "danger",
-            "title": "Design review required",
+            "title": "Overall Status: FAIL",
             "detail": "At least one stored result indicates FAIL, BLOCKED, or exceedance. Open the source Analysis check before report issue.",
         }
 
@@ -2163,25 +2389,31 @@ def _results_executive_status(rows: list[dict[str, object]], state: object | Non
         missing = ", ".join(str(row.get("Check")) for row in beam_rows if not bool(row.get("__calculated")))
         return {
             "status": "warning",
-            "title": "Partial results available",
+            "title": "Overall Status: INCOMPLETE",
             "detail": f"{beam_calculated}/{beam_total} Beam/Girder ULS checks have stored results. Missing checks: {missing}.",
         }
 
     if "warning" in styles:
         return {
             "status": "warning",
-            "title": "Stored results need review",
+            "title": "Overall Status: REVIEW",
             "detail": "Some checks are calculated but still require engineering review, detailing confirmation, or missing companion checks.",
         }
     if beam_total > 0 and beam_calculated == beam_total and state is not None and not _results_sls_available(state):
         return {
             "status": "warning",
-            "title": "ULS complete / SLS pending",
+            "title": "Overall Status: INCOMPLETE",
             "detail": "All Beam/Girder ULS checks have stored results. SLS serviceability is not calculated yet.",
+        }
+    if state is not None and not _results_sls_available(state):
+        return {
+            "status": "warning",
+            "title": "Overall Status: INCOMPLETE",
+            "detail": "Stored ULS summary is available, but SLS serviceability is not calculated yet.",
         }
     return {
         "status": "ready",
-        "title": "Stored ULS/SLS summaries available",
+        "title": "Overall Status: PASS",
         "detail": "Available stored results are ready for read-only review and downstream Report / QA traceability.",
     }
 
@@ -2399,23 +2631,23 @@ def _render_results_traceability(state: object) -> None:
 
 def render_results_workspace() -> None:
     render_page_header(
-        "Results",
-        "Engineering decision dashboard for stored ULS and SLS summaries; opening Results does not rerun PMM, ULS, or SLS.",
+        "Result Summary Dashboard",
+        "Professional decision dashboard for stored analysis results. Opening Result Summary does not rerun PMM, ULS, or SLS.",
         icon="RS",
-        badge="Stored results",
+        badge="Summary workspace",
     )
     active_subpage = _safe_choice(
-        "Results subpage",
-        WORKSPACE_NAVIGATION["Results"],
+        "Result Summary subpage",
+        WORKSPACE_NAVIGATION["Result Summary"],
         key="_results_active_subpage",
     )
     governing_rows = _results_governing_rows(st.session_state)
 
-    if active_subpage == "Summary Dashboard":
+    if active_subpage == "Overview":
         render_metric_cards(_results_availability_cards(st.session_state))
         render_section_bar(
-            "Overall Result Summary",
-            "Decision-level summary of stored ULS/SLS result completeness, blocking issues, and next engineering action.",
+            "Executive Result Summary",
+            "Decision-level status, critical check, result completeness, and next engineering action from stored Analysis outputs only.",
             mark="S",
         )
         _render_results_executive_summary(governing_rows, st.session_state)
@@ -2425,16 +2657,27 @@ def render_results_workspace() -> None:
             mark="A",
         )
         _render_results_required_actions(st.session_state, governing_rows)
-    elif active_subpage == "ULS Results":
+    elif active_subpage == "ULS Summary":
         render_section_bar(
-            "ULS Results Dashboard",
+            "ULS Summary Dashboard",
             "Read-only strength result summary from cached Analysis outputs.",
             mark="U",
         )
-        _render_results_beam_uls_dashboard(st.session_state)
-    elif active_subpage == "SLS Results":
+        has_column_vt = _render_results_column_pier_vt_dashboard(st.session_state)
+        has_beam_uls = any(bool(row.get("__calculated")) for row in _results_beam_uls_summary_rows(st.session_state))
+        if has_beam_uls:
+            if has_column_vt:
+                st.markdown("##### Beam/Girder stored ULS summaries")
+            _render_results_beam_uls_dashboard(st.session_state)
+        elif not has_column_vt:
+            st.markdown(
+                _RESULTS_DASHBOARD_CSS
+                + '<div class="cpmm-results-empty">No stored ULS result rows are available yet. Run ULS Strength checks in Analysis, then return here for the read-only summary.</div>',
+                unsafe_allow_html=True,
+            )
+    elif active_subpage == "SLS Summary":
         render_section_bar(
-            "SLS Results Dashboard",
+            "SLS Summary Dashboard",
             "Read-only serviceability result summary from cached Analysis outputs.",
             mark="L",
         )
@@ -2467,6 +2710,8 @@ def main() -> None:
 
     update_dirty_state_from_session(st.session_state)
 
+    if st.session_state.get("_nav_active_workspace") == "Results":
+        st.session_state["_nav_active_workspace"] = "Result Summary"
     if st.session_state.get("_nav_active_workspace") not in WORKSPACE_NAVIGATION:
         st.session_state["_nav_active_workspace"] = "Setup"
     _render_commercial_sidebar(str(st.session_state.get("_nav_active_workspace", "Setup")))
@@ -2486,7 +2731,7 @@ def main() -> None:
         render_loads_workspace()
     elif active_workspace == "Analysis":
         render_analysis_workspace()
-    elif active_workspace == "Results":
+    elif active_workspace == "Result Summary":
         render_results_workspace()
     elif active_workspace == "Report / QA":
         render_report_qa_workspace()

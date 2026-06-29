@@ -27,7 +27,7 @@ def test_ui_theme1_is_css_only_and_preserves_navigation_structure() -> None:
     assert source.count('"Sections": ["Section Builder", "Rebar", "Prestress"]') == 1
     assert source.count('"Loads": ["Loads"]') == 1
     assert source.count('"Analysis": ["ULS Strength", "SLS / Stress & Cracking", "SLS Deflection / Camber"]') == 1
-    assert source.count('"Results": ["Results"]') == 1
+    assert source.count('"Result Summary": ["Overview", "ULS Summary", "SLS Summary", "Traceability"]') == 1
     assert source.count('"Report / QA": ["Report / QA"]') == 1
 
 

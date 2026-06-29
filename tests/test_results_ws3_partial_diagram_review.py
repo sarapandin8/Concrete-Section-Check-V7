@@ -7,13 +7,13 @@ SOURCE = Path("app.py").read_text(encoding="utf-8")
 
 
 def test_results_executive_state_reports_partial_beam_uls_results() -> None:
-    assert 'title": "Partial results available"' in SOURCE
+    assert 'title": "Overall Status: INCOMPLETE"' in SOURCE
     assert 'Beam/Girder ULS checks have stored results' in SOURCE
     assert '_render_results_executive_summary(governing_rows, st.session_state)' in SOURCE
 
 
 def test_results_governing_section_states_only_calculated_checks_are_listed() -> None:
-    assert "Decision-level summary of stored ULS/SLS result completeness" in SOURCE
+    assert "Decision-level status, critical check, result completeness" in SOURCE
     assert "Required Actions" in SOURCE
 
 
@@ -36,5 +36,6 @@ def test_results_diagram_review_no_longer_requires_stored_plotly_figure_object()
 
 
 def test_results_availability_counts_cached_result_diagrams() -> None:
-    assert "Next action" in SOURCE
+    assert "Critical check" in SOURCE
+    assert "ULS/SLS completeness" in SOURCE
     assert "Run SLS Stress & Cracking" in SOURCE
