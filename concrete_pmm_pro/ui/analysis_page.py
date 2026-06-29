@@ -84,6 +84,7 @@ from concrete_pmm_pro.core.design_code import (
     project_code_edition_from_session,
     project_design_code_from_session,
     workflow_project_code_edition_from_session,
+    workflow_project_code_label_from_session,
     workflow_project_design_code_from_session,
 )
 from concrete_pmm_pro.core.reinforcement_system import (

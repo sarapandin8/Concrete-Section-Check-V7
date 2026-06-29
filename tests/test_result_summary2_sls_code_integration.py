@@ -84,3 +84,4 @@ def test_analysis_page_publishes_sls_stage_summary_for_result_summary() -> None:
     assert "result_summary_beam_girder_sls_stage_summary_df" in ANALYSIS_SOURCE
     assert "RESULT.SUMMARY2" in ANALYSIS_SOURCE
     assert "workflow_project_code_label_from_session(st.session_state)" in ANALYSIS_SOURCE
+    assert "workflow_project_code_label_from_session," in ANALYSIS_SOURCE
