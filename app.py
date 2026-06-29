@@ -1771,14 +1771,46 @@ def _results_railway_sls_max_utilization(decision_df: pd.DataFrame | None) -> st
     return f"{float(values.max()):.3f}"
 
 
+def _results_sls_stage_action(governing: Mapping[str, object] | None) -> str:
+    """Return an engineering-specific action for a governing staged SLS row."""
+
+    row = governing or {}
+    stage = _results_scalar(row.get("Stage") or row.get("Check stage"))
+    case = _results_scalar(row.get("Case Name") or row.get("Governing source"))
+    station = _results_scalar(row.get("Station x (m)"))
+    fiber = _results_scalar(row.get("Fiber"))
+    controls = _results_scalar(row.get("Controls") or row.get("Control"))
+    util = _results_scalar(row.get("Utilization") or row.get("Max utilization"))
+    limit = _results_scalar(row.get("Limit profile") or row.get("Section basis"))
+
+    location_parts = []
+    if station != "-":
+        location_parts.append(f"x = {station} m")
+    if fiber != "-":
+        location_parts.append(f"{fiber} fiber")
+    location = " / ".join(location_parts) if location_parts else "governing location"
+    case_label = f" ({case})" if case != "-" else ""
+
+    if util != "-":
+        return (
+            f"Review {stage}{case_label} {controls.lower()} at {location}; utilization = {util}. "
+            "Adjust lifting/support stage assumptions, release strength, prestress losses, temporary reinforcement, or section/stage geometry before Report / QA."
+        )
+    if limit != "-":
+        return f"Review {stage}{case_label} at {location} against {limit} before Report / QA."
+    return "Review governing staged SLS stress, stress-limit profile, load attribution, and project-specific limits."
+
+
 def _results_railway_sls_review_action(decision_df: pd.DataFrame | None) -> str:
     governing = _results_railway_sls_governing_row(decision_df) or {}
     action = str(governing.get("Review action") or "").strip()
     if action:
         return action
     status = _results_railway_sls_status(decision_df)
+    if "FAIL" in status or "EXCEED" in status:
+        return _results_sls_stage_action(governing)
     if "REVIEW" in status:
-        return "Review governing staged SLS stress, stress-limit profile, load attribution, and project-specific limits."
+        return _results_sls_stage_action(governing)
     if "PASS" in status:
         return "Review guarded SLS preview assumptions before final report issue."
     return "Run or refresh staged SLS stress checks before Report / QA."
@@ -2013,6 +2045,18 @@ def _results_sls_summary_cards(state: object) -> list[dict[str, object]]:
     if serviceability is None and railway_decision is not None:
         status = _results_railway_sls_status(railway_decision)
         governing = _results_railway_sls_governing_row(railway_decision) or {}
+        if stage_governing is not None and _results_style_for_status(stage_governing.get("Status")) == "danger":
+            status = _results_scalar(stage_governing.get("Status"))
+            governing = stage_governing
+            action_detail = _results_sls_stage_action(stage_governing)
+            governing_value = _results_scalar(stage_governing.get("Stage"))
+            governing_detail = f"{_results_scalar(stage_governing.get('Case Name'))} · {_results_scalar(stage_governing.get('Station x (m)'))} m / {_results_scalar(stage_governing.get('Fiber'))}"
+            util_value = _results_scalar(stage_governing.get("Utilization"))
+        else:
+            action_detail = _results_railway_sls_review_action(railway_decision)
+            governing_value = _results_scalar(governing.get("Check stage"))
+            governing_detail = _results_scalar(governing.get("Governing x / case"))
+            util_value = _results_railway_sls_max_utilization(railway_decision)
         return [
             {
                 "title": "Design code",
@@ -2028,14 +2072,14 @@ def _results_sls_summary_cards(state: object) -> list[dict[str, object]]:
             },
             {
                 "title": "Governing stage",
-                "value": _results_scalar(governing.get("Check stage")),
-                "detail": _results_scalar(governing.get("Governing x / case")),
+                "value": governing_value,
+                "detail": governing_detail,
                 "status": _results_style_for_status(status),
             },
             {
                 "title": "Max utilization",
-                "value": _results_railway_sls_max_utilization(railway_decision),
-                "detail": _results_railway_sls_review_action(railway_decision),
+                "value": util_value,
+                "detail": action_detail,
                 "status": _results_style_for_status(status),
             },
         ]
@@ -2055,7 +2099,7 @@ def _results_sls_summary_cards(state: object) -> list[dict[str, object]]:
             },
             {
                 "title": "SLS status",
-                "value": "Partial / stress stored",
+                "value": stage_status if _results_style_for_status(stage_status) == "danger" else "Partial / stress stored",
                 "detail": f"{len(stage_df):,} stored stage stress summary row(s); formal SLS/report handoff still pending",
                 "status": "warning" if _results_style_for_status(stage_status) != "danger" else "danger",
             },
@@ -2111,7 +2155,7 @@ def _render_results_sls_dashboard(state: object) -> None:
             _RESULTS_DASHBOARD_CSS
             + _results_html_table(
                 rows,
-                ["Module", "Check", "Status", "Code Basis", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Source"],
+                ["Module", "Check", "Status", "Code Basis", "Governing Case", "Station / Point", "Demand", "Capacity / Limit", "D/C / Util.", "Required Action", "Source"],
             ),
             unsafe_allow_html=True,
         )
@@ -2158,6 +2202,27 @@ def _results_availability_cards(state: object) -> list[dict[str, object]]:
     executive = _results_executive_status(rows, state)
     critical = _results_critical_row(rows)
     handoff = _results_report_handoff_state(state, rows)
+    has_blocking_result = any(_results_style_for_status(row.get("Status")) == "danger" for row in rows)
+    has_review_result = any(_results_style_for_status(row.get("Status")) == "warning" for row in rows)
+    completeness_detail = ("Column/Pier V+T stored; " if column_vt_available else "") + (
+        f"Beam/Girder ULS checks: {uls_count}" if uls_count else ("PMM stored" if pmm_available else "Run ULS analysis")
+    )
+    if sls_complete and has_blocking_result:
+        completeness_detail += "; SLS complete, but failing check exists"
+        completeness_status = "info"
+    elif sls_complete and has_review_result:
+        completeness_detail += "; SLS complete, review item exists"
+        completeness_status = "info"
+    elif sls_complete:
+        completeness_detail += "; SLS complete"
+        completeness_status = "ready" if uls_rows else "warning"
+    elif sls_available:
+        completeness_detail += "; SLS stage stress stored"
+        completeness_status = "warning"
+    else:
+        completeness_detail += "; SLS pending"
+        completeness_status = "warning"
+
     return [
         {
             "title": "Overall status",
@@ -2180,8 +2245,8 @@ def _results_availability_cards(state: object) -> list[dict[str, object]]:
         {
             "title": "ULS/SLS completeness",
             "value": f"ULS {len(uls_rows)} · SLS {'complete' if sls_complete else ('partial' if sls_available else 'no')}",
-            "detail": ("Column/Pier V+T stored; " if column_vt_available else "") + (f"Beam/Girder ULS checks: {uls_count}" if uls_count else ("PMM stored" if pmm_available else "Run ULS analysis")) + ("; SLS complete" if sls_complete else ("; SLS stage stress stored" if sls_available else "; SLS pending")),
-            "status": "ready" if uls_rows and sls_complete else "warning",
+            "detail": completeness_detail,
+            "status": completeness_status,
         },
         {
             "title": "Report handoff",
@@ -2243,6 +2308,17 @@ def _results_scalar(value: object) -> str:
     if isinstance(value, float):
         return "-" if pd.isna(value) else f"{value:.3f}"
     return str(value) if str(value) else "-"
+
+
+def _results_value_with_unit(value: object, unit: str) -> str:
+    """Format a stored result value without duplicating an existing unit suffix."""
+
+    text = _results_scalar(value).strip()
+    if text == "-":
+        return text
+    if unit.lower() in text.lower():
+        return text
+    return f"{text} {unit}"
 
 
 def _results_first_existing(row: Mapping[str, object], candidates: list[str], default: object = "-") -> object:
@@ -2316,12 +2392,12 @@ def _results_beam_uls_demand(check_name: str, row: Mapping[str, object]) -> str:
         return _results_scalar(_results_first_existing(row, ["Demand", "Vu kN", "Vuy kN", "Vux kN"]))
     if check_name == "Torsion":
         tu = _results_first_existing(row, ["Tu kN-m", "Demand"])
-        return "-" if tu == "-" else f"Tu = {_results_scalar(tu)} kN-m"
+        return "-" if tu == "-" else f"Tu = {_results_value_with_unit(tu, 'kN-m')}"
     if check_name == "Shear + Torsion":
         vu = _results_first_existing(row, ["Vu kN", "Vuy kN", "Vux kN"])
         tu = _results_first_existing(row, ["Tu kN-m"])
         if vu != "-" and tu != "-":
-            return f"Vu = {_results_scalar(vu)} kN; Tu = {_results_scalar(tu)} kN-m"
+            return f"Vu = {_results_value_with_unit(vu, 'kN')}; Tu = {_results_value_with_unit(tu, 'kN-m')}"
         return _results_scalar(_results_first_existing(row, ["Demand", "Vu / Tu"]))
     return _results_scalar(_results_first_existing(row, ["Demand", "Vu / Tu", "Vu kN", "Tu kN-m"]))
 
@@ -2634,6 +2710,7 @@ def _results_add_sls_rows(state: object, rows: list[dict[str, object]]) -> None:
                 "Demand": "-" if governing.get("Actual stress (MPa)") is None else f"{governing.get('Controls', 'Stress')} {float(governing.get('Actual stress (MPa)')):.3f} MPa",
                 "Capacity / Limit": str(governing.get("Limit profile", "Stored SLS stage stress limit")),
                 "D/C / Util.": "-" if governing.get("Utilization") is None else f"{float(governing.get('Utilization')):.3f}",
+                "Required Action": _results_sls_stage_action(governing),
                 "Source": "Analysis → SLS / Stress & Cracking → staged stress diagram",
                 "Code Basis": _results_design_code_label(state),
             }
@@ -2653,6 +2730,7 @@ def _results_add_sls_rows(state: object, rows: list[dict[str, object]]) -> None:
                 "Demand": f"{_results_scalar(stage_governing.get('Actual stress (MPa)'))} MPa",
                 "Capacity / Limit": _results_scalar(stage_governing.get("Limit stress (MPa)")),
                 "D/C / Util.": _results_scalar(stage_governing.get("Utilization")),
+                "Required Action": _results_sls_stage_action(stage_governing),
                 "Source": "Analysis → SLS / Stress & Cracking → staged stress diagram",
                 "Code Basis": _results_design_code_label(state),
             }
@@ -2675,6 +2753,7 @@ def _results_add_sls_rows(state: object, rows: list[dict[str, object]]) -> None:
                 "Demand": f"Compression {compression} MPa; tension {tension} MPa",
                 "Capacity / Limit": _results_scalar(item.get("Section basis")),
                 "D/C / Util.": _results_scalar(item.get("Max utilization")),
+                "Required Action": _results_sls_stage_action(dict(item.to_dict())),
                 "Source": "Analysis → Railway U-Girder staged SLS stress preview",
                 "Code Basis": _results_design_code_label(state),
             }
@@ -2957,6 +3036,10 @@ def _render_results_diagram_review(state: object) -> None:
 def _render_results_traceability(state: object) -> None:
     beam_calculated, beam_total, _missing = _results_beam_uls_completion(state)
     railway_sls_available = _results_railway_u_girder_sls_decision_dataframe(state) is not None
+    stored_available = bool(beam_calculated) or railway_sls_available or _results_column_pier_vt_dataframe(state) is not None or state.get("serviceability_summary") is not None
+    runtime_status = str(state.get("analysis_runtime_last_status") or "").strip()
+    if not runtime_status:
+        runtime_status = "Read-only summary; stored analysis results available" if stored_available else "Read-only summary; no stored solver result"
     trace_rows = [
         {"Item": "Workflow", "Value": analysis_mode_label(_analysis_mode_from_session_for_chrome())},
         {"Item": "Design code", "Value": _results_design_code_label(state)},
@@ -2966,7 +3049,7 @@ def _render_results_traceability(state: object) -> None:
         {"Item": "Column/Pier V+T stored", "Value": "Yes" if _results_column_pier_vt_dataframe(state) is not None else "No"},
         {"Item": "Elastic SLS cache hash", "Value": str(state.get("serviceability_summary_hash") or "-")},
         {"Item": "Railway U-Girder staged SLS stored", "Value": "Yes" if railway_sls_available else "No"},
-        {"Item": "Runtime status", "Value": str(state.get("analysis_runtime_last_status") or "-")},
+        {"Item": "Result Summary runtime", "Value": runtime_status},
         {"Item": "Runtime last run", "Value": str(state.get("analysis_runtime_last_run_at") or "-")},
     ]
     st.dataframe(pd.DataFrame(trace_rows), use_container_width=True, hide_index=True)

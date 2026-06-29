@@ -16,10 +16,10 @@ def test_results_ready_state_uses_stored_uls_sls_summaries_wording() -> None:
     assert '"title": "Overall Status: PASS"' in SOURCE
 
 
-def test_results_shear_torsion_demand_display_includes_vu_tu_units() -> None:
+def test_results_shear_torsion_demand_display_includes_vu_tu_units_without_duplication() -> None:
     assert 'if check_name == "Shear + Torsion":' in SOURCE
-    assert 'return f"Vu = {_results_scalar(vu)} kN; Tu = {_results_scalar(tu)} kN-m"' in SOURCE
+    assert "return f\"Vu = {_results_value_with_unit(vu, \'kN\')}; Tu = {_results_value_with_unit(tu, \'kN-m\')}\"" in SOURCE
 
 
-def test_results_torsion_demand_display_includes_tu_unit() -> None:
-    assert 'return "-" if tu == "-" else f"Tu = {_results_scalar(tu)} kN-m"' in SOURCE
+def test_results_torsion_demand_display_includes_tu_unit_without_duplication() -> None:
+    assert "return \"-\" if tu == \"-\" else f\"Tu = {_results_value_with_unit(tu, \'kN-m\')}\"" in SOURCE
