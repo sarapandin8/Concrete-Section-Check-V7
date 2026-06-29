@@ -1,3 +1,28 @@
+### RESULT.SUMMARY3B — Critical Check Ranking and Failure-Action Polish
+
+Polishes the **Result Summary Dashboard** so the Overview and ULS Summary rank and explain failures using the same decision evidence shown in Analysis.
+
+#### What changed
+- Critical Check ranking now parses all utilization values in compact strings, so detailing ratios such as `Av/s min D/C 1.893` can govern over a lower SLS stress utilization.
+- The Overview Critical Check card now reports the check-level label such as `ULS Shear` instead of only the broad module label.
+- Overall FAIL wording now lists the leading failing checks so ULS shear detailing, source-blocked V+T, and SLS preview failures are visible together.
+- Source-blocked Beam/Girder Shear + Torsion rows now display `Interaction D/C ...; source gate BLOCKED` so the interaction ratio is not mistaken for an accepted final pass.
+- Shear failure actions now name the minimum stirrup/detailing gate and recommend increasing shear reinforcement or reducing stirrup spacing when Av/s minimum controls.
+
+#### Not changed
+- No PMM, shear, torsion, SLS stress, prestress, or V+T engineering equations.
+- No solver execution from Result Summary; the workspace remains read-only and uses stored Analysis outputs.
+- No project schema, load routing, report export, or widget-key contract changes.
+
+#### Validation run
+```bash
+python -m py_compile app.py concrete_pmm_pro/ui/analysis_page.py
+pytest -q tests/test_result_summary*.py tests/test_results_ws*.py tests/test_state_persist1_reinforcement_and_results.py
+pytest -q tests/test_result_summary1_dashboard.py tests/test_result_summary2_sls_code_integration.py tests/test_result_summary3_decision_polish.py tests/test_result_summary3b_critical_ranking.py tests/test_results_ws2_beam_uls_dashboard.py tests/test_results_ws4_summary_dashboard.py tests/test_aashto_col_vt1.py tests/test_column_pier_vt_report1.py tests/test_valid_column_pier_vt.py
+```
+
+Targeted Result Summary and VT/report tests passed.
+
 ### UI.COMMERCIAL4.7 — ULS Summary Spacing and Decision Table Polish
 
 Polishes the newly upgraded **Analysis → ULS Strength → Summary** dashboard for better readability and commercial presentation.

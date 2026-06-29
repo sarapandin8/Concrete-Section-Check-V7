@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from html import escape
+import re
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -2172,13 +2173,68 @@ def _render_results_sls_dashboard(state: object) -> None:
         )
 
 
+def _results_utilization_values(value: object) -> list[float]:
+    """Extract all numeric utilization ratios from compact summary text.
+
+    Result Summary rows can contain multiple decision ratios, for example
+    ``Strength D/C 0.422; Av/s min D/C 1.893``.  Critical-check ranking must
+    consider the controlling detailing/source ratio, not only the first token or
+    the nominal interaction ratio.
+    """
+
+    text = str(value or "")
+    values: list[float] = []
+    for match in re.findall(r"[-+]?\d*\.?\d+(?:[eE][-+]?\d+)?", text.replace(",", "")):
+        try:
+            numeric = float(match)
+        except ValueError:
+            continue
+        if pd.notna(numeric):
+            values.append(numeric)
+    return values
+
+
 def _results_parse_utilization(value: object) -> float | None:
-    try:
-        text = str(value).replace("D/C", "").replace("=", " ").strip().split()[0]
-        numeric = float(text)
-    except (IndexError, TypeError, ValueError):
-        return None
-    return numeric if pd.notna(numeric) else None
+    values = _results_utilization_values(value)
+    return max(values) if values else None
+
+
+def _results_critical_label(row: Mapping[str, object] | None) -> str:
+    if not row:
+        return "-"
+    module = str(row.get("Module") or "-").strip()
+    check = str(row.get("Check") or "").strip()
+    if module == "ULS Beam/Girder" and check:
+        return f"ULS {check}"
+    if module == "SLS Stress":
+        return "SLS Stress"
+    if check and check not in module:
+        return f"{module} · {check}"
+    return module or "-"
+
+
+def _results_failing_check_summary(rows: list[dict[str, object]], *, limit: int = 3) -> str:
+    failing = [row for row in rows if _results_style_for_status(row.get("Status")) == "danger"]
+    if not failing:
+        return ""
+    ranked = sorted(
+        failing,
+        key=lambda row: (_results_parse_utilization(row.get("D/C / Util.")) or -1.0),
+        reverse=True,
+    )
+    parts: list[str] = []
+    for row in ranked[:limit]:
+        util = str(row.get("D/C / Util.") or "-").strip()
+        status = str(row.get("Status") or "-").strip()
+        label = _results_critical_label(row)
+        if util and util != "-":
+            parts.append(f"{label} ({status}; {util})")
+        else:
+            parts.append(f"{label} ({status})")
+    extra = len(ranked) - limit
+    if extra > 0:
+        parts.append(f"+{extra} more")
+    return "; ".join(parts)
 
 
 def _results_critical_row(rows: list[dict[str, object]]) -> dict[str, object] | None:
@@ -2243,7 +2299,7 @@ def _results_availability_cards(state: object) -> list[dict[str, object]]:
         },
         {
             "title": "Critical check",
-            "value": "-" if critical is None else str(critical.get("Module", "-")),
+            "value": "-" if critical is None else _results_critical_label(critical),
             "detail": "No stored governing row" if critical is None else f"{critical.get('Status', '-')} · {critical.get('D/C / Util.', '-')} · {critical.get('Governing Case', '-')}",
             "status": "warning" if critical is None else _results_style_for_status(critical.get("Status")),
         },
@@ -2435,12 +2491,18 @@ def _results_beam_uls_capacity(check_name: str, row: Mapping[str, object]) -> st
     return _results_scalar(_results_first_existing(row, ["Capacity", "Capacity / Limit", "Interaction limit", "limit"]))
 
 
-def _results_beam_uls_action(check_name: str, status: str) -> str:
+def _results_beam_uls_action(check_name: str, status: str, row: Mapping[str, object] | None = None) -> str:
     label = status.upper()
+    row_map: Mapping[str, object] = row or {}
     if check_name == "Shear + Torsion" and ("SOURCE BLOCKED" in label or "BLOCKED" in label):
-        return "Resolve source Shear/Torsion FAIL before accepting V+T interaction."
+        return "Resolve source Shear/Torsion FAIL before accepting V+T interaction. Interaction D/C is informational until source gates pass."
     if check_name == "Shear + Torsion" and "DATA REQUIRED" in label:
         return "Complete required V+T source data before accepting interaction."
+    if check_name == "Shear" and "FAIL" in label:
+        utilization = _beam_uls_shear_utilization_display(row_map) if row_map else ""
+        if "Av/s min" in utilization or "Spacing" in utilization or "detailing" in utilization.lower():
+            return f"Resolve minimum stirrup/detailing gate: {utilization}. Increase provided shear reinforcement or reduce stirrup spacing before accepting ULS shear."
+        return "Resolve governing shear strength/detailing gate in Analysis → ULS Strength → Shear."
     if "FAIL" in label:
         return "Revise capacity/detailing in the source Analysis check."
     if "PASS" in label or "BELOW THRESHOLD" in label:
@@ -2459,6 +2521,9 @@ def _results_beam_uls_summary_rows(state: object) -> list[dict[str, object]]:
         entry = cache.get(check_name)
         row = _results_beam_uls_best_row(entry, check_name)
         status = _results_beam_uls_row_status(check_name, row, cache)
+        utilization = _results_beam_uls_utilization(check_name, row)
+        if check_name == "Shear + Torsion" and str(status).upper() == "SOURCE BLOCKED" and utilization != "-":
+            utilization = f"Interaction D/C {utilization}; source gate BLOCKED"
         rows.append(
             {
                 "Module": "ULS Beam/Girder",
@@ -2468,8 +2533,8 @@ def _results_beam_uls_summary_rows(state: object) -> list[dict[str, object]]:
                 "Station / Point": _results_scalar(_results_first_existing(row, ["Governing x", "Station x", "Station type"])),
                 "Demand": _results_beam_uls_demand(check_name, row),
                 "Capacity / Limit": _results_beam_uls_capacity(check_name, row),
-                "D/C / Util.": _results_beam_uls_utilization(check_name, row),
-                "Required Action": _results_beam_uls_action(check_name, status),
+                "D/C / Util.": utilization,
+                "Required Action": _results_beam_uls_action(check_name, status, row),
                 "Source": f"Analysis → ULS Strength → {check_name}",
                 "Code Basis": _results_design_code_label(state),
                 "__calculated": bool(row),
@@ -2801,10 +2866,14 @@ def _results_executive_status(rows: list[dict[str, object]], state: object | Non
         }
     styles = [_results_style_for_status(row.get("Status")) for row in rows]
     if "danger" in styles:
+        failing_summary = _results_failing_check_summary(rows)
+        detail = "At least one stored result indicates FAIL, BLOCKED, or exceedance. Open the source Analysis check before report issue."
+        if failing_summary:
+            detail = f"Failing checks: {failing_summary}. Open the source Analysis check before report issue."
         return {
             "status": "danger",
             "title": "Overall Status: FAIL",
-            "detail": "At least one stored result indicates FAIL, BLOCKED, or exceedance. Open the source Analysis check before report issue.",
+            "detail": detail,
         }
 
     beam_rows = _results_beam_uls_summary_rows(state) if state is not None else []
