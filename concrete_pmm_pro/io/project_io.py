@@ -888,6 +888,71 @@ def project_to_json(project: ProjectModel) -> str:
     return project.model_dump_json(indent=2)
 
 
+def _legacy_member_type_label_to_internal(value: Any, workflow: Any = None) -> str | None:
+    """Map older visible workflow/member labels to the current internal key."""
+
+    raw_member = str(value or "").strip()
+    raw_workflow = str(workflow or "").strip()
+    if raw_member in {"column_pier_pmm", "beam_girder", "building_beam_girder", "general_section"}:
+        return raw_member
+    probe = f"{raw_member} {raw_workflow}".casefold().replace("_", " ").replace("/", " ")
+    if "building" in probe and ("beam" in probe or "girder" in probe):
+        return "building_beam_girder"
+    if "bridge" in probe and ("beam" in probe or "girder" in probe):
+        return "beam_girder"
+    if "railway" in probe and "girder" in probe:
+        return "beam_girder"
+    if "beam" in probe and "girder" in probe:
+        return "beam_girder"
+    if "column" in probe or "pier" in probe or "wall" in probe or "pylon" in probe:
+        return "column_pier_pmm"
+    if "pmm" in probe or "section" in probe:
+        return "column_pier_pmm"
+    return None
+
+
+def _normalize_legacy_analysis_mode_settings(data: dict[str, Any]) -> dict[str, Any]:
+    """Return a project dict whose analysis_mode_settings can load across milestones."""
+
+    migrated = dict(data)
+    settings = migrated.get("analysis_mode_settings")
+    if settings is None and any(key in migrated for key in ("member_type", "analysis_workflow", "workflow")):
+        settings = {}
+    if isinstance(settings, dict):
+        normalized_settings = dict(settings)
+        raw_member = normalized_settings.get("member_type", migrated.get("member_type"))
+        raw_workflow = normalized_settings.get("analysis_workflow", migrated.get("analysis_workflow", migrated.get("workflow")))
+        member = _legacy_member_type_label_to_internal(raw_member, raw_workflow)
+        if member is not None:
+            normalized_settings["member_type"] = member
+        workflow = str(normalized_settings.get("analysis_workflow") or raw_workflow or "").strip()
+        allowed_workflows = {"pmm_section", "beam_girder_future", "bridge_beam_girder", "building_beam_girder", "general_section"}
+        if workflow not in allowed_workflows:
+            if normalized_settings.get("member_type") == "beam_girder":
+                normalized_settings["analysis_workflow"] = "bridge_beam_girder"
+            elif normalized_settings.get("member_type") == "building_beam_girder":
+                normalized_settings["analysis_workflow"] = "building_beam_girder"
+            else:
+                normalized_settings["analysis_workflow"] = "pmm_section"
+        migrated["analysis_mode_settings"] = normalized_settings
+    return migrated
+
+
+def _coerce_legacy_bool(value: Any, *, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().casefold()
+    if text in {"1", "true", "yes", "y", "active", "on"}:
+        return True
+    if text in {"0", "false", "no", "n", "inactive", "off"}:
+        return False
+    return default
+
+
 def _migrate_legacy_data(data: dict[str, Any]) -> dict[str, Any]:
     migrated = dict(data)
     legacy_project_fields = {
@@ -905,19 +970,49 @@ def _migrate_legacy_data(data: dict[str, Any]) -> dict[str, Any]:
         if old_name in migrated and new_name not in migrated:
             migrated[new_name] = migrated.pop(old_name)
 
+    if migrated.get("version") is None:
+        migrated.pop("version", None)
+    for key in ("project_name", "unit_system"):
+        if migrated.get(key) is None:
+            migrated.pop(key, None)
+    if migrated.get("code") is None:
+        migrated.pop("code", None)
+
+    migrated = _normalize_legacy_analysis_mode_settings(migrated)
+
+    load_items = migrated.get("loads")
+    if isinstance(load_items, list):
+        normalized_loads: list[Any] = []
+        for item in load_items:
+            if not isinstance(item, dict):
+                continue
+            row = dict(item)
+            if "active" in row:
+                row["active"] = _coerce_legacy_bool(row.get("active"), default=True)
+            if row.get("name") is None or str(row.get("name") or "").strip() == "":
+                row["name"] = f"LC{len(normalized_loads) + 1}"
+            normalized_loads.append(row)
+        migrated["loads"] = normalized_loads
+
     prestress_items = migrated.get("prestress_elements")
     if isinstance(prestress_items, list):
+        normalized_prestress: list[Any] = []
         for item in prestress_items:
             if not isinstance(item, dict):
                 continue
-            if "Pe_eff_N" in item and "pe_eff_n" not in item:
-                item["pe_eff_n"] = item.pop("Pe_eff_N")
-            if "Ep_MPa" in item and "ep_mpa" not in item:
-                item["ep_mpa"] = item.pop("Ep_MPa")
-            if "fpy_MPa" in item and "fpy_mpa" not in item:
-                item["fpy_mpa"] = item.pop("fpy_MPa")
-            if "fpu_MPa" in item and "fpu_mpa" not in item:
-                item["fpu_mpa"] = item.pop("fpu_MPa")
+            row = dict(item)
+            if "Pe_eff_N" in row and "pe_eff_n" not in row:
+                row["pe_eff_n"] = row.pop("Pe_eff_N")
+            if "Ep_MPa" in row and "ep_mpa" not in row:
+                row["ep_mpa"] = row.pop("Ep_MPa")
+            if "fpy_MPa" in row and "fpy_mpa" not in row:
+                row["fpy_mpa"] = row.pop("fpy_MPa")
+            if "fpu_MPa" in row and "fpu_mpa" not in row:
+                row["fpu_mpa"] = row.pop("fpu_MPa")
+            if "bonded" in row:
+                row["bonded"] = _coerce_legacy_bool(row.get("bonded"), default=True)
+            normalized_prestress.append(row)
+        migrated["prestress_elements"] = normalized_prestress
 
     return migrated
 

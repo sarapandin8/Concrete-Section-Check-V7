@@ -1237,3 +1237,11 @@ This is presentation-only polish. It does not change trace coordinates, result d
 Replaced the previous solid dark-navy Streamlit expander bars with a lighter blue accordion style so secondary audit/detail sections no longer dominate the commercial dashboard visual hierarchy. Collapsed and expanded expander headers now use light-blue surfaces, blue borders, and dark readable text; navy is retained for structural/brand emphasis rather than default accordion fills.
 
 This is presentation-only UI polish. It does not change solver equations, SLS/ULS/PMM/prestress/rebar logic, project schema, widget keys, save/load behavior, or navigation state.
+
+### STATE.RESULT.PERSIST2 — Legacy Project JSON Load Compatibility
+
+- Adds a backward-compatible project JSON migration path for older Concrete Section Pro files saved before the analysis-cache persistence milestone.
+- Normalizes legacy workflow/member labels such as visible Bridge Beam/Girder labels or `bridge_beam_girder` into the current internal `beam_girder` workflow key before Pydantic validation.
+- Keeps old input-only project files loadable as valid projects with analysis status `Not run`; missing analysis caches are not treated as file corruption.
+- Coerces common legacy boolean fields such as load activity and prestress bonded flags from string/numeric values when loading old JSON.
+- Does not change ULS, SLS, prestress, lifting, debonding, or report equations.

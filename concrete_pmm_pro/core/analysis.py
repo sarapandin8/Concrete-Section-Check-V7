@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -44,6 +44,61 @@ class AnalysisModeSettings(BaseModel):
     allow_sls_workflow: bool = True
     allow_beam_girder_placeholder: bool = False
     note: str | None = None
+
+
+    @model_validator(mode="before")
+    @classmethod
+    def accept_legacy_workflow_labels(cls, data: Any) -> Any:
+        """Normalize old project JSON workflow labels before Literal validation.
+
+        Earlier Concrete Section Pro project files used several visible UI labels
+        or workflow names as ``member_type``.  Pydantic validates Literal fields
+        before the after-validator runs, so those files could fail to load after
+        newer workflow-routing milestones.  Keep project loading backward
+        compatible by mapping those labels to the durable internal member type.
+        """
+
+        if not isinstance(data, dict):
+            return data
+        migrated = dict(data)
+        raw_member = str(migrated.get("member_type") or "").strip()
+        raw_workflow = str(migrated.get("analysis_workflow") or "").strip()
+        probe = f"{raw_member} {raw_workflow}".casefold().replace("_", " ").replace("/", " ")
+
+        def _normalized_member() -> str | None:
+            if raw_member in {"column_pier_pmm", "beam_girder", "building_beam_girder", "general_section"}:
+                return raw_member
+            if "building" in probe and ("beam" in probe or "girder" in probe):
+                return "building_beam_girder"
+            if "bridge" in probe and ("beam" in probe or "girder" in probe):
+                return "beam_girder"
+            if "railway" in probe and "girder" in probe:
+                return "beam_girder"
+            if "beam" in probe and "girder" in probe:
+                return "beam_girder"
+            if "column" in probe or "pier" in probe or "wall" in probe or "pylon" in probe:
+                return "column_pier_pmm"
+            if "pmm" in probe or "section" in probe:
+                return "column_pier_pmm"
+            return None
+
+        normalized = _normalized_member()
+        if normalized is not None:
+            migrated["member_type"] = normalized
+        if migrated.get("analysis_workflow") not in {
+            "pmm_section",
+            "beam_girder_future",
+            "bridge_beam_girder",
+            "building_beam_girder",
+            "general_section",
+        }:
+            if migrated.get("member_type") == "beam_girder":
+                migrated["analysis_workflow"] = "bridge_beam_girder"
+            elif migrated.get("member_type") == "building_beam_girder":
+                migrated["analysis_workflow"] = "building_beam_girder"
+            else:
+                migrated["analysis_workflow"] = "pmm_section"
+        return migrated
 
     @model_validator(mode="after")
     def apply_member_type_defaults(self) -> "AnalysisModeSettings":
