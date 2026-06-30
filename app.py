@@ -1213,28 +1213,21 @@ def _render_sidebar_active_context() -> None:
     )
 
 
-def _render_sidebar_project_file_actions() -> None:
-    """Move project-level save/load actions into the commercial sidebar.
+def _render_sidebar_project_load_actions() -> None:
+    """Render project JSON upload/apply before workspace widgets are created.
 
-    UI.COMMERCIAL4.3 keeps the existing JSON serialization/loading logic, but
-    places file actions in the left rail where project-level actions belong.
-    This is UI-only and does not change the project data model.
+    STATE.RESULT.PERSIST3B keeps legacy Project JSON loading compatible with
+    Streamlit's widget-state rule: a key cannot be assigned after a widget with
+    the same key has been instantiated in the current run.  The upload/apply
+    controls therefore run before Setup/Sections/Loads/Analysis widgets are
+    rendered, while the download action remains after the workspace so the
+    saved JSON includes any analysis cache updates from the current run.
     """
     with st.sidebar.container(border=True):
         st.markdown('<div class="cpmm-sidebar-section-label" style="margin-top:0;">Project File</div>', unsafe_allow_html=True)
         st.markdown(
-            '<div class="cpmm-sidebar-file-note">Save or load the complete project JSON. Saved files include supported stored analysis caches when available.</div>',
+            '<div class="cpmm-sidebar-file-note">Load a project JSON before editing workspace fields. Save is shown below after the page has refreshed stored results.</div>',
             unsafe_allow_html=True,
-        )
-        project = project_from_session_state(st.session_state)
-        st.download_button(
-            "Save Project JSON",
-            data=project_to_json(project),
-            file_name="concrete_section_pro_project.json",
-            mime="application/json",
-            use_container_width=True,
-            type="primary",
-            key="ui_commercial4_3_sidebar_save_project_json",
         )
         uploaded_file = st.file_uploader(
             "Load Project JSON",
@@ -1260,6 +1253,32 @@ def _render_sidebar_project_file_actions() -> None:
             rerun = getattr(st, "rerun", None)
             if callable(rerun):
                 rerun()
+
+
+def _render_sidebar_project_save_actions() -> None:
+    """Render project JSON download after workspace cache updates complete."""
+    with st.sidebar.container(border=True):
+        st.markdown('<div class="cpmm-sidebar-section-label" style="margin-top:0;">Save Project</div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="cpmm-sidebar-file-note">Download the complete project JSON. Supported stored analysis caches are included when available.</div>',
+            unsafe_allow_html=True,
+        )
+        project = project_from_session_state(st.session_state)
+        st.download_button(
+            "Save Project JSON",
+            data=project_to_json(project),
+            file_name="concrete_section_pro_project.json",
+            mime="application/json",
+            use_container_width=True,
+            type="primary",
+            key="ui_commercial4_3_sidebar_save_project_json",
+        )
+
+
+def _render_sidebar_project_file_actions() -> None:
+    """Backward-compatible wrapper for source-level tests and legacy callers."""
+    _render_sidebar_project_load_actions()
+    _render_sidebar_project_save_actions()
 
 
 def _render_commercial_sidebar(active_workspace: str | None = None) -> None:
@@ -3298,6 +3317,10 @@ def main() -> None:
     if st.session_state.get("_nav_active_workspace") not in WORKSPACE_NAVIGATION:
         st.session_state["_nav_active_workspace"] = "Setup"
     _render_commercial_sidebar(str(st.session_state.get("_nav_active_workspace", "Setup")))
+    # Project load must be handled before workspace widgets such as
+    # project_name/text inputs are instantiated.  Otherwise Streamlit rejects
+    # apply_project_to_session_state() assignments after widget creation.
+    _render_sidebar_project_load_actions()
     _render_commercial_brand_header(str(st.session_state.get("_nav_active_workspace", "Setup")))
 
     active_workspace = _safe_choice(
@@ -3319,12 +3342,11 @@ def main() -> None:
     elif active_workspace == "Report / QA":
         render_report_qa_workspace()
 
-    # STATE.RESULT.PERSIST1: render project JSON download after the active
-    # workspace has updated stored result caches.  Streamlit download data is
-    # captured when this widget is rendered, so placing it after Analysis /
-    # Result Summary avoids saving a project JSON built from pre-calculation
-    # sidebar state.
-    _render_sidebar_project_file_actions()
+    # STATE.RESULT.PERSIST1/PERSIST3B: render Project JSON download after the
+    # active workspace has updated stored result caches, but keep Project JSON
+    # loading before workspace widgets to avoid Streamlit widget-state mutation
+    # errors when applying old or saved project files.
+    _render_sidebar_project_save_actions()
 
 
 if __name__ == "__main__":

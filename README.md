@@ -1245,3 +1245,10 @@ This is presentation-only UI polish. It does not change solver equations, SLS/UL
 - Keeps old input-only project files loadable as valid projects with analysis status `Not run`; missing analysis caches are not treated as file corruption.
 - Coerces common legacy boolean fields such as load activity and prestress bonded flags from string/numeric values when loading old JSON.
 - Does not change ULS, SLS, prestress, lifting, debonding, or report equations.
+
+### STATE.RESULT.PERSIST3B — Project JSON Load/Save Render Order Hotfix
+
+- Splits the sidebar Project JSON workflow into an early Load/Apply panel and a late Save/Download panel.
+- Loads are applied before workspace widgets are instantiated, preventing Streamlit `session_state` mutation errors when applying saved or legacy JSON files after widgets such as `project_name` have already been created in the same run.
+- Saves remain rendered after the active workspace so current-run analysis cache updates are still included in the downloaded Project JSON.
+- No engineering equations, ULS/SLS analysis logic, result cache schema, or project data migration rules were changed.

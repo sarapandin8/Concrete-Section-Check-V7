@@ -125,13 +125,24 @@ def test_project_json_restores_column_pier_vt_result_handoff() -> None:
     assert restored["column_pier_vt_runtime_cache_status"] == "Loaded cached Column/Pier V+T result"
 
 
-def test_project_file_actions_render_after_workspace_cache_updates() -> None:
+def test_project_file_save_renders_after_workspace_cache_updates() -> None:
     source = open("app.py", encoding="utf-8").read()
-    assert "STATE.RESULT.PERSIST1: render project JSON download after the active" in source
+    assert "STATE.RESULT.PERSIST1/PERSIST3B: render Project JSON download after the" in source
     sidebar_fn_start = source.index("def _render_commercial_sidebar")
     sidebar_fn_end = source.index("def _render_commercial_brand_header")
     main_workspace_block = source[source.index("def main") :]
 
     assert "_render_sidebar_project_file_actions()" not in source[sidebar_fn_start:sidebar_fn_end]
-    assert "_render_sidebar_project_file_actions()" in main_workspace_block
-    assert main_workspace_block.index("render_analysis_workspace()") < main_workspace_block.index("_render_sidebar_project_file_actions()")
+    assert "_render_sidebar_project_load_actions()" in main_workspace_block
+    assert "_render_sidebar_project_save_actions()" in main_workspace_block
+    assert main_workspace_block.index("_render_sidebar_project_load_actions()") < main_workspace_block.index("render_analysis_workspace()")
+    assert main_workspace_block.index("render_analysis_workspace()") < main_workspace_block.index("_render_sidebar_project_save_actions()")
+
+
+def test_project_file_load_renders_before_workspace_widgets_to_avoid_streamlit_state_error() -> None:
+    source = open("app.py", encoding="utf-8").read()
+    main_workspace_block = source[source.index("def main") :]
+
+    assert "Project load must be handled before workspace widgets" in main_workspace_block
+    assert main_workspace_block.index("_render_sidebar_project_load_actions()") < main_workspace_block.index("active_workspace = _safe_choice")
+    assert main_workspace_block.index("_render_sidebar_project_load_actions()") < main_workspace_block.index("render_setup_workspace()")
