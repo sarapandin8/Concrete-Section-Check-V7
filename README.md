@@ -1,3 +1,26 @@
+### SLS.RAIL.UGIRDER9 — Lifting a/L and Debonding Audit Table
+
+Adds a read-only audit panel to **Analysis → SLS / Stress & Cracking → Lifting stage** for Railway U-Girder staged stress previews.
+
+#### What changed
+- Adds a Railway U-Girder lifting `a/L` + debonding audit table below the lifting stress diagram.
+- The audit table reports span-derived lifting point `a`, opposite lifting point `L-a`, support spacing, impact factor, one-web self-weight × impact load, lifting support reaction, two-point lifting moment, effective strand count, Pe_transfer, yps, active strand groups, and audit notes at lifting/debond/station-grid points.
+- Uses the same two-point lifting moment model with end overhangs and the same station-based debonded-strand step availability as the stress graph.
+- Updates Prestress strand dashboard wording from ambiguous `Bonded strands` / `Debonded strands` to `Fully bonded throughout` / `Debonded near ends`.
+
+#### Not changed
+- No SLS stress equations, Pe(x) calculation, load routing, section-basis logic, code-limit formulas, ULS checks, project schema, or report certification wording.
+- The debonding handoff remains a step-function preview; transfer/development length, anchorage, and end-zone detailing remain separate engineering review items.
+
+#### Validation run
+```bash
+python -m py_compile app.py concrete_pmm_pro/ui/analysis_page.py concrete_pmm_pro/ui/prestress_page.py concrete_pmm_pro/serviceability/railway_u_girder_stages.py
+pytest -q tests/test_railway_u_girder_lifting_audit.py tests/test_railway_u_girder_sls_stage_preview.py tests/test_railway_u_girder_sls_stage_limits.py
+pytest -q tests/test_result_summary* tests/test_report* tests/test_railway_u_girder_lifting_audit.py
+```
+
+Targeted lifting audit, Railway U-Girder staged SLS, Result Summary, and Report/QA tests passed.
+
 ### RESULT.SUMMARY3B — Critical Check Ranking and Failure-Action Polish
 
 Polishes the **Result Summary Dashboard** so the Overview and ULS Summary rank and explain failures using the same decision evidence shown in Analysis.

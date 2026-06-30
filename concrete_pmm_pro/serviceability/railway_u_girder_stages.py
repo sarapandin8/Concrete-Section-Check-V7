@@ -63,6 +63,24 @@ RAILWAY_UGIRDER_SLS_PREVIEW_COLUMNS = [
     "Preview note",
 ]
 
+RAILWAY_UGIRDER_LIFTING_AUDIT_COLUMNS = [
+    "Station x (m)",
+    "Station type",
+    "a/L basis",
+    "Lifting point a (m)",
+    "Lifting point L-a (m)",
+    "Support spacing (m)",
+    "Impact factor",
+    "Auto load w (kN/m)",
+    "Reaction each (kN)",
+    "Lifting moment Mx (kN-m)",
+    "Effective strands",
+    "Pe_transfer (kN)",
+    "yps eff (mm from bottom)",
+    "Active group IDs",
+    "Audit note",
+]
+
 
 RAILWAY_UGIRDER_LOCKED_IN_COLUMNS = [
     "Accumulation step",
@@ -430,6 +448,102 @@ def _one_web_strand_table(strand_table: pd.DataFrame | None) -> pd.DataFrame | N
     if mask.any():
         return df.loc[mask].reset_index(drop=True)
     return df
+
+
+def _station_label_for_lifting_audit(*, x: float, span: float, a: float, debond_stations: set[float]) -> str:
+    labels: list[str] = []
+    tol = max(span, 1.0) * 1.0e-7
+    if abs(x) <= tol:
+        labels.append("Left end")
+    if abs(x - span) <= tol:
+        labels.append("Right end")
+    if abs(x - a) <= tol:
+        labels.append("Lifting point a")
+    if abs(x - (span - a)) <= tol:
+        labels.append("Lifting point L-a")
+    if abs(x - span / 2.0) <= tol:
+        labels.append("Midspan")
+    if any(abs(x - station) <= tol for station in debond_stations):
+        labels.append("Debond transition")
+    return " / ".join(labels) if labels else "Station grid"
+
+
+def railway_u_girder_lifting_stage_audit_dataframe(
+    *,
+    geometry: SectionGeometry | None,
+    settings: Mapping[str, Any] | None,
+    strand_table: pd.DataFrame | None,
+    span_length_m: float,
+    stations_m: Iterable[float] | None = None,
+) -> pd.DataFrame:
+    """Return the Railway U-Girder lifting a/L and debonding audit table.
+
+    SLS.RAIL.UGIRDER9 is an audit/traceability handoff for the lifting-stage
+    stress preview.  It uses the same two-point lifting model, one-web load
+    basis, and station-based debonded-strand step availability as the stress
+    diagram.  It does not add transfer-length ramping, development-length
+    verification, anchorage checks, or any new solver.
+    """
+
+    settings = dict(settings or {})
+    span = max(float(span_length_m), 0.001)
+    lifting_ratio = min(max(_float_value(settings.get("lifting_point_ratio"), 0.20), 0.05), 0.45)
+    lifting_factor = max(_float_value(settings.get("lifting_impact_factor"), 1.10), 1.0)
+    a = lifting_ratio * span
+    support_spacing = max(span - 2.0 * a, 0.0)
+    basis_set = railway_u_girder_stage_basis_set(geometry, settings)
+    w = basis_set.quantities.web_self_weight_kN_m * lifting_factor
+    reaction = w * span / 2.0
+    web_strands = _one_web_strand_table(strand_table)
+    debond_stations = {
+        round(float(x), 6)
+        for x in station_candidates_from_debonding(web_strands, span)
+        if 0.0 <= float(x) <= span
+    }
+    station_values = set(debond_stations)
+    station_values.update({0.0, round(a, 6), round(span / 2.0, 6), round(span - a, 6), round(span, 6)})
+    for x in stations_m or []:
+        try:
+            station_values.add(round(min(max(float(x), 0.0), span), 6))
+        except (TypeError, ValueError):
+            continue
+    rows: list[dict[str, Any]] = []
+    for x in sorted(station_values):
+        pe, yps, effective_strands, active_groups = _station_pe(
+            web_strands,
+            x_m=float(x),
+            span_length_m=span,
+            pe_source="transfer",
+        )
+        station_type = _station_label_for_lifting_audit(x=float(x), span=span, a=a, debond_stations=debond_stations)
+        if "Debond transition" in station_type:
+            note = "Station coincides with a debond termination; effective strands change by step-function preview."
+        elif "Lifting point" in station_type:
+            note = "Two-point lifting support station from Section Builder a/L input."
+        elif "Midspan" in station_type:
+            note = "Midspan station included for positive lifting moment reference."
+        else:
+            note = "Generated station included for lifting stress traceability."
+        rows.append(
+            {
+                "Station x (m)": round(float(x), 6),
+                "Station type": station_type,
+                "a/L basis": f"a/L={lifting_ratio:.3f}",
+                "Lifting point a (m)": a,
+                "Lifting point L-a (m)": span - a,
+                "Support spacing (m)": support_spacing,
+                "Impact factor": lifting_factor,
+                "Auto load w (kN/m)": w,
+                "Reaction each (kN)": reaction,
+                "Lifting moment Mx (kN-m)": lifting_udl_moment_kNm(w, float(x), span, lifting_ratio),
+                "Effective strands": effective_strands,
+                "Pe_transfer (kN)": pe,
+                "yps eff (mm from bottom)": yps,
+                "Active group IDs": active_groups,
+                "Audit note": note,
+            }
+        )
+    return pd.DataFrame(rows, columns=RAILWAY_UGIRDER_LIFTING_AUDIT_COLUMNS)
 
 
 def _station_pe(

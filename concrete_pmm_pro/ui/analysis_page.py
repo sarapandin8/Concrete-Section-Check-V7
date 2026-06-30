@@ -203,6 +203,7 @@ from concrete_pmm_pro.serviceability.girder_prestress_station import (
     station_candidates_from_debonding,
 )
 from concrete_pmm_pro.serviceability.railway_u_girder_stages import (
+    railway_u_girder_lifting_stage_audit_dataframe,
     railway_u_girder_staged_stress_preview_dataframe,
 )
 from concrete_pmm_pro.serviceability.girder_sls_load_components import (
@@ -16519,6 +16520,61 @@ def _render_girder_deflection_camber_workspace(*, basis_options: object) -> None
         st.write("- Prestress camber uses a simplified constant equivalent moment Pe·e at midspan. Debonding is represented through the active midspan Pe/yps only in this first milestone.")
         st.write("- Service increments use the composite transformed section when available; otherwise the precast gross basis is used as fallback.")
 
+
+def _render_railway_u_girder_lifting_audit_panel(df: pd.DataFrame, *, span_length_m: float) -> None:
+    """Render the SLS.RAIL.UGIRDER9 lifting a/L + debonding audit table.
+
+    This is a read-only audit panel.  It uses the same Railway U-Girder lifting
+    preview data source as the stress diagram and does not rerun or change any
+    stress solver, Pe(x), load, section-basis, or code-limit formula.
+    """
+
+    if df.empty or not _is_railway_u_girder_active_for_sls_material_routing():
+        return
+    geometry = st.session_state.get("section_geometry")
+    settings = _railway_u_girder_stage_settings_for_analysis()
+    strand_table = st.session_state.get("girder_strand_layout_table")
+    stations = []
+    if "Station x (m)" in df.columns:
+        stations = [float(x) for x in pd.to_numeric(df["Station x (m)"], errors="coerce").dropna().tolist()]
+    audit_df = railway_u_girder_lifting_stage_audit_dataframe(
+        geometry=geometry,
+        settings=settings,
+        strand_table=pd.DataFrame(strand_table) if strand_table is not None else None,
+        span_length_m=span_length_m,
+        stations_m=stations,
+    )
+    if audit_df.empty:
+        return
+    st.markdown("**Railway U-Girder lifting a/L + debonding audit**")
+    st.caption(
+        "Shows the lifting-point location from Section Builder a/L, support spacing, one-web self-weight × impact, "
+        "two-point lifting reaction/moment, and station-based debonded-strand participation used by this lifting stress preview."
+    )
+    display_df = audit_df.copy()
+    for column in (
+        "Station x (m)",
+        "Lifting point a (m)",
+        "Lifting point L-a (m)",
+        "Support spacing (m)",
+        "Impact factor",
+        "Auto load w (kN/m)",
+        "Reaction each (kN)",
+        "Lifting moment Mx (kN-m)",
+        "Pe_transfer (kN)",
+        "yps eff (mm from bottom)",
+    ):
+        if column in display_df.columns:
+            display_df[column] = pd.to_numeric(display_df[column], errors="coerce").round(3)
+    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.session_state["result_summary_beam_girder_lifting_audit_df"] = audit_df.copy()
+    with st.expander("Lifting a/L and debonding audit basis", expanded=False):
+        st.write("- Lifting point `a` is calculated as `a/L × L`; the opposite lifting point is `L-a`.")
+        st.write("- Lifting reaction uses full-length UDL equilibrium: each lifting support reaction = wL/2.")
+        st.write("- Lifting moment uses the two-point lifting model with end overhangs; the member is not treated as a simple span of length `L-2a`.")
+        st.write("- Effective strands are evaluated station-by-station using the debonded-sleeve metadata shown on the Prestress page.")
+        st.write("- Debonded strand force is treated as a step-function preview; transfer/development length, anchorage, and end-zone detailing remain separate engineering review items.")
+
 def _render_girder_full_length_sls_diagram(
     *,
     stage_label: str,
@@ -16653,6 +16709,9 @@ def _render_girder_full_length_sls_diagram(
             st.caption(
                 "Composite Beam/CIP split graphs are not available for this section basis, so the overall service overview remains visible."
             )
+
+    if _beam_sls_stage_label_for_analysis(stage_label) == "Lifting stage" and _is_railway_u_girder_active_for_sls_material_routing():
+        _render_railway_u_girder_lifting_audit_panel(df, span_length_m=span)
 
     with st.expander(f"Full-length stress table — {stage_label}", expanded=False):
         st.dataframe(_clean_girder_stress_dataframe(df), use_container_width=True, hide_index=True)

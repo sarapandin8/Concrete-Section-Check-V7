@@ -6271,14 +6271,14 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
     st.markdown('<div class="prestress-viz-card-title">Prestress strand dashboard</div>', unsafe_allow_html=True)
     st.caption(
         "Split view: the full section is only a location schematic; row data and zoomed block panels carry the strand-reading work. "
-        "Blue = bonded/effective at the cross-section preview; red = debonded/sleeved strand selection from the row metadata."
+        "Blue = fully bonded/effective in the cross-section preview; red = strand selections debonded near member ends from the row metadata."
     )
     st.markdown(
         _metric_strip_html(
             [
                 PrestressMetric("Visual model", "Split dashboard", "Overall + detail panels", "info", strong=True),
-                PrestressMetric("Bonded strands", f"{bonded_count:,}", f"of {total_count:,} total", "ready"),
-                PrestressMetric("Debonded strands", f"{debonded_count:,}", "selected by row metadata", status_tone),
+                PrestressMetric("Fully bonded throughout", f"{bonded_count:,}", f"of {total_count:,} total", "ready"),
+                PrestressMetric("Debonded near ends", f"{debonded_count:,}", "selected by row metadata", status_tone),
                 PrestressMetric("Row groups", f"{len(active_rows):,}", "active strand groups", "neutral"),
             ]
         ),
@@ -6309,7 +6309,7 @@ def _render_girder_strand_cross_section_dashboard(table: pd.DataFrame, geometry:
                     "Right debond (m)": st.column_config.NumberColumn("R debond (m)", format="%.3f"),
                 },
             )
-            st.caption("B = bonded strands, U/debonded = debonded strand selections. L/R rows with the same row number are summarized together.")
+            st.caption("B = fully bonded-throughout strands in the row; U/debonded = strands selected for end debonding. L/R rows with the same row number are summarized together.")
 
     if points.empty:
         return
