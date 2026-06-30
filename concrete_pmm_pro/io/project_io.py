@@ -159,7 +159,7 @@ PRESTRESS_TABLE_METADATA_COLUMNS = [
 ]
 
 ANALYSIS_RESULTS_METADATA_KEY = "analysis_results"
-ANALYSIS_RESULTS_SCHEMA_VERSION = 1
+ANALYSIS_RESULTS_SCHEMA_VERSION = 2
 
 WORKFLOW_LOAD_TABLE_METADATA_KEYS = (
     "column_uls_loads_table",
@@ -287,6 +287,85 @@ def _beam_uls_cache_from_metadata(value: Any) -> dict[str, dict[str, Any]]:
     return cache
 
 
+def _analysis_dataframe_key_metadata_from_session(session_state: Any, keys: tuple[str, ...]) -> dict[str, Any]:
+    """Serialize named dataframe session-state handoff keys as project JSON metadata."""
+
+    result: dict[str, Any] = {}
+    for key in keys:
+        value = _get_session_value(session_state, key, None)
+        df_meta = _dataframe_to_analysis_metadata(value)
+        if df_meta is not None:
+            result[key] = df_meta
+    return result
+
+
+def _analysis_scalar_key_metadata_from_session(session_state: Any, keys: tuple[str, ...]) -> dict[str, Any]:
+    """Serialize small scalar/list/dict result-state keys as project JSON metadata."""
+
+    result: dict[str, Any] = {}
+    for key in keys:
+        if not _session_has_key(session_state, key):
+            continue
+        value = _get_session_value(session_state, key, None)
+        if isinstance(value, pd.DataFrame):
+            continue
+        cleaned = _clean_table_value(value)
+        if cleaned is not None:
+            result[key] = cleaned
+    return result
+
+
+def _restore_analysis_dataframe_keys(metadata: Any, session_state: MutableMapping[str, Any]) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    restored_any = False
+    for key, value in metadata.items():
+        df = _dataframe_from_analysis_metadata(value)
+        if df is not None:
+            session_state[str(key)] = df
+            restored_any = True
+    return restored_any
+
+
+def _restore_analysis_scalar_keys(metadata: Any, session_state: MutableMapping[str, Any]) -> bool:
+    if not isinstance(metadata, dict):
+        return False
+    restored_any = False
+    for key, value in metadata.items():
+        session_state[str(key)] = value
+        restored_any = True
+    return restored_any
+
+
+BEAM_GIRDER_SLS_RESULT_DATAFRAME_KEYS = (
+    "result_summary_beam_girder_sls_stage_summary_df",
+    "result_summary_beam_girder_sls_demand_detail_df",
+    "result_summary_beam_girder_lifting_audit_df",
+)
+
+BEAM_GIRDER_SLS_RESULT_SCALAR_KEYS = (
+    "result_summary_beam_girder_sls_stage_summary_rows",
+    "result_summary_beam_girder_sls_code_label",
+    "result_summary_beam_girder_sls_cache_hash",
+    "railway_u_girder_sls_report_package_available",
+)
+
+COLUMN_PIER_VT_RESULT_DATAFRAME_KEYS = (
+    "column_pier_combined_vt_result_df",
+    "column_pier_combined_vt_df",
+    "column_pier_combined_vt_screen_df",
+)
+
+COLUMN_PIER_VT_RESULT_SCALAR_KEYS = (
+    "column_pier_combined_vt_controlling_cause",
+    "column_pier_combined_vt_governing_label",
+    "column_pier_combined_vt_route_label",
+    "column_pier_combined_vt_seismic_scope_guard",
+    "column_pier_combined_vt_report_summary_cards",
+    "column_pier_vt_report_package_available",
+)
+
+
 def _analysis_results_metadata_from_session(session_state: Any) -> dict[str, Any]:
     """Serialize restorable analysis outputs without rerunning solver logic.
 
@@ -338,6 +417,22 @@ def _analysis_results_metadata_from_session(session_state: Any) -> dict[str, Any
     if beam_uls_cache:
         metadata["beam_girder_uls_manual_calculation_cache"] = beam_uls_cache
 
+    beam_sls_dataframes = _analysis_dataframe_key_metadata_from_session(session_state, BEAM_GIRDER_SLS_RESULT_DATAFRAME_KEYS)
+    beam_sls_scalars = _analysis_scalar_key_metadata_from_session(session_state, BEAM_GIRDER_SLS_RESULT_SCALAR_KEYS)
+    if beam_sls_dataframes or beam_sls_scalars:
+        metadata["beam_girder_sls_result_handoff"] = {
+            "dataframes": beam_sls_dataframes,
+            "scalars": beam_sls_scalars,
+        }
+
+    column_vt_dataframes = _analysis_dataframe_key_metadata_from_session(session_state, COLUMN_PIER_VT_RESULT_DATAFRAME_KEYS)
+    column_vt_scalars = _analysis_scalar_key_metadata_from_session(session_state, COLUMN_PIER_VT_RESULT_SCALAR_KEYS)
+    if column_vt_dataframes or column_vt_scalars:
+        metadata["column_pier_vt_result_handoff"] = {
+            "dataframes": column_vt_dataframes,
+            "scalars": column_vt_scalars,
+        }
+
     serviceability = _get_session_value(session_state, "serviceability_summary", None)
     if isinstance(serviceability, ServiceabilitySummary):
         metadata["serviceability_summary"] = serviceability.model_dump(mode="json")
@@ -349,6 +444,8 @@ def _analysis_results_metadata_from_session(session_state: Any) -> dict[str, Any
         "rc_pmm_result",
         "rc_demand_capacity_result",
         "beam_girder_uls_manual_calculation_cache",
+        "beam_girder_sls_result_handoff",
+        "column_pier_vt_result_handoff",
         "serviceability_summary",
     }
     if not any(key in metadata for key in cache_payload_keys):
@@ -415,7 +512,7 @@ def _restore_analysis_results_metadata(project: ProjectModel, session_state: Mut
     metadata = project.metadata.get(ANALYSIS_RESULTS_METADATA_KEY)
     if not isinstance(metadata, dict):
         return False
-    if metadata.get("schema_version") not in {ANALYSIS_RESULTS_SCHEMA_VERSION, None}:
+    if metadata.get("schema_version") not in {ANALYSIS_RESULTS_SCHEMA_VERSION, 1, None}:
         return False
 
     preset = metadata.get("analysis_accuracy_preset") or metadata.get("analysis_runtime_last_preset")
@@ -434,6 +531,22 @@ def _restore_analysis_results_metadata(project: ProjectModel, session_state: Mut
         session_state["_beam_girder_uls_manual_calculation_cache"] = beam_cache
         session_state["beam_girder_uls_runtime_cache_status"] = "Loaded cached Beam/Girder ULS results"
         restored_any = True
+
+    beam_sls_handoff = metadata.get("beam_girder_sls_result_handoff")
+    if isinstance(beam_sls_handoff, dict):
+        restored_sls_df = _restore_analysis_dataframe_keys(beam_sls_handoff.get("dataframes"), session_state)
+        restored_sls_scalar = _restore_analysis_scalar_keys(beam_sls_handoff.get("scalars"), session_state)
+        if restored_sls_df or restored_sls_scalar:
+            session_state["beam_girder_sls_runtime_cache_status"] = "Loaded cached Beam/Girder SLS stage summary"
+            restored_any = True
+
+    column_vt_handoff = metadata.get("column_pier_vt_result_handoff")
+    if isinstance(column_vt_handoff, dict):
+        restored_vt_df = _restore_analysis_dataframe_keys(column_vt_handoff.get("dataframes"), session_state)
+        restored_vt_scalar = _restore_analysis_scalar_keys(column_vt_handoff.get("scalars"), session_state)
+        if restored_vt_df or restored_vt_scalar:
+            session_state["column_pier_vt_runtime_cache_status"] = "Loaded cached Column/Pier V+T result"
+            restored_any = True
 
     sls_data = metadata.get("serviceability_summary")
     if sls_data is not None:

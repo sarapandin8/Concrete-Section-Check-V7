@@ -1223,7 +1223,7 @@ def _render_sidebar_project_file_actions() -> None:
     with st.sidebar.container(border=True):
         st.markdown('<div class="cpmm-sidebar-section-label" style="margin-top:0;">Project File</div>', unsafe_allow_html=True)
         st.markdown(
-            '<div class="cpmm-sidebar-file-note">Save or load the complete project JSON before handoff or major edits.</div>',
+            '<div class="cpmm-sidebar-file-note">Save or load the complete project JSON. Saved files include supported stored analysis caches when available.</div>',
             unsafe_allow_html=True,
         )
         project = project_from_session_state(st.session_state)
@@ -1348,7 +1348,6 @@ def _render_commercial_sidebar(active_workspace: str | None = None) -> None:
         unsafe_allow_html=True,
     )
     _render_sidebar_active_context()
-    _render_sidebar_project_file_actions()
 
 
 def _render_commercial_brand_header(active_workspace: str) -> None:
@@ -3323,6 +3322,13 @@ def main() -> None:
         render_results_workspace()
     elif active_workspace == "Report / QA":
         render_report_qa_workspace()
+
+    # STATE.RESULT.PERSIST1: render project JSON download after the active
+    # workspace has updated stored result caches.  Streamlit download data is
+    # captured when this widget is rendered, so placing it after Analysis /
+    # Result Summary avoids saving a project JSON built from pre-calculation
+    # sidebar state.
+    _render_sidebar_project_file_actions()
 
 
 if __name__ == "__main__":

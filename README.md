@@ -1,3 +1,28 @@
+### STATE.RESULT.PERSIST1 — Project JSON Analysis Result Cache Persistence
+
+Improves the project save/load workflow so supported stored analysis outputs are preserved in Project JSON instead of reopening as input-only projects.
+
+#### What changed
+- Project JSON now serializes/restores Beam/Girder ULS manual calculation cache rows for Flexure, Shear, Torsion, and Shear + Torsion.
+- Project JSON now serializes/restores normalized Railway/Beam-Girder staged SLS Result Summary handoff tables, demand detail tables, lifting audit tables, SLS code label, and cache label fields.
+- Project JSON now serializes/restores Column/Pier combined V+T stored result handoff tables and route/governing/cause labels.
+- The sidebar Project JSON download is rendered after the active workspace has completed, so a calculation performed during the current run is included in the downloaded JSON instead of using pre-calculation sidebar state.
+- Loaded projects set analysis status to Current when a supported saved result cache is restored.
+
+#### Not changed
+- No ULS, SLS, PMM, prestress, shear, torsion, lifting, or debonding equations were changed.
+- Restored result caches remain stored Analysis outputs; Result Summary and Report / QA remain read-only and do not rerun solvers.
+- Unsupported or stale future result types may still require rerun until explicitly added to the Project JSON cache contract.
+
+#### Validation run
+```bash
+python -m py_compile app.py concrete_pmm_pro/io/project_io.py concrete_pmm_pro/ui/analysis_page.py
+pytest -q tests/test_state_persist1_reinforcement_and_results.py tests/test_state_result_persist1_json_analysis_cache.py tests/test_result_summary3b_critical_ranking.py tests/test_report_qa1_readiness_alignment.py tests/test_railway_u_girder_lifting_audit.py
+pytest -q tests/test_result_summary*.py tests/test_report_qa1_readiness_alignment.py tests/test_state_persist*.py tests/test_*lifting*.py tests/test_railway_u_girder_lifting_audit.py
+```
+
+Targeted project-save/load, Result Summary, Report / QA, and lifting audit tests passed.
+
 ### SLS.RAIL.UGIRDER9 — Lifting a/L and Debonding Audit Table
 
 Adds a read-only audit panel to **Analysis → SLS / Stress & Cracking → Lifting stage** for Railway U-Girder staged stress previews.
