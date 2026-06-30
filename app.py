@@ -3059,44 +3059,40 @@ def _results_beam_uls_cached_figure(state: object, check_name: str) -> go.Figure
 
 
 def _render_results_static_plotly_figure(fig: go.Figure, *, caption: str | None = None) -> None:
-    try:
-        apply_global_plot_readability(fig)
-        fig.update_layout(
-            autosize=False,
-            width=_RESULTS_STATIC_FIG_WIDTH,
-            height=_RESULTS_STATIC_FIG_HEIGHT,
-            margin=dict(l=76, r=30, t=78, b=86),
-            font=dict(size=11),
-            title_font=dict(size=17),
-            legend=dict(
-                font=dict(size=10),
-                orientation="h",
-                yanchor="top",
-                y=-0.18,
-                xanchor="center",
-                x=0.5,
-                itemwidth=46,
-                entrywidth=130,
-                entrywidthmode="pixels",
-            ),
-            hoverlabel=dict(font=dict(size=11)),
-        )
-        fig.update_xaxes(tickfont=dict(size=10), title_font=dict(size=12))
-        fig.update_yaxes(tickfont=dict(size=10), title_font=dict(size=12))
-        image_bytes = fig.to_image(
-            format="png",
-            width=_RESULTS_STATIC_FIG_WIDTH,
-            height=_RESULTS_STATIC_FIG_HEIGHT,
-            scale=2,
-        )
-    except Exception as exc:
-        st.warning("Static diagram rendering is not available in this environment. Stored result tables remain available below.")
-        st.caption(f"Chart export detail: {type(exc).__name__}")
-        return
-    try:
-        st.image(image_bytes, width=_RESULTS_STATIC_FIG_WIDTH, caption=caption)
-    except TypeError:
-        st.image(image_bytes, use_column_width=False, caption=caption)
+    """Render stored result diagrams without backend Plotly image export."""
+
+    apply_global_plot_readability(fig)
+    fig.update_layout(
+        autosize=True,
+        margin=dict(l=76, r=30, t=78, b=86),
+        font=dict(size=11),
+        title_font=dict(size=17),
+        legend=dict(
+            font=dict(size=10),
+            orientation="h",
+            yanchor="top",
+            y=-0.18,
+            xanchor="center",
+            x=0.5,
+            itemwidth=46,
+            entrywidth=130,
+            entrywidthmode="pixels",
+        ),
+        hoverlabel=dict(font=dict(size=11)),
+    )
+    fig.update_xaxes(tickfont=dict(size=10), title_font=dict(size=12))
+    fig.update_yaxes(tickfont=dict(size=10), title_font=dict(size=12))
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "displaylogo": False,
+            "responsive": True,
+            "toImageButtonOptions": {"format": "png", "scale": 2},
+        },
+    )
+    if caption:
+        st.caption(caption)
 
 
 def _results_available_diagram_figures(state: object) -> dict[str, go.Figure]:
