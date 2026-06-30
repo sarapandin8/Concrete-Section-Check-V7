@@ -6140,7 +6140,9 @@ def _beam_uls_flexure_preview_dataframe(
 
     endpoint_rows = pd.DataFrame(columns=source_rows.columns)
     finite_station_rows = source_rows[source_rows["__station_m"].notna()].copy()
-    if not finite_station_rows.empty:
+    if diagnostic_mode:
+        _beam_uls_flexure_trace_event(state, "diagnostic_endpoint_rows_skipped")
+    elif not finite_station_rows.empty:
         end_stations = {float(finite_station_rows["__station_m"].min()), float(finite_station_rows["__station_m"].max())}
         endpoint_rows = finite_station_rows[
             finite_station_rows["__station_m"].map(lambda value: float(value) in end_stations)
@@ -8814,6 +8816,7 @@ _BEAM_ULS_FLEXURE_TRACE_KEY = "beam_girder_uls_flexure_diagnostic_trace"
 _BEAM_ULS_FLEXURE_TRACE_ENABLED_KEY = "beam_girder_uls_flexure_diagnostic_mode"
 _BEAM_ULS_FLEXURE_TRACE_MAX_ROWS_KEY = "beam_girder_uls_flexure_diagnostic_max_rows"
 _BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY = "beam_girder_uls_flexure_diagnostic_last_error"
+_BEAM_ULS_FLEXURE_DIAGNOSTIC_RESULT_KEY = "beam_girder_uls_flexure_diagnostic_result"
 
 
 def _beam_uls_flexure_trace_reset(
@@ -8833,6 +8836,7 @@ def _beam_uls_flexure_trace_reset(
     try:
         state[_BEAM_ULS_FLEXURE_TRACE_KEY] = []
         state[_BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY] = ""
+        state[_BEAM_ULS_FLEXURE_DIAGNOSTIC_RESULT_KEY] = {}
         _beam_uls_flexure_trace_event(
             state,
             "button_clicked",
@@ -8919,16 +8923,68 @@ def _render_beam_uls_flexure_diagnostic_panel(state: Any, *, selected_check: str
             key=_BEAM_ULS_FLEXURE_TRACE_MAX_ROWS_KEY,
             help="Used only when diagnostic mode is enabled.",
         )
-        trace_df = _beam_uls_flexure_trace_dataframe(state)
-        if trace_df.empty:
-            st.info("No Flexure diagnostic trace recorded in this session yet.")
-        else:
-            st.dataframe(trace_df, use_container_width=True, hide_index=True)
-        last_error = str(state.get(_BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY, "") or "")
-        if last_error:
-            st.error("Last Flexure calculation error")
-            st.code(last_error[-6000:])
+        st.caption(
+            "Trace output is rendered below the compact ULS table after Calculate runs. "
+            "This avoids showing stale pre-click diagnostics during Streamlit reruns."
+        )
 
+
+def _beam_uls_flexure_diagnostic_result(state: Mapping[str, object]) -> dict[str, object]:
+    value = state.get(_BEAM_ULS_FLEXURE_DIAGNOSTIC_RESULT_KEY) if isinstance(state, Mapping) else None
+    return value if isinstance(value, dict) else {}
+
+
+def _render_beam_uls_flexure_diagnostic_output(state: Mapping[str, object]) -> None:
+    """Render latest one-station diagnostic output without using production cache."""
+
+    result = _beam_uls_flexure_diagnostic_result(state)
+    trace_df = _beam_uls_flexure_trace_dataframe(state)
+    st.warning(
+        "Diagnostic mode is active: the one-station Flexure result below is for debugging only. "
+        "It is not written to the production ULS cache, Result Summary, Report / QA, or Project JSON. "
+        "Turn diagnostic mode off and run Calculate Flexure for the full engineering envelope."
+    )
+    if not trace_df.empty:
+        with st.expander("Latest Flexure diagnostic trace", expanded=True):
+            st.dataframe(trace_df, use_container_width=True, hide_index=True)
+    preview_df = result.get("flexure_preview_df") if isinstance(result, dict) else None
+    messages = result.get("flexure_preview_messages") if isinstance(result, dict) else []
+    if isinstance(preview_df, pd.DataFrame) and not preview_df.empty:
+        display_cols = [
+            column
+            for column in [
+                "Status",
+                "Governing x",
+                "Case",
+                "Demand",
+                "Capacity",
+                "Utilization",
+                "Method",
+                "Notes",
+            ]
+            if column in preview_df.columns
+        ]
+        st.markdown("##### Diagnostic one-station flexure result")
+        st.dataframe(preview_df[display_cols], use_container_width=True, hide_index=True)
+        gov = _beam_uls_governing_flexure_preview_row(preview_df)
+        if gov is not None:
+            _render_analysis_summary_strip(
+                [
+                    {"title": "Diagnostic station", "value": str(gov.get("Governing x") or "-"), "detail": str(gov.get("Case") or "-"), "status": "warning"},
+                    {"title": "Diagnostic Mu", "value": str(gov.get("Demand") or "-"), "detail": "one-row debug demand", "status": "info"},
+                    {"title": "Diagnostic φMn", "value": str(gov.get("Capacity") or "-"), "detail": "debug capacity only", "status": "info"},
+                    {"title": "Diagnostic D/C", "value": str(gov.get("Utilization") or "-"), "detail": "not a full-span envelope", "status": "warning"},
+                ],
+                columns=4,
+            )
+    else:
+        st.info("No diagnostic flexure result dataframe is stored yet. Press Calculate Flexure while diagnostic mode is enabled.")
+    if isinstance(messages, list) and messages:
+        st.caption("Diagnostic notes: " + " | ".join(str(item) for item in messages[:5]))
+    last_error = str(state.get(_BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY, "") or "")
+    if last_error:
+        with st.expander("Latest Flexure diagnostic traceback", expanded=True):
+            st.code(last_error[-6000:])
 
 
 
@@ -10996,6 +11052,9 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
             help=calc_help,
         )
 
+    diagnostic_flexure_run = bool(
+        selected_check == "Flexure" and _beam_uls_get_state_value(st.session_state, _BEAM_ULS_FLEXURE_TRACE_ENABLED_KEY, False)
+    )
     if run_selected_check:
         if selected_check == "Flexure":
             _beam_uls_flexure_trace_reset(
@@ -11005,6 +11064,8 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
                 input_hash=uls_input_hash,
                 route_label=code_label,
             )
+            if diagnostic_flexure_run:
+                _beam_uls_flexure_trace_event(st.session_state, "diagnostic_mode_active", production_cache_write="disabled")
         calc_t0 = time.perf_counter()
         try:
             _beam_uls_flexure_trace_event(st.session_state, "calculate_dispatch_start", selected_check=selected_check)
@@ -11039,12 +11100,22 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
                 "flexure_preview_df": pd.DataFrame() if selected_check == "Flexure" else None,
                 "flexure_preview_messages": [f"{selected_check} calculation error: {exc}"],
             }
-        selected_entry = _beam_uls_store_manual_result(
-            st.session_state,
-            selected_check,
-            input_hash=uls_input_hash,
-            result=calculation_result,
-        )
+        if diagnostic_flexure_run:
+            diagnostic_entry = dict(calculation_result)
+            diagnostic_entry["input_hash"] = str(uls_input_hash)
+            diagnostic_entry["check"] = "Flexure diagnostic"
+            diagnostic_entry["calculated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            diagnostic_entry["production_cache_write"] = "disabled"
+            st.session_state[_BEAM_ULS_FLEXURE_DIAGNOSTIC_RESULT_KEY] = diagnostic_entry
+            _beam_uls_flexure_trace_event(st.session_state, "diagnostic_result_stored", production_cache_write="skipped")
+            selected_entry = _beam_uls_current_cached_result(st.session_state, selected_check, uls_input_hash)
+        else:
+            selected_entry = _beam_uls_store_manual_result(
+                st.session_state,
+                selected_check,
+                input_hash=uls_input_hash,
+                result=calculation_result,
+            )
         if selected_check == "Flexure":
             flexure_entry = selected_entry
         elif selected_check == "Shear":
@@ -11085,6 +11156,9 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
     else:
         st.caption(f"{selected_check}: {status_text}")
 
+    flexure_diagnostic_mode_active = bool(
+        selected_check == "Flexure" and _beam_uls_get_state_value(st.session_state, _BEAM_ULS_FLEXURE_TRACE_ENABLED_KEY, False)
+    )
     flexure_preview_df = _beam_uls_cached_dataframe(flexure_entry, "flexure_preview_df")
     flexure_preview_messages = _beam_uls_cached_messages(flexure_entry, "flexure_preview_messages")
     shear_check_df = _beam_uls_cached_dataframe(shear_entry, "shear_check_df")
@@ -11125,8 +11199,11 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
     st.markdown("#### ULS check workspace")
     st.caption(_beam_uls_check_tab_caption() + " PERF.ULS2 runs a selected ULS check only after you press Calculate.")
 
-    if selected_entry is None:
-        st.markdown(_beam_uls_empty_workspace_html(selected_check), unsafe_allow_html=True)
+    if selected_entry is None or flexure_diagnostic_mode_active:
+        if flexure_diagnostic_mode_active:
+            _render_beam_uls_flexure_diagnostic_output(st.session_state)
+        else:
+            st.markdown(_beam_uls_empty_workspace_html(selected_check), unsafe_allow_html=True)
         with st.expander("ULS demand table — audit / source data", expanded=False):
             st.caption("Read-only normalized view of Active rows from Loads. Secondary actions Muy, Vux, and Nu are kept here for audit, not default decision display.")
             st.dataframe(_beam_uls_audit_dataframe(active_df), use_container_width=True, hide_index=True)

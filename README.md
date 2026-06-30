@@ -1259,3 +1259,10 @@ This is presentation-only UI polish. It does not change solver equations, SLS/UL
 - Added optional one-station diagnostic mode to limit Flexure to the first nonzero Mux station for isolating whether failures originate in input build, PMM solve, cache store, or render.
 - Stored traceback from Flexure calculation exceptions in Developer diagnostics instead of leaving users with only a redacted Streamlit error.
 - No ULS/SLS equations, design logic, result-cache schema, Project JSON schema, or Report/QA readiness logic changed.
+
+### STATE.RESULT.PERSIST3E — Flexure diagnostic isolation hotfix
+- Isolates Beam/Girder Flexure diagnostic mode from production ULS result cache.
+- One-station diagnostic results are stored only in a diagnostic session-state key and are not sent to Result Summary, Report / QA, or Project JSON.
+- Hides production Flexure graph while diagnostic mode is active and shows a diagnostic-only table/trace instead.
+- Skips zero-demand endpoint boundary rows during diagnostic runs so the one-station result is not mistaken for a full-span φMn envelope.
+- Keeps all ULS/SLS equations, PMM solver logic, and project schemas unchanged.
