@@ -28,3 +28,7 @@ This milestone promotes the Beam/Girder torsion check from a strength-only revie
 ## Engineering note
 
 This milestone makes the app decision logic final-pass capable for the implemented torsion gates. Project drawings still need normal engineering review for hook anchorage, constructability, local end-zone detailing, development lengths, and any project-specific code exceptions.
+
+
+### STATE.RESULT.PERSIST3D note
+Beam/Girder Flexure diagnostic tracing added only for runtime troubleshooting. No torsion or combined shear-torsion equations were changed.

@@ -1252,3 +1252,10 @@ This is presentation-only UI polish. It does not change solver equations, SLS/UL
 - Loads are applied before workspace widgets are instantiated, preventing Streamlit `session_state` mutation errors when applying saved or legacy JSON files after widgets such as `project_name` have already been created in the same run.
 - Saves remain rendered after the active workspace so current-run analysis cache updates are still included in the downloaded Project JSON.
 - No engineering equations, ULS/SLS analysis logic, result cache schema, or project data migration rules were changed.
+
+### STATE.RESULT.PERSIST3D — Beam/Girder Flexure Diagnostic Trace
+- Added a Beam/Girder Flexure calculation diagnostic panel for deployed Streamlit troubleshooting.
+- Added session trace markers and timing for Calculate Flexure dispatch, demand filtering, input build, capacity-state solve, cache reuse, preview table build, and exception capture.
+- Added optional one-station diagnostic mode to limit Flexure to the first nonzero Mux station for isolating whether failures originate in input build, PMM solve, cache store, or render.
+- Stored traceback from Flexure calculation exceptions in Developer diagnostics instead of leaving users with only a redacted Streamlit error.
+- No ULS/SLS equations, design logic, result-cache schema, Project JSON schema, or Report/QA readiness logic changed.

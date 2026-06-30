@@ -6,6 +6,8 @@ import hashlib
 import json
 import math
 import re
+import time
+import traceback
 from collections.abc import Mapping
 from datetime import datetime
 from html import escape
@@ -6011,11 +6013,15 @@ def _beam_uls_solve_flexure_capacity_state(
     """Run the detailed flexure solver once for one capacity-state key."""
 
     try:
+        solver_t0 = time.perf_counter()
         pmm_result = run_rc_pmm_solver(analysis_input)
+        solver_seconds = time.perf_counter() - solver_t0
+        summary_t0 = time.perf_counter()
         summary = check_uls_demands_against_rc_pmm(pmm_result, analysis_input.load_cases)
+        summary_seconds = time.perf_counter() - summary_t0
         result = summary.results[0] if summary.results else None
     except Exception as exc:
-        return {"state": "solver_error", "error": f"Flexure check solver error: {exc}"}
+        return {"state": "solver_error", "error": f"Flexure check solver error: {exc}", "traceback": traceback.format_exc()}
     if result is None or result.capacity_phiMn_Nmm is None or result.dcr is None:
         return {"state": "not_checked", "error": "Flexure capacity could not be interpolated from PMM results."}
 
@@ -6034,6 +6040,8 @@ def _beam_uls_solve_flexure_capacity_state(
     return {
         "state": "ok",
         "result_warning_count": int(getattr(result, "warning_count", 0) or 0),
+        "solver_seconds": solver_seconds,
+        "summary_seconds": summary_seconds,
         "flexure_basis": flexure_basis,
         "nominal_capacity_nmm": nominal_capacity_nmm,
         "nominal_capacity_kNm": nominal_capacity_kNm,
@@ -6103,15 +6111,32 @@ def _beam_uls_flexure_preview_dataframe(
         return pd.DataFrame(columns=columns), ["No active ULS rows available for flexure check."]
     rows: list[dict[str, object]] = []
     messages: list[str] = []
+    _beam_uls_flexure_trace_event(state, "preview_start", active_rows=len(active_df.index))
     source_rows = active_df.copy()
     source_rows["__station_m"] = pd.to_numeric(source_rows["Station x (m)"], errors="coerce")
     source_rows["__mux_kNm"] = pd.to_numeric(source_rows["Mux"], errors="coerce")
     nonzero_rows = source_rows[source_rows["__mux_kNm"].abs() > _BEAM_ULS_DEMAND_TOL].copy()
-    if len(nonzero_rows.index) > _BEAM_ULS_FLEXURE_PREVIEW_MAX_ROWS:
+    _beam_uls_flexure_trace_event(
+        state,
+        "demand_rows_filtered",
+        source_rows=len(source_rows.index),
+        nonzero_mux_rows=len(nonzero_rows.index),
+        finite_station_rows=int(pd.to_numeric(source_rows["__station_m"], errors="coerce").notna().sum()),
+    )
+    diagnostic_mode = bool(_beam_uls_get_state_value(state, _BEAM_ULS_FLEXURE_TRACE_ENABLED_KEY, False))
+    diagnostic_limit = int(_beam_uls_get_state_value(state, _BEAM_ULS_FLEXURE_TRACE_MAX_ROWS_KEY, 1) or 1)
+    if diagnostic_mode and len(nonzero_rows.index) > diagnostic_limit:
+        messages.append(
+            f"Flexure diagnostic mode limited this calculation to the first {diagnostic_limit} nonzero Mux row(s). Turn diagnostic mode off for the full engineering run."
+        )
+        nonzero_rows = nonzero_rows.head(diagnostic_limit)
+        _beam_uls_flexure_trace_event(state, "diagnostic_row_limit_applied", nonzero_rows=len(nonzero_rows.index), limit=diagnostic_limit)
+    elif len(nonzero_rows.index) > _BEAM_ULS_FLEXURE_PREVIEW_MAX_ROWS:
         messages.append(
             f"Flexure check limited to the first {_BEAM_ULS_FLEXURE_PREVIEW_MAX_ROWS} nonzero Mux rows for responsiveness. Use envelope input for large imports."
         )
         nonzero_rows = nonzero_rows.head(_BEAM_ULS_FLEXURE_PREVIEW_MAX_ROWS)
+        _beam_uls_flexure_trace_event(state, "responsiveness_row_limit_applied", nonzero_rows=len(nonzero_rows.index), limit=_BEAM_ULS_FLEXURE_PREVIEW_MAX_ROWS)
 
     endpoint_rows = pd.DataFrame(columns=source_rows.columns)
     finite_station_rows = source_rows[source_rows["__station_m"].notna()].copy()
@@ -6147,6 +6172,13 @@ def _beam_uls_flexure_preview_dataframe(
         return 1.0
 
     demand_rows = pd.concat([nonzero_rows, endpoint_rows], axis=0).sort_values(["Case Name", "__station_m"], kind="stable")
+    _beam_uls_flexure_trace_event(
+        state,
+        "demand_rows_ready",
+        demand_rows=len(demand_rows.index),
+        endpoint_rows=len(endpoint_rows.index),
+        diagnostic_mode=diagnostic_mode,
+    )
     # PERF.FLEX1: keep the detailed strain-compatibility calculation, but solve
     # each unique capacity state only once.  Different station demand magnitudes
     # can share φMn when geometry/material/rebar/prestress state, bending sign,
@@ -6195,11 +6227,22 @@ def _beam_uls_flexure_preview_dataframe(
                 }
             )
             continue
+        _beam_uls_flexure_trace_event(state, "station_input_start", station=station, case=case, mux_kNm=demand)
+        input_t0 = time.perf_counter()
         analysis_input, input_messages = _beam_uls_flexure_analysis_input_for_station(
             state,
             row=demand_row,
             strength_route=strength_route,
             capacity_direction=capacity_direction,
+        )
+        _beam_uls_flexure_trace_event(
+            state,
+            "station_input_done",
+            station=station,
+            case=case,
+            seconds=time.perf_counter() - input_t0,
+            ready=analysis_input is not None,
+            messages=len(input_messages),
         )
         messages.extend(input_messages)
         if analysis_input is None:
@@ -6233,13 +6276,29 @@ def _beam_uls_flexure_preview_dataframe(
         cache_hit = capacity_state is not None
         if cache_hit:
             capacity_cache_hits += 1
+            _beam_uls_flexure_trace_event(state, "capacity_cache_hit", station=station, case=case, key=capacity_state_key[:12])
         else:
+            _beam_uls_flexure_trace_event(state, "capacity_solve_start", station=station, case=case, key=capacity_state_key[:12])
+            solve_t0 = time.perf_counter()
             capacity_state = _beam_uls_solve_flexure_capacity_state(analysis_input, strength_route=strength_route)
+            _beam_uls_flexure_trace_event(
+                state,
+                "capacity_solve_done",
+                station=station,
+                case=case,
+                seconds=time.perf_counter() - solve_t0,
+                state_status=str(capacity_state.get("state") or ""),
+            )
             capacity_state_cache[capacity_state_key] = capacity_state
             capacity_cache_misses += 1
 
         state_status = str(capacity_state.get("state") or "")
         if state_status == "solver_error":
+            try:
+                state[_BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY] = str(capacity_state.get("traceback") or capacity_state.get("error") or "")
+            except Exception:
+                pass
+            _beam_uls_flexure_trace_event(state, "capacity_solver_error", station=station, case=case, error=str(capacity_state.get("error") or ""))
             rows.append(
                 {
                     "Check": "Flexure",
@@ -6409,7 +6468,15 @@ def _beam_uls_flexure_preview_dataframe(
             f"Flexure capacity-state cache reused {capacity_cache_hits} station row(s); "
             f"{capacity_cache_misses} unique detailed capacity state(s) solved."
         )
-    return pd.DataFrame(rows, columns=columns), deduplicate_warnings(messages)
+    result_df = pd.DataFrame(rows, columns=columns)
+    _beam_uls_flexure_trace_event(
+        state,
+        "preview_done",
+        result_rows=len(result_df.index),
+        capacity_cache_hits=capacity_cache_hits,
+        capacity_cache_misses=capacity_cache_misses,
+    )
+    return result_df, deduplicate_warnings(messages)
 
 
 def _beam_uls_governing_flexure_preview_row(flexure_preview_df: pd.DataFrame | None) -> dict[str, object] | None:
@@ -8743,6 +8810,126 @@ def _render_beam_uls_static_plotly_figure(fig: go.Figure, *, caption: str | None
 BEAM_ULS_CHECK_TAB_LABELS = ["Flexure", "Shear", "Torsion", "Shear + Torsion"]
 _BEAM_ULS_MANUAL_CALC_CACHE_KEY = "_beam_girder_uls_manual_calculation_cache"
 _BEAM_ULS_INPUT_HASH_KIND = "beam_girder_uls_v2"
+_BEAM_ULS_FLEXURE_TRACE_KEY = "beam_girder_uls_flexure_diagnostic_trace"
+_BEAM_ULS_FLEXURE_TRACE_ENABLED_KEY = "beam_girder_uls_flexure_diagnostic_mode"
+_BEAM_ULS_FLEXURE_TRACE_MAX_ROWS_KEY = "beam_girder_uls_flexure_diagnostic_max_rows"
+_BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY = "beam_girder_uls_flexure_diagnostic_last_error"
+
+
+def _beam_uls_flexure_trace_reset(
+    state: Any,
+    *,
+    selected_check: str = "Flexure",
+    active_rows: int | None = None,
+    input_hash: str | None = None,
+    route_label: str | None = None,
+) -> None:
+    """Start a lightweight Flexure calculation trace for deployed debugging.
+
+    This trace is intentionally stored in ``session_state`` only. It is not part
+    of the engineering result and is not serialized into project input models.
+    """
+
+    try:
+        state[_BEAM_ULS_FLEXURE_TRACE_KEY] = []
+        state[_BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY] = ""
+        _beam_uls_flexure_trace_event(
+            state,
+            "button_clicked",
+            selected_check=selected_check,
+            active_rows=active_rows,
+            input_hash=str(input_hash or "")[:16],
+            route=str(route_label or ""),
+        )
+    except Exception:
+        return
+
+
+def _beam_uls_flexure_trace_event(state: Any, stage: str, **details: object) -> None:
+    """Append one Flexure diagnostic event without affecting calculation logic."""
+
+    try:
+        trace = list(state.get(_BEAM_ULS_FLEXURE_TRACE_KEY, []) or [])
+        now = time.perf_counter()
+        if trace:
+            t0 = float(trace[0].get("t", now) or now)
+            t_prev = float(trace[-1].get("t", now) or now)
+        else:
+            t0 = now
+            t_prev = now
+        row = {
+            "#": len(trace) + 1,
+            "Stage": str(stage),
+            "Elapsed s": round(now - t0, 4),
+            "Delta s": round(now - t_prev, 4),
+            "t": now,
+        }
+        for key, value in details.items():
+            if key == "t":
+                continue
+            try:
+                if isinstance(value, float):
+                    row[str(key)] = round(value, 6) if math.isfinite(value) else str(value)
+                elif isinstance(value, (str, int, bool)) or value is None:
+                    row[str(key)] = value
+                else:
+                    row[str(key)] = repr(value)[:240]
+            except Exception:
+                row[str(key)] = repr(value)[:240]
+        trace.append(row)
+        state[_BEAM_ULS_FLEXURE_TRACE_KEY] = trace[-80:]
+    except Exception:
+        return
+
+
+def _beam_uls_flexure_trace_dataframe(state: Mapping[str, object]) -> pd.DataFrame:
+    trace = state.get(_BEAM_ULS_FLEXURE_TRACE_KEY) if isinstance(state, Mapping) else None
+    if not isinstance(trace, list) or not trace:
+        return pd.DataFrame(columns=["#", "Stage", "Elapsed s", "Delta s"])
+    rows = []
+    for item in trace:
+        if not isinstance(item, Mapping):
+            continue
+        row = {key: value for key, value in item.items() if key != "t"}
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _render_beam_uls_flexure_diagnostic_panel(state: Any, *, selected_check: str) -> None:
+    """Render Beam/Girder Flexure diagnostics for deployed Streamlit debugging."""
+
+    if selected_check != "Flexure":
+        return
+    with st.expander("Flexure calculation diagnostics", expanded=False):
+        st.caption(
+            "Use this when Calculate Flexure appears to hang or returns no result. "
+            "Diagnostic mode limits the Flexure run to the first nonzero Mux station so we can isolate whether the problem is input build, PMM solve, cache store, or render."
+        )
+        st.checkbox(
+            "Diagnostic mode: limit Flexure calculation to first nonzero Mux station",
+            key=_BEAM_ULS_FLEXURE_TRACE_ENABLED_KEY,
+            help="Does not change engineering inputs; it only limits this diagnostic calculation pass for debugging responsiveness.",
+        )
+        st.number_input(
+            "Diagnostic nonzero-row limit",
+            min_value=1,
+            max_value=10,
+            value=int(state.get(_BEAM_ULS_FLEXURE_TRACE_MAX_ROWS_KEY, 1) or 1),
+            step=1,
+            key=_BEAM_ULS_FLEXURE_TRACE_MAX_ROWS_KEY,
+            help="Used only when diagnostic mode is enabled.",
+        )
+        trace_df = _beam_uls_flexure_trace_dataframe(state)
+        if trace_df.empty:
+            st.info("No Flexure diagnostic trace recorded in this session yet.")
+        else:
+            st.dataframe(trace_df, use_container_width=True, hide_index=True)
+        last_error = str(state.get(_BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY, "") or "")
+        if last_error:
+            st.error("Last Flexure calculation error")
+            st.code(last_error[-6000:])
+
+
 
 
 def _beam_uls_stable_value(value: object, *, _depth: int = 0) -> object:
@@ -10777,6 +10964,7 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
         help="The selected ULS check is not calculated until you press Calculate. This prevents Flexure/Shear/Torsion from running on every rerun.",
     )
     selected_check = str(selected_check_raw) if selected_check_raw in BEAM_ULS_CHECK_TAB_LABELS else BEAM_ULS_CHECK_TAB_LABELS[0]
+    _render_beam_uls_flexure_diagnostic_panel(st.session_state, selected_check=selected_check)
     uls_input_hash = _beam_uls_cache_input_hash(
         st.session_state,
         active_df,
@@ -10809,12 +10997,48 @@ def _render_beam_girder_uls_workspace(mode_settings: AnalysisModeSettings) -> No
         )
 
     if run_selected_check:
-        calculation_result = _beam_uls_calculate_selected_check(
-            st.session_state,
-            active_df,
-            selected_check=selected_check,
-            strength_route=strength_route,
-        )
+        if selected_check == "Flexure":
+            _beam_uls_flexure_trace_reset(
+                st.session_state,
+                selected_check=selected_check,
+                active_rows=len(active_df.index),
+                input_hash=uls_input_hash,
+                route_label=code_label,
+            )
+        calc_t0 = time.perf_counter()
+        try:
+            _beam_uls_flexure_trace_event(st.session_state, "calculate_dispatch_start", selected_check=selected_check)
+            calculation_result = _beam_uls_calculate_selected_check(
+                st.session_state,
+                active_df,
+                selected_check=selected_check,
+                strength_route=strength_route,
+            )
+            _beam_uls_flexure_trace_event(
+                st.session_state,
+                "calculate_dispatch_done",
+                selected_check=selected_check,
+                seconds=time.perf_counter() - calc_t0,
+                result_keys=sorted(list(calculation_result.keys())),
+            )
+        except Exception as exc:
+            err = traceback.format_exc()
+            if selected_check == "Flexure":
+                st.session_state[_BEAM_ULS_FLEXURE_TRACE_LAST_ERROR_KEY] = err
+                _beam_uls_flexure_trace_event(
+                    st.session_state,
+                    "calculate_exception",
+                    selected_check=selected_check,
+                    error_type=type(exc).__name__,
+                    error=str(exc),
+                )
+            st.error(f"{selected_check} calculation failed before a result could be stored. Open Flexure calculation diagnostics for the traceback.")
+            calculation_result = {
+                "calculation_error": str(exc),
+                "calculation_traceback": err,
+                "flexure_preview_df": pd.DataFrame() if selected_check == "Flexure" else None,
+                "flexure_preview_messages": [f"{selected_check} calculation error: {exc}"],
+            }
         selected_entry = _beam_uls_store_manual_result(
             st.session_state,
             selected_check,
