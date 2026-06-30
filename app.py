@@ -24,7 +24,9 @@ from concrete_pmm_pro.io.project_io import (
 from concrete_pmm_pro.ui.analysis_page import (
     _beam_uls_shear_decision_summary,
     _beam_uls_shear_utilization_display,
+    _render_runtime_diagnostics_expander,
     render_analysis_page,
+    render_analysis_report_qa,
     render_report_qa_page,
 )
 from concrete_pmm_pro.reporting.railway_u_girder_report import build_railway_u_girder_sls_report_package
@@ -3210,8 +3212,76 @@ def render_results_workspace() -> None:
         _render_results_module_tables(st.session_state)
 
 
+def _report_qa_dashboard_cards(state: object) -> list[dict[str, object]]:
+    """Return Report / QA readiness cards aligned with Result Summary.
+
+    Report / QA is a read-only downstream workspace.  These cards intentionally
+    reuse the Result Summary decision helpers so a failed stored result cannot
+    be described as ready for report issue simply because the report page can be
+    opened.
+    """
+
+    rows = _results_governing_rows(state)
+    executive = _results_executive_status(rows, state)
+    handoff = _results_report_handoff_state(state, rows)
+    critical = _results_critical_row(rows)
+    critical_label = "-" if critical is None else _results_critical_label(critical)
+    critical_detail = (
+        "No stored governing row"
+        if critical is None
+        else f"{critical.get('Status', '-')} · {critical.get('D/C / Util.', '-')} · {critical.get('Governing Case', '-')}"
+    )
+    return [
+        {
+            "title": "Overall status",
+            "value": executive["title"].replace("Overall Status: ", ""),
+            "detail": executive["detail"],
+            "status": executive["status"],
+        },
+        {
+            "title": "Critical check",
+            "value": critical_label,
+            "detail": critical_detail,
+            "status": "warning" if critical is None else _results_style_for_status(critical.get("Status")),
+        },
+        {
+            "title": "Report readiness",
+            "value": handoff["value"],
+            "detail": handoff["detail"],
+            "status": handoff["status"],
+        },
+        {
+            "title": "Design code",
+            "value": _results_design_code_label(state),
+            "detail": "Workflow-compatible project code basis used by stored Analysis results",
+            "status": "info",
+        },
+        {
+            "title": "Runtime mode",
+            "value": "Read-only",
+            "detail": "Report / QA does not rerun PMM, ULS, SLS, or verification solvers.",
+            "status": "neutral",
+        },
+    ]
+
+
 def render_report_qa_workspace() -> None:
-    render_report_qa_page()
+    render_page_header(
+        "Report / QA",
+        "Review stored analysis results, traceability, report readiness, limitations, and export QA without rerunning solvers.",
+        icon="QA",
+        kicker="Report workspace",
+        badge="Report readiness",
+        accent="blue",
+    )
+    render_metric_cards(_report_qa_dashboard_cards(st.session_state))
+    render_section_bar(
+        "Report / QA workspace",
+        "Report and QA tools summarize stored results only; PMM, SLS, ULS, and verification solvers are not rerun here.",
+        mark="Q",
+    )
+    render_analysis_report_qa()
+    _render_runtime_diagnostics_expander()
 
 
 def main() -> None:
