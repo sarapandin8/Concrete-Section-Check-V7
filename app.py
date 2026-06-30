@@ -1256,23 +1256,59 @@ def _render_sidebar_project_load_actions() -> None:
 
 
 def _render_sidebar_project_save_actions() -> None:
-    """Render project JSON download after workspace cache updates complete."""
+    """Render Project JSON download without serializing on every rerun.
+
+    STATE.RESULT.PERSIST3C: Project export must still be prepared after the
+    active workspace so freshly calculated ULS/SLS caches are included, but the
+    expensive JSON serialization must not run automatically after every
+    Calculate click.  On Streamlit Cloud that post-workspace serialization can
+    make the app look as if the Flexure calculation never finishes.  Use an
+    explicit prepare step, store the payload in session_state, and let the
+    download button serve the already-prepared JSON.
+    """
     with st.sidebar.container(border=True):
         st.markdown('<div class="cpmm-sidebar-section-label" style="margin-top:0;">Save Project</div>', unsafe_allow_html=True)
         st.markdown(
-            '<div class="cpmm-sidebar-file-note">Download the complete project JSON. Supported stored analysis caches are included when available.</div>',
+            '<div class="cpmm-sidebar-file-note">Prepare the project JSON after running Analysis, then download. Supported stored analysis caches are included in the prepared file.</div>',
             unsafe_allow_html=True,
         )
-        project = project_from_session_state(st.session_state)
-        st.download_button(
-            "Save Project JSON",
-            data=project_to_json(project),
-            file_name="concrete_section_pro_project.json",
-            mime="application/json",
+        prepare_clicked = st.button(
+            "Prepare / Refresh Project JSON",
             use_container_width=True,
-            type="primary",
-            key="ui_commercial4_3_sidebar_save_project_json",
+            key="ui_commercial4_3_sidebar_prepare_project_json",
+            help="Build the downloadable JSON from the current inputs and stored analysis caches. Run this after calculations before downloading.",
         )
+        if prepare_clicked:
+            try:
+                project = project_from_session_state(st.session_state)
+                payload = project_to_json(project)
+            except Exception as exc:  # pragma: no cover - UI safety guard
+                st.session_state["_project_save_error"] = f"Project JSON preparation failed: {type(exc).__name__}: {exc}"
+                st.session_state.pop("_project_save_payload", None)
+                st.session_state.pop("_project_save_payload_prepared_at", None)
+            else:
+                st.session_state["_project_save_payload"] = payload
+                st.session_state["_project_save_payload_prepared_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                st.session_state.pop("_project_save_error", None)
+        save_error = st.session_state.get("_project_save_error")
+        if save_error:
+            st.error(str(save_error))
+        prepared_payload = st.session_state.get("_project_save_payload")
+        prepared_at = st.session_state.get("_project_save_payload_prepared_at")
+        if isinstance(prepared_payload, str) and prepared_payload:
+            if prepared_at:
+                st.caption(f"Prepared: {prepared_at}")
+            st.download_button(
+                "Download Prepared Project JSON",
+                data=prepared_payload,
+                file_name="concrete_section_pro_project.json",
+                mime="application/json",
+                use_container_width=True,
+                type="primary",
+                key="ui_commercial4_3_sidebar_save_project_json",
+            )
+        else:
+            st.caption("No prepared JSON yet. Click Prepare / Refresh after your latest analysis run.")
 
 
 def _render_sidebar_project_file_actions() -> None:
